@@ -152,7 +152,7 @@ pub(crate) fn recompute_projection(shared: &Shared) {
         .collect();
 
     let seed = a.positions.clone();
-    let placed = layout::fruchterman_reingold(&keys, &edges, 200, &seed);
+    let placed = layout::fruchterman_reingold(&keys, &edges, 320, &seed);
 
     let mut layout_pos = HashMap::new();
     for (k, p) in keys.iter().zip(placed.iter()) {
