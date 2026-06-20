@@ -116,3 +116,35 @@ async fn bridge_externs_resolve() {
     assert!(joined.contains("set:paused=true"), "calls: {joined}");
     assert!(joined.contains("dl:f.json:2"), "calls: {joined}");
 }
+
+/// The camera fit centers the laid-out nodes in the viewport, so the graph is
+/// visible even when sparse/edgeless (regression guard for the blank-graph bug).
+#[wasm_bindgen_test]
+fn fit_frames_nodes() {
+    use browsing_graph_core::layout::Pos;
+    use browsing_graph_core::model::{GraphProjection, NodeAgg};
+    use browsing_graph_core::render::canvas2d::fit;
+
+    let node = |k: &str| NodeAgg {
+        key: k.into(),
+        visits: 1,
+        prov: ProvBreakdown::default(),
+    };
+    let proj = GraphProjection {
+        nodes: vec![node("a"), node("b")],
+        edges: vec![],
+    };
+    let mut pos = HashMap::new();
+    pos.insert("a".to_string(), Pos { x: 200.0, y: 200.0 });
+    pos.insert("b".to_string(), Pos { x: 400.0, y: 400.0 });
+
+    let (w, h) = (1000.0, 1000.0);
+    let cam = fit(&proj, &pos, w, h);
+
+    // bbox center (300,300) must map to the canvas center (w/2, h/2).
+    let cx = 300.0 * cam.scale + cam.x + w / 2.0;
+    let cy = 300.0 * cam.scale + cam.y + h / 2.0;
+    assert!((cx - w / 2.0).abs() < 1e-6, "x not centered: {cx}");
+    assert!((cy - h / 2.0).abs() < 1e-6, "y not centered: {cy}");
+    assert!(cam.scale > 0.0 && cam.scale <= 3.0);
+}

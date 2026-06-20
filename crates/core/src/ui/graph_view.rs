@@ -27,6 +27,15 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         return Ok(());
     }
 
+    // Frame the laid-out nodes so the graph is visible even when sparse/edgeless
+    // (the force layout otherwise spreads them off-screen). Manual pan/zoom then
+    // adjusts from here until the next render.
+    {
+        let mut a = shared.borrow_mut();
+        let cam = canvas2d::fit(&a.proj, &a.layout_pos, w as f64, h as f64);
+        a.camera = cam;
+    }
+
     draw_now(shared, &canvas);
     attach_interactions(shared, &canvas);
     Ok(())
