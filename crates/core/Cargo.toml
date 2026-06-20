@@ -68,5 +68,12 @@ webgpu = ["dep:wgpu", "dep:bytemuck"]
 # The derive pass intentionally carries many fields; allow a few ergonomic patterns.
 too_many_arguments = "allow"
 
-[dev-dependencies]
+# Native-only test deps (proptest does not target wasm32).
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 proptest = "1"
+
+# Browser test deps (wasm-bindgen-test runs the store/bridge suite in headless Chrome).
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+js-sys = "0.3"
+wasm-bindgen = "0.2"
