@@ -10,6 +10,12 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+# wasm-opt needs the binaryen toolchain (downloaded on demand). Disabled so the
+# build works in restricted/offline environments; enable (e.g. wasm-opt = ['-Os'])
+# in a build environment that has binaryen for a smaller production bundle.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
 # --- Pure core dependencies (compile on every target, run under `cargo test`) ---
 [dependencies]
 url = "2.5"

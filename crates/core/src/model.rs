@@ -272,15 +272,10 @@ pub struct GraphProjection {
 
 /// Node-key granularity (decision #9). `Hostname` is the storage + default
 /// granularity; `Registrable` (eTLD+1) is regrouped at merge time.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum Granularity {
+    #[default]
     Hostname,
     Registrable,
-}
-
-impl Default for Granularity {
-    fn default() -> Self {
-        Granularity::Hostname
-    }
 }

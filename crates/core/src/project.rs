@@ -143,10 +143,9 @@ mod tests {
             "a.com".into(),
             NodeStat {
                 visits: 2,
-                prov: {
-                    let mut p = ProvBreakdown::default();
-                    p.link = 2;
-                    p
+                prov: ProvBreakdown {
+                    link: 2,
+                    ..Default::default()
                 },
             },
         );
@@ -162,10 +161,9 @@ mod tests {
             edge_key("a.com", "b.com"),
             EdgeStat {
                 weight: 1,
-                kinds: {
-                    let mut k = KindBreakdown::default();
-                    k.link = 1;
-                    k
+                kinds: KindBreakdown {
+                    link: 1,
+                    ..Default::default()
                 },
             },
         );
@@ -174,10 +172,9 @@ mod tests {
             "a.com".into(),
             NodeStat {
                 visits: 3,
-                prov: {
-                    let mut p = ProvBreakdown::default();
-                    p.link = 3;
-                    p
+                prov: ProvBreakdown {
+                    link: 3,
+                    ..Default::default()
                 },
             },
         );
@@ -185,10 +182,9 @@ mod tests {
             edge_key("a.com", "b.com"),
             EdgeStat {
                 weight: 4,
-                kinds: {
-                    let mut k = KindBreakdown::default();
-                    k.link = 4;
-                    k
+                kinds: KindBreakdown {
+                    link: 4,
+                    ..Default::default()
                 },
             },
         );
@@ -276,22 +272,24 @@ mod tests {
     #[test]
     fn hide_search_hubs_removes_search_dominant_nodes() {
         let mut b = bucket("2021-01-01");
-        let mut sp = ProvBreakdown::default();
-        sp.search_origin = 9;
         b.nodes.insert(
             "google.com".into(),
             NodeStat {
                 visits: 9,
-                prov: sp,
+                prov: ProvBreakdown {
+                    search_origin: 9,
+                    ..Default::default()
+                },
             },
         );
-        let mut lp = ProvBreakdown::default();
-        lp.link = 4;
         b.nodes.insert(
             "wiki.org".into(),
             NodeStat {
                 visits: 4,
-                prov: lp,
+                prov: ProvBreakdown {
+                    link: 4,
+                    ..Default::default()
+                },
             },
         );
         let filters = Filters {
