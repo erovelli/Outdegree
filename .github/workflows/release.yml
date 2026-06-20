@@ -1,0 +1,83 @@
+name: Release
+
+# Tag a version (e.g. `git tag v0.1.0 && git push --tags`) to build the packed,
+# wasm-opt-optimized extension and attach it to a GitHub Release for store upload.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build + package extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # binaryen provides wasm-opt; the runner has network so this is safe here
+      # (the default build keeps wasm-opt disabled for offline reproducibility).
+      - name: Install binaryen (wasm-opt)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Build WASM
+        run: npm run build:wasm
+
+      - name: Optimize WASM (wasm-opt -Os)
+        run: |
+          set -euo pipefail
+          WASM=extension/src/wasm/browsing_graph_core_bg.wasm
+          before=$(wc -c < "$WASM")
+          wasm-opt -Os "$WASM" -o "$WASM"
+          after=$(wc -c < "$WASM")
+          echo "wasm-opt: $before -> $after bytes" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build extension (inlines the optimized WASM)
+        run: npm run build:ext
+
+      - name: Audit bundle for network surface (§12.7)
+        run: |
+          set -euo pipefail
+          PATTERN='fetch\(|XMLHttpRequest|WebSocket|EventSource|navigator\.sendBeacon|importScripts'
+          if grep -rIlE "$PATTERN" dist; then
+            echo "::error::network surface found in dist/"
+            exit 1
+          fi
+          EXT="$(grep -rIoE 'https?://[a-zA-Z0-9.-]+' dist | grep -vE 'w3\.org' || true)"
+          if [ -n "$EXT" ]; then
+            echo "::error::external URL(s) in dist/: $EXT"
+            exit 1
+          fi
+
+      - name: Package dist/ → zip
+        run: |
+          set -euo pipefail
+          ZIP="browsing-graph-${{ github.ref_name }}.zip"
+          (cd dist && zip -r "../$ZIP" .)
+          echo "Built $ZIP ($(wc -c < "$ZIP") bytes)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: browsing-graph-${{ github.ref_name }}.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
