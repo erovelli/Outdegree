@@ -59,6 +59,8 @@ pub(crate) struct App {
     pub spa_mode: bool,
     /// Drill-down focus: when set, the graph shows this node's ego network (§M3).
     pub focus: Option<String>,
+    /// Whether the window-resize listener has been installed (install once).
+    pub resize_hooked: bool,
 }
 
 pub(crate) type Shared = Rc<RefCell<App>>;
@@ -119,6 +121,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         selected_session: None,
         spa_mode: false,
         focus: None,
+        resize_hooked: false,
     };
     let shared: Shared = Rc::new(RefCell::new(app));
 

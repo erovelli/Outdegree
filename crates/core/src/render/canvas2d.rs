@@ -13,9 +13,16 @@ const R_SCALE: f64 = 3.0;
 const BG: &str = "#11151c";
 const LABEL: &str = "#cfd8e3";
 
-/// Node disc radius in screen pixels at the given camera.
+/// Node disc radius in screen pixels — scales with the zoom level (clamped to a
+/// sane screen range so nodes never vanish or dominate).
 fn radius(visits: u32, scale: f64) -> f64 {
-    MIN_R.max(R_SCALE * (visits as f64).sqrt()) * scale.clamp(0.4, 2.0)
+    (MIN_R.max(R_SCALE * (visits as f64).sqrt()) * scale).clamp(2.0, 50.0)
+}
+
+/// Label font size in screen pixels — also scales with zoom so labels shrink
+/// when zoomed out (less clutter) and grow when zoomed in.
+fn label_px(scale: f64) -> f64 {
+    (11.0 * scale).clamp(6.0, 24.0)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -138,8 +145,9 @@ pub fn draw(
     // Show labels when the graph is small or zoomed in (else they clutter), and
     // always for highlighted nodes.
     let show_labels = proj.nodes.len() <= 150 || cam.scale >= 1.0;
+    let fs = label_px(cam.scale);
     ctx.set_text_align("center");
-    ctx.set_font("12px system-ui, -apple-system, sans-serif");
+    ctx.set_font(&format!("{fs:.0}px system-ui, -apple-system, sans-serif"));
 
     for n in &proj.nodes {
         if let Some(p) = pos.get(&n.key) {
@@ -156,7 +164,7 @@ pub fn draw(
             if label_this {
                 ctx.set_global_alpha(if hot { 1.0 } else { 0.5 });
                 set_fill(ctx, LABEL);
-                let _ = ctx.fill_text(&n.key, x, y + r + 12.0);
+                let _ = ctx.fill_text(&n.key, x, y + r + fs);
             }
         }
     }

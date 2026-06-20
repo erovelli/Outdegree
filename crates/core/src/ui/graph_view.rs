@@ -8,17 +8,6 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent, WheelEven
 pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let body = body_container(shared).ok_or_else(|| JsValue::from_str("no body"))?;
     body.set_inner_html("");
-    let doc = shared.borrow().doc.clone();
-
-    let canvas: HtmlCanvasElement = el(&doc, "canvas")
-        .dyn_into()
-        .map_err(|_| JsValue::from_str("canvas cast"))?;
-    let w = body.client_width().max(320);
-    let h = body.client_height().max(320);
-    canvas.set_width(w as u32);
-    canvas.set_height(h as u32);
-    let _ = canvas.set_attribute("id", "bg-canvas");
-    let _ = body.append_child(&canvas);
 
     if shared.borrow().proj.nodes.is_empty() {
         body.set_inner_html(
@@ -27,18 +16,67 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         return Ok(());
     }
 
-    // Frame the laid-out nodes so the graph is visible even when sparse/edgeless
-    // (the force layout otherwise spreads them off-screen). Manual pan/zoom then
-    // adjusts from here until the next render.
+    let doc = shared.borrow().doc.clone();
+    let win = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?;
+
+    let canvas: HtmlCanvasElement = el(&doc, "canvas")
+        .dyn_into()
+        .map_err(|_| JsValue::from_str("canvas cast"))?;
+    let _ = canvas.set_attribute("id", "bg-canvas");
+
+    // Fill the viewport below the toolbar/tabs. Fixed-position so the canvas is
+    // not constrained by the body's flex height (which left a blank gap before).
+    let top = body.get_bounding_client_rect().top().max(0.0);
+    let w = win_dim(&win, true).max(320.0);
+    let h = (win_dim(&win, false) - top).max(320.0);
+    canvas.set_width(w as u32);
+    canvas.set_height(h as u32);
+    let _ = canvas.set_attribute(
+        "style",
+        &format!(
+            "position:fixed;left:0;top:{top:.0}px;width:{w:.0}px;height:{h:.0}px;display:block"
+        ),
+    );
+    let _ = body.append_child(&canvas);
+
+    // Frame the laid-out nodes so the graph is visible even when sparse/edgeless.
+    // Manual pan/zoom then adjusts from here until the next render.
     {
         let mut a = shared.borrow_mut();
-        let cam = canvas2d::fit(&a.proj, &a.layout_pos, w as f64, h as f64);
+        let cam = canvas2d::fit(&a.proj, &a.layout_pos, w, h);
         a.camera = cam;
     }
 
     draw_now(shared, &canvas);
     attach_interactions(shared, &canvas);
+    install_resize_hook(shared);
     Ok(())
+}
+
+/// Inner viewport `width` (or height) in CSS pixels.
+fn win_dim(win: &web_sys::Window, width: bool) -> f64 {
+    let v = if width {
+        win.inner_width()
+    } else {
+        win.inner_height()
+    };
+    v.ok().and_then(|j| j.as_f64()).unwrap_or(800.0)
+}
+
+/// Install a one-time window-resize listener that re-frames the graph to the new
+/// viewport size (only while the Graph tab is active).
+fn install_resize_hook(shared: &Shared) {
+    if shared.borrow().resize_hooked {
+        return;
+    }
+    shared.borrow_mut().resize_hooked = true;
+    let Some(win) = web_sys::window() else { return };
+    let s = shared.clone();
+    on(win.as_ref(), "resize", move |_| {
+        if s.borrow().view == super::View::Graph {
+            let _ = render(&s);
+        }
+    });
 }
 
 fn ctx_of(canvas: &HtmlCanvasElement) -> Option<CanvasRenderingContext2d> {
