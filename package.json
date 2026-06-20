@@ -1,0 +1,24 @@
+{
+  "name": "browsing-graph",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Records your navigations as a directed graph you can explore over time. Local-only, no network, open source.",
+  "license": "MIT",
+  "scripts": {
+    "build:wasm": "wasm-pack build crates/core --release --target web --out-dir ../../extension/src/wasm",
+    "build:wasm:dev": "wasm-pack build crates/core --dev --target web --out-dir ../../extension/src/wasm",
+    "build:ext": "vite build",
+    "build": "npm run build:wasm && npm run build:ext",
+    "dev": "npm run build:wasm:dev && vite",
+    "typecheck": "tsc --noEmit",
+    "test:core": "cargo test -p browsing-graph-core"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.0",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.20.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
