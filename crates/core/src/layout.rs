@@ -28,27 +28,40 @@ pub fn fruchterman_reingold(
     }
 
     let w = 1000.0f32;
-    let area = w * w;
-    let k = (area / n as f32).sqrt();
+    let k = (w * w / n as f32).sqrt();
+    // Hard cap on |position| so a runaway force can never push a node to a
+    // non-finite or absurd coordinate (which would blank the whole view).
+    let bound = 4.0 * w;
 
+    // Deterministic initial placement: warm-start from finite, in-bounds seeds;
+    // otherwise a golden-angle spiral so nodes start well-separated and bounded.
     let mut pos: Vec<Pos> = keys
         .iter()
         .enumerate()
-        .map(|(i, key)| match seed.get(key) {
-            Some(&(x, y)) => Pos { x, y },
-            None => {
-                let mut s = (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0xD1B5_4A32_D192_ED03;
-                let rx = (next_f32(&mut s) - 0.5) * w;
-                let ry = (next_f32(&mut s) - 0.5) * w;
-                Pos { x: rx, y: ry }
+        .map(|(i, key)| {
+            if let Some(&(x, y)) = seed.get(key) {
+                if x.is_finite() && y.is_finite() && x.abs() <= bound && y.abs() <= bound {
+                    return Pos { x, y };
+                }
+            }
+            let angle = i as f32 * 2.399_963_2; // golden angle (radians)
+            let radius = 0.5 * w * ((i as f32 + 1.0) / n as f32).sqrt();
+            Pos {
+                x: radius * angle.cos(),
+                y: radius * angle.sin(),
             }
         })
         .collect();
 
     if n == 1 {
-        return pos;
+        return vec![Pos { x: 0.0, y: 0.0 }];
     }
 
+    // Gravity toward the origin keeps disconnected components from drifting
+    // off-screen (the common cause of a "blank" graph). With FR's long-range
+    // (1/dist) repulsion, a disconnected cloud settles at radius ≈ w/√gravity, so
+    // this value keeps it compact (≈1400) and well inside `bound`.
+    let gravity = 0.5f32;
     let mut temp = w / 10.0;
     let cool = temp / (iters.max(1) as f32 + 1.0);
 
@@ -73,13 +86,37 @@ pub fn fruchterman_reingold(
             disp[b].1 += uy * force;
         }
 
-        // Apply displacement, capped by the cooling temperature.
+        // Centering gravity.
+        for (i, d) in disp.iter_mut().enumerate() {
+            d.0 -= pos[i].x * gravity;
+            d.1 -= pos[i].y * gravity;
+        }
+
+        // Apply displacement (capped by temperature), then sanitize + clamp so a
+        // position can never become non-finite or escape the bound.
         for i in 0..n {
-            let (dx, dy) = disp[i];
-            let d = (dx * dx + dy * dy).sqrt().max(1e-4);
-            let lim = d.min(temp);
-            pos[i].x += dx / d * lim;
-            pos[i].y += dy / d * lim;
+            let mut dx = disp[i].0;
+            let mut dy = disp[i].1;
+            if !dx.is_finite() {
+                dx = 0.0;
+            }
+            if !dy.is_finite() {
+                dy = 0.0;
+            }
+            let d = (dx * dx + dy * dy).sqrt();
+            if d > 1e-6 {
+                let lim = d.min(temp);
+                pos[i].x += dx / d * lim;
+                pos[i].y += dy / d * lim;
+            }
+            if !pos[i].x.is_finite() {
+                pos[i].x = 0.0;
+            }
+            if !pos[i].y.is_finite() {
+                pos[i].y = 0.0;
+            }
+            pos[i].x = pos[i].x.clamp(-bound, bound);
+            pos[i].y = pos[i].y.clamp(-bound, bound);
         }
         temp = (temp - cool).max(0.0);
     }
@@ -280,19 +317,6 @@ fn barnes_hut_repulsion(pos: &[Pos], k: f32, theta: f32) -> Vec<(f32, f32)> {
     disp
 }
 
-fn splitmix_next(state: &mut u64) -> u64 {
-    *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    let mut z = *state;
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
-}
-
-fn next_f32(state: &mut u64) -> f32 {
-    // 24 random bits mapped to [0, 1).
-    (splitmix_next(state) >> 40) as f32 / (1u64 << 24) as f32
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +371,40 @@ mod tests {
         }
         let p = fruchterman_reingold(&keys, &[(0, 1), (1, 2)], 20, &seed);
         assert!(p.iter().all(|q| q.x.is_finite() && q.y.is_finite()));
+    }
+
+    #[test]
+    fn nan_huge_seeds_stay_finite_and_bounded() {
+        // Polluted/runaway seeds (NaN, ±inf, absurd magnitudes) must never yield a
+        // non-finite or off-the-map position — this is what blanked the graph.
+        let keys: Vec<String> = (0..6).map(|i| format!("n{i}")).collect();
+        let mut seed = HashMap::new();
+        seed.insert("n0".into(), (f32::NAN, 0.0));
+        seed.insert("n1".into(), (f32::INFINITY, f32::NEG_INFINITY));
+        seed.insert("n2".into(), (1e30, -1e30));
+        let edges = vec![(0, 1), (2, 3)];
+        let p = fruchterman_reingold(&keys, &edges, 40, &seed);
+        let bound = 4.0 * 1000.0 + 1.0;
+        assert!(
+            p.iter().all(|q| q.x.is_finite() && q.y.is_finite()),
+            "non-finite position: {p:?}"
+        );
+        assert!(p.iter().all(|q| q.x.abs() <= bound && q.y.abs() <= bound));
+    }
+
+    #[test]
+    fn disconnected_nodes_stay_centered_by_gravity() {
+        // No edges at all: gravity must keep every node within a sane radius of
+        // the origin (not drifting off-screen).
+        let keys: Vec<String> = (0..30).map(|i| format!("n{i}")).collect();
+        let seed = HashMap::new();
+        let p = fruchterman_reingold(&keys, &[], 200, &seed);
+        assert!(p.iter().all(|q| q.x.is_finite() && q.y.is_finite()));
+        // gravity vs. repulsion equilibrium keeps the cloud compact
+        let max_r = p
+            .iter()
+            .map(|q| (q.x * q.x + q.y * q.y).sqrt())
+            .fold(0.0f32, f32::max);
+        assert!(max_r < 3000.0, "nodes drifted too far: max_r = {max_r}");
     }
 }
