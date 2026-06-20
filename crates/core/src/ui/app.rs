@@ -83,6 +83,22 @@ pub(crate) fn build_shell(shared: &Shared) -> Result<(), JsValue> {
         });
     }
 
+    // in-app navigations (SPA) — opt-in, off by default (§4.2)
+    let (spa_wrap, spa_input) = checkbox(&doc, "In-app navs", false);
+    let _ = toolbar.append_child(&spa_wrap);
+    {
+        let s = shared.clone();
+        on(&spa_input, "change", move |ev| {
+            let c = ev
+                .target()
+                .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+                .map(|i| i.checked())
+                .unwrap_or(false);
+            s.borrow_mut().spa_mode = c;
+            super::reload_buckets(&s);
+        });
+    }
+
     // spacer
     let spacer = el(&doc, "span");
     let _ = spacer.set_attribute("style", "flex:1");

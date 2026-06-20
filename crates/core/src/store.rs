@@ -108,6 +108,19 @@ impl Db {
         Ok(n)
     }
 
+    /// Read all `spa` (history-state) records for the opt-in in-app navs view
+    /// (§4.2). They are `Nav`-shaped.
+    pub async fn read_spa(&self) -> Result<Vec<Event>, JsValue> {
+        let tx = self
+            .rexie
+            .transaction(&["spa"], TransactionMode::ReadOnly)
+            .map_err(je)?;
+        let store = tx.store("spa").map_err(je)?;
+        let values = store.get_all(None, None).await.map_err(je)?;
+        tx.done().await.map_err(je)?;
+        deserialize_all(values)
+    }
+
     // ── rollups ────────────────────────────────────────────────────────────────
 
     pub async fn read_all_rollups(&self) -> Result<Vec<DayBucket>, JsValue> {

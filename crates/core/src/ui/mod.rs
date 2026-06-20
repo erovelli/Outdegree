@@ -54,6 +54,8 @@ pub(crate) struct App {
     pub dragging: bool,
     pub last_mouse: (f64, f64),
     pub selected_session: Option<f64>,
+    /// Opt-in "in-app navigations" view: fold `events` + `spa` from scratch (§4.2).
+    pub spa_mode: bool,
 }
 
 pub(crate) type Shared = Rc<RefCell<App>>;
@@ -111,6 +113,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         dragging: false,
         last_mouse: (0.0, 0.0),
         selected_session: None,
+        spa_mode: false,
     };
     let shared: Shared = Rc::new(RefCell::new(app));
 
@@ -157,6 +160,29 @@ pub(crate) fn persist_positions(shared: &Shared) {
     let pos = shared.borrow().positions.clone();
     wasm_bindgen_futures::spawn_local(async move {
         let _ = db.write_positions(&pos).await;
+    });
+}
+
+/// Recompute the in-memory buckets for the current `spa_mode` and re-render
+/// (§4.2). When SPA mode is on, fold `events` + `spa` from scratch (on demand);
+/// otherwise use the persisted rollup cache.
+pub(crate) fn reload_buckets(shared: &Shared) {
+    let s = shared.clone();
+    let db = shared.borrow().db.clone();
+    let spa_mode = shared.borrow().spa_mode;
+    wasm_bindgen_futures::spawn_local(async move {
+        let buckets = if spa_mode {
+            let events = db.read_events_after(0.0).await.unwrap_or_default();
+            let spa = db.read_spa().await.unwrap_or_default();
+            let merged = crate::rollup::merge_streams(&events, &spa);
+            let mut st = crate::rollup::DeriveState::default();
+            crate::rollup::fold(&mut st, &merged).0
+        } else {
+            db.read_all_rollups().await.unwrap_or_default()
+        };
+        s.borrow_mut().buckets = buckets;
+        recompute_projection(&s);
+        let _ = rerender(&s);
     });
 }
 
