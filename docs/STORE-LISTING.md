@@ -57,8 +57,11 @@ Lead both with **"100% local · no network · open source."**
   dashboard graph is the hero shot), short + detailed descriptions.
 - Expect a **slower, stricter review** due to the browsing-data profile; the
   enforced local-only guarantee is what de-risks it.
-- Privacy policy: host `docs/privacy-policy.md` (e.g. GitHub Pages) and link it
-  in the listing.
+- Privacy policy: hosted via GitHub Pages (`.github/workflows/pages.yml` deploys
+  `docs/`). One-time setup: repo **Settings → Pages → Source: "GitHub Actions"**.
+  Once enabled the policy is at
+  `https://erovelli.github.io/Outdegree/privacy-policy.html` — link that in the
+  listing.
 
 ## Pre-submit checklist (§12.7)
 
@@ -75,7 +78,10 @@ Lead both with **"100% local · no network · open source."**
       self-loader neutralized).
 - [x] Confirm `psl` uses the embedded list (no runtime fetch) and the UI runs in
       CSR (the DOM is built at runtime; no hydration callback).
-- [ ] Privacy policy hosted + linked; the form copy above filled in.
+- [x] Privacy policy hosted via GitHub Pages (`pages.yml`) — enable Pages
+      (Settings → Pages → GitHub Actions), then link
+      `https://erovelli.github.io/Outdegree/privacy-policy.html`. Form copy above
+      filled in.
 - [x] `"incognito": "not_allowed"` present; `host_permissions: []`; CSP includes
       `connect-src 'none'` (verified in `dist/manifest.json`).
 

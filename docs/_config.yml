@@ -1,0 +1,10 @@
+title: Browsing Graph
+description: A local-only map of how you browse.
+theme: jekyll-theme-minimal
+
+# Dev-only docs are kept in the repo but not published to the site.
+exclude:
+  - STORE-LISTING.md
+  - M0-CHECKLIST.md
+  - SCREENSHOTS.md
+  - assets/generate-icons.mjs
