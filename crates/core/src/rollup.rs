@@ -260,6 +260,32 @@ pub fn fold(
     (deltas, acc.sessions)
 }
 
+/// Merge the unified `events` stream with the separate `spa` (history-state)
+/// stream for the opt-in "in-app navigations" view (§4.2).
+///
+/// Ordered by `(ts, id)` so that within each tab the records are in ts order. ts
+/// ordering is acceptable for this opt-in path; the default path never depends on
+/// it. The result is folded from scratch (not via the incremental cursor, whose
+/// watermark only tracks the `events` id sequence).
+pub fn merge_streams(
+    events: &[crate::model::Event],
+    spa: &[crate::model::Event],
+) -> Vec<crate::model::Event> {
+    let mut all: Vec<crate::model::Event> =
+        events.iter().cloned().chain(spa.iter().cloned()).collect();
+    all.sort_by(|a, b| {
+        a.ts()
+            .partial_cmp(&b.ts())
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(
+                a.id()
+                    .partial_cmp(&b.id())
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
+    });
+    all
+}
+
 /// UTC `YYYY-MM-DD` for a millisecond epoch timestamp (decision #11).
 ///
 /// Pure integer civil-date conversion (Howard Hinnant's algorithm) so no time
@@ -287,6 +313,25 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Event;
+
+    #[test]
+    fn merge_streams_orders_by_ts() {
+        let nav = |id: f64, ts: f64| Event::Nav {
+            id,
+            ts,
+            tab_id: 1.0,
+            window_id: 1.0,
+            to_url: "https://a.com/".into(),
+            transition_type: "link".into(),
+            qualifiers: vec![],
+        };
+        let events = vec![nav(1.0, 100.0), nav(2.0, 300.0)];
+        let spa = vec![nav(1.0, 200.0)]; // independent id sequence
+        let merged = merge_streams(&events, &spa);
+        let ts: Vec<f64> = merged.iter().map(|e| e.ts()).collect();
+        assert_eq!(ts, vec![100.0, 200.0, 300.0]);
+    }
 
     #[test]
     fn utc_date_known_epochs() {
