@@ -96,6 +96,7 @@ fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
         &a.layout_pos,
         &a.camera,
         a.hover.as_deref(),
+        a.focus.as_deref(),
     );
 }
 
