@@ -38,6 +38,30 @@ jobs:
       - name: Compile WASM shell (wasm32)
         run: cargo build -p browsing-graph-core --target wasm32-unknown-unknown
 
+  # ── WASM shell: store + bridge round-trips in headless Chrome ─────────────────
+  browser:
+    name: WASM browser tests (headless Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # Provides a chromedriver matching the runner's preinstalled Chrome, on PATH,
+      # which wasm-bindgen-test-runner uses to drive headless Chrome.
+      - uses: nanasess/setup-chromedriver@v2
+
+      - name: Run wasm-bindgen browser tests (store + bridge)
+        run: wasm-pack test --headless --chrome crates/core
+
   # ── Extension: typecheck + full WASM/Vite build + network-surface audit ──────
   web:
     name: Extension (tsc · build · network audit)

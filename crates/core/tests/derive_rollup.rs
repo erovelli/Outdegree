@@ -1,5 +1,6 @@
 //! §11 derive + rollup fixtures: global-order correctness, lifecycle markers, and
 //! the `fold == from-scratch recompute` invariant across every watermark split.
+#![cfg(not(target_arch = "wasm32"))]
 
 use browsing_graph_core::model::{EdgeKind, Event};
 use browsing_graph_core::rollup::{

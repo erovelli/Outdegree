@@ -1,6 +1,7 @@
 //! Property-based verification of the central invariant: an incremental fold
 //! (split + checkpoint round-trip) equals a from-scratch recompute, for randomly
 //! generated event streams, at **every** watermark split.
+#![cfg(not(target_arch = "wasm32"))]
 
 use browsing_graph_core::model::Event;
 use browsing_graph_core::rollup::{fold, merge_bucket, DayBucket, DeriveState, SessionRec};

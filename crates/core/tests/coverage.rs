@@ -1,5 +1,6 @@
 //! Additional coverage for previously-untested branches: the `provenance_in`
 //! filter, Louvain edge cases, and host/registrable corners.
+#![cfg(not(target_arch = "wasm32"))]
 
 use browsing_graph_core::graph::{build, louvain, louvain_communities};
 use browsing_graph_core::interpret::{host, node_key, registrable};
