@@ -116,9 +116,7 @@ pub(crate) fn build_shell(shared: &Shared) -> Result<(), JsValue> {
             let db = s.borrow().db.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match db.export_json().await {
-                    Ok(json) => {
-                        crate::bridge::download_json("browsing-graph-export.json", &json)
-                    }
+                    Ok(json) => crate::bridge::download_json("browsing-graph-export.json", &json),
                     Err(e) => super::log_err(&e),
                 }
             });
@@ -213,7 +211,6 @@ fn pause_label(paused: bool) -> &'static str {
         "Pause capture"
     }
 }
-
 
 /// Reflect the active view on the tab buttons.
 pub(crate) fn set_active_tab(shared: &Shared) {

@@ -95,7 +95,10 @@ mod tests {
 
     #[test]
     fn host_only_http_https() {
-        assert_eq!(host("https://example.com/path?q=1"), Some("example.com".into()));
+        assert_eq!(
+            host("https://example.com/path?q=1"),
+            Some("example.com".into())
+        );
         assert_eq!(host("http://localhost:3000/x"), Some("localhost".into()));
         assert_eq!(host("chrome://extensions"), None);
         assert_eq!(host("file:///home/user/x.html"), None);

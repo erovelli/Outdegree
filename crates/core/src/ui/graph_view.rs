@@ -41,7 +41,15 @@ fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
     let a = shared.borrow();
     let w = canvas.width() as f64;
     let h = canvas.height() as f64;
-    canvas2d::draw(&ctx, w, h, &a.proj, &a.layout_pos, &a.camera, a.hover.as_deref());
+    canvas2d::draw(
+        &ctx,
+        w,
+        h,
+        &a.proj,
+        &a.layout_pos,
+        &a.camera,
+        a.hover.as_deref(),
+    );
 }
 
 fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
@@ -93,8 +101,7 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                 } else {
                     let w = c.width() as f64;
                     let h = c.height() as f64;
-                    let hov =
-                        canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
+                    let hov = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
                     if hov != a.hover {
                         a.hover = hov;
                         redraw = true;

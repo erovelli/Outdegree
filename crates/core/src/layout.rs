@@ -37,9 +37,7 @@ pub fn fruchterman_reingold(
         .map(|(i, key)| match seed.get(key) {
             Some(&(x, y)) => Pos { x, y },
             None => {
-                let mut s = (i as u64)
-                    .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-                    ^ 0xD1B5_4A32_D192_ED03;
+                let mut s = (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0xD1B5_4A32_D192_ED03;
                 let rx = (next_f32(&mut s) - 0.5) * w;
                 let ry = (next_f32(&mut s) - 0.5) * w;
                 Pos { x: rx, y: ry }

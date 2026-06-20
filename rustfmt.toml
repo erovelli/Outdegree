@@ -1,0 +1,2 @@
+# Stable rustfmt defaults are intentional (edition pinned for consistency).
+edition = "2021"

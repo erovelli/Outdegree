@@ -19,7 +19,9 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
 
     let mut html = String::new();
 
-    html.push_str("<h3>Top hubs (by weighted degree)</h3><table><tr><th>Host</th><th>Degree</th></tr>");
+    html.push_str(
+        "<h3>Top hubs (by weighted degree)</h3><table><tr><th>Host</th><th>Degree</th></tr>",
+    );
     for (k, d) in &hubs {
         html.push_str(&format!("<tr><td>{}</td><td>{}</td></tr>", esc(k), d));
     }

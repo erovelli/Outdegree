@@ -181,13 +181,10 @@ fn one_level(n: usize, adj: &Adj, k: &[f64], m2: f64) -> (Vec<usize>, usize) {
             let ki = k[i];
             // baseline: staying in ci
             let mut best_c = ci;
-            let mut best_gain =
-                neigh.get(&ci).copied().unwrap_or(0.0) - sigma_tot[ci] * ki / m2;
+            let mut best_gain = neigh.get(&ci).copied().unwrap_or(0.0) - sigma_tot[ci] * ki / m2;
             for (&c, &kin) in &neigh {
                 let gain = kin - sigma_tot[c] * ki / m2;
-                if gain > best_gain + 1e-12
-                    || (gain > best_gain - 1e-12 && c < best_c)
-                {
+                if gain > best_gain + 1e-12 || (gain > best_gain - 1e-12 && c < best_c) {
                     best_gain = gain;
                     best_c = c;
                 }
@@ -359,11 +356,14 @@ mod tests {
         for (ix, c) in &comm {
             by_comm.entry(*c).or_default().push(g[*ix].key.clone());
         }
-        assert_eq!(by_comm.len(), 2, "expected two communities, got {by_comm:?}");
+        assert_eq!(
+            by_comm.len(),
+            2,
+            "expected two communities, got {by_comm:?}"
+        );
         // each community holds exactly one clique
         for members in by_comm.values() {
-            let set: std::collections::HashSet<&str> =
-                members.iter().map(|s| s.as_str()).collect();
+            let set: std::collections::HashSet<&str> = members.iter().map(|s| s.as_str()).collect();
             assert!(
                 set == ["a", "b", "c"].into_iter().collect()
                     || set == ["x", "y", "z"].into_iter().collect(),
@@ -393,10 +393,12 @@ mod tests {
         ];
         let seqs = frequent_sequences(&chains, 2, 4);
         // a->b appears in all 3; a->b->c in 2.
-        assert!(seqs.iter().any(|(p, s)| p == &vec!["a".to_string(), "b".to_string()] && *s == 3));
         assert!(seqs
             .iter()
-            .any(|(p, s)| p == &vec!["a".to_string(), "b".to_string(), "c".to_string()] && *s == 2));
+            .any(|(p, s)| p == &vec!["a".to_string(), "b".to_string()] && *s == 3));
+        assert!(seqs.iter().any(|(p, s)| p
+            == &vec!["a".to_string(), "b".to_string(), "c".to_string()]
+            && *s == 2));
         // a->b->d only has support 1, below min_support 2.
         assert!(!seqs
             .iter()
