@@ -123,6 +123,34 @@ pub fn origination(buckets: &[DayBucket]) -> ProvBreakdown {
     p
 }
 
+/// Drill-down: the ego subgraph of `focus` — the node, its direct neighbors, and
+/// the edges among that set (§M3).
+pub fn ego(p: &GraphProjection, focus: &str) -> GraphProjection {
+    let mut keep: HashSet<&str> = HashSet::new();
+    keep.insert(focus);
+    for e in &p.edges {
+        if e.from == focus {
+            keep.insert(e.to.as_str());
+        }
+        if e.to == focus {
+            keep.insert(e.from.as_str());
+        }
+    }
+    let nodes = p
+        .nodes
+        .iter()
+        .filter(|n| keep.contains(n.key.as_str()))
+        .cloned()
+        .collect();
+    let edges = p
+        .edges
+        .iter()
+        .filter(|e| keep.contains(e.from.as_str()) && keep.contains(e.to.as_str()))
+        .cloned()
+        .collect();
+    GraphProjection { nodes, edges }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,5 +330,32 @@ mod tests {
         let g = project(&[b], Granularity::Hostname, &filters);
         assert_eq!(g.nodes.len(), 1);
         assert_eq!(g.nodes[0].key, "wiki.org");
+    }
+
+    #[test]
+    fn ego_returns_focus_plus_neighbors() {
+        use crate::model::{EdgeAgg, NodeAgg};
+        let n = |k: &str| NodeAgg {
+            key: k.into(),
+            visits: 1,
+            prov: ProvBreakdown::default(),
+        };
+        let e = |f: &str, t: &str| EdgeAgg {
+            from: f.into(),
+            to: t.into(),
+            weight: 1,
+            kinds: crate::model::KindBreakdown::default(),
+        };
+        let p = GraphProjection {
+            nodes: vec![n("hub"), n("a"), n("b"), n("far")],
+            edges: vec![e("hub", "a"), e("b", "hub"), e("a", "far")],
+        };
+        let g = ego(&p, "hub");
+        let keys: std::collections::HashSet<&str> =
+            g.nodes.iter().map(|x| x.key.as_str()).collect();
+        assert_eq!(keys, ["hub", "a", "b"].into_iter().collect());
+        // only edges among the kept set survive (a->far is dropped)
+        assert_eq!(g.edges.len(), 2);
+        assert!(g.edges.iter().all(|x| x.to != "far" && x.from != "far"));
     }
 }

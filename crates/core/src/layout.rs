@@ -53,22 +53,9 @@ pub fn fruchterman_reingold(
     let cool = temp / (iters.max(1) as f32 + 1.0);
 
     for _ in 0..iters {
-        let mut disp = vec![(0.0f32, 0.0f32); n];
-
-        // Repulsion between every pair.
-        for i in 0..n {
-            for j in (i + 1)..n {
-                let dx = pos[i].x - pos[j].x;
-                let dy = pos[i].y - pos[j].y;
-                let dist = (dx * dx + dy * dy).sqrt().max(1e-4);
-                let force = k * k / dist;
-                let (ux, uy) = (dx / dist, dy / dist);
-                disp[i].0 += ux * force;
-                disp[i].1 += uy * force;
-                disp[j].0 -= ux * force;
-                disp[j].1 -= uy * force;
-            }
-        }
+        // Repulsion via Barnes–Hut (O(n log n)) so the layout scales past a few
+        // hundred hosts; θ = 0.9 trades a little accuracy for speed.
+        let mut disp = barnes_hut_repulsion(&pos, k, 0.9);
 
         // Attraction along edges.
         for &(a, b) in edges {
@@ -98,6 +85,199 @@ pub fn fruchterman_reingold(
     }
 
     pos
+}
+
+// ───────────────────────────── Barnes–Hut repulsion ─────────────────────────────
+
+const BH_MAX_DEPTH: u32 = 32;
+
+/// A node of the arena-backed quadtree. `com_*` holds the running sum of member
+/// positions during insertion and the average after [`QuadTree::finalize`].
+struct QNode {
+    cx: f32,
+    cy: f32,
+    half: f32,
+    mass: f32,
+    com_x: f32,
+    com_y: f32,
+    children: [i32; 4],
+    body: i32,
+    body_x: f32,
+    body_y: f32,
+}
+
+struct QuadTree {
+    nodes: Vec<QNode>,
+}
+
+impl QuadTree {
+    fn new(cx: f32, cy: f32, half: f32) -> Self {
+        QuadTree {
+            nodes: vec![QNode {
+                cx,
+                cy,
+                half,
+                mass: 0.0,
+                com_x: 0.0,
+                com_y: 0.0,
+                children: [-1; 4],
+                body: -1,
+                body_x: 0.0,
+                body_y: 0.0,
+            }],
+        }
+    }
+
+    fn quadrant(&self, ni: usize, x: f32, y: f32) -> usize {
+        let n = &self.nodes[ni];
+        (x >= n.cx) as usize + ((y >= n.cy) as usize) * 2
+    }
+
+    fn child(&mut self, ni: usize, q: usize) -> usize {
+        if self.nodes[ni].children[q] >= 0 {
+            return self.nodes[ni].children[q] as usize;
+        }
+        let (cx, cy, half) = {
+            let n = &self.nodes[ni];
+            let h = n.half * 0.5;
+            let dx = if q & 1 == 1 { h } else { -h };
+            let dy = if q & 2 == 2 { h } else { -h };
+            (n.cx + dx, n.cy + dy, h)
+        };
+        let idx = self.nodes.len();
+        self.nodes.push(QNode {
+            cx,
+            cy,
+            half,
+            mass: 0.0,
+            com_x: 0.0,
+            com_y: 0.0,
+            children: [-1; 4],
+            body: -1,
+            body_x: 0.0,
+            body_y: 0.0,
+        });
+        self.nodes[ni].children[q] = idx as i32;
+        idx
+    }
+
+    fn insert(&mut self, body: usize, x: f32, y: f32) {
+        self.insert_at(0, body, x, y, 0);
+    }
+
+    fn insert_at(&mut self, ni: usize, body: usize, x: f32, y: f32, depth: u32) {
+        // accumulate this body into the subtree rooted at ni
+        let was_empty = self.nodes[ni].mass == 0.0;
+        {
+            let n = &mut self.nodes[ni];
+            n.mass += 1.0;
+            n.com_x += x;
+            n.com_y += y;
+        }
+        if was_empty && self.nodes[ni].body < 0 {
+            let n = &mut self.nodes[ni];
+            n.body = body as i32;
+            n.body_x = x;
+            n.body_y = y;
+            return;
+        }
+        if depth >= BH_MAX_DEPTH {
+            return; // near-coincident points share this bucket
+        }
+        // split: relocate an existing single body into a child first
+        let existing = self.nodes[ni].body;
+        if existing >= 0 {
+            let (ox, oy) = (self.nodes[ni].body_x, self.nodes[ni].body_y);
+            self.nodes[ni].body = -1;
+            let q = self.quadrant(ni, ox, oy);
+            let c = self.child(ni, q);
+            self.insert_at(c, existing as usize, ox, oy, depth + 1);
+        }
+        let q = self.quadrant(ni, x, y);
+        let c = self.child(ni, q);
+        self.insert_at(c, body, x, y, depth + 1);
+    }
+
+    fn finalize(&mut self) {
+        for n in &mut self.nodes {
+            if n.mass > 0.0 {
+                n.com_x /= n.mass;
+                n.com_y /= n.mass;
+            }
+        }
+    }
+
+    fn force(&self, ni: usize, x: f32, y: f32, i: usize, theta: f32, k2: f32) -> (f32, f32) {
+        let n = &self.nodes[ni];
+        if n.mass == 0.0 {
+            return (0.0, 0.0);
+        }
+        if n.body >= 0 {
+            if n.body as usize == i {
+                return (0.0, 0.0); // self
+            }
+            return repulse(x, y, n.com_x, n.com_y, k2, n.mass);
+        }
+        let dx = x - n.com_x;
+        let dy = y - n.com_y;
+        let dist = (dx * dx + dy * dy).sqrt().max(1e-4);
+        let has_children = n.children.iter().any(|&c| c >= 0);
+        if !has_children || n.half * 2.0 / dist < theta {
+            return repulse(x, y, n.com_x, n.com_y, k2, n.mass);
+        }
+        let mut f = (0.0, 0.0);
+        for &c in &n.children {
+            if c >= 0 {
+                let cf = self.force(c as usize, x, y, i, theta, k2);
+                f.0 += cf.0;
+                f.1 += cf.1;
+            }
+        }
+        f
+    }
+}
+
+fn repulse(x: f32, y: f32, ox: f32, oy: f32, k2: f32, mass: f32) -> (f32, f32) {
+    let dx = x - ox;
+    let dy = y - oy;
+    let dist = (dx * dx + dy * dy).sqrt().max(1e-4);
+    let force = k2 / dist * mass;
+    (dx / dist * force, dy / dist * force)
+}
+
+/// Approximate all-pairs repulsion with a Barnes–Hut quadtree (θ controls the
+/// accuracy/speed trade-off). Deterministic given the input positions.
+fn barnes_hut_repulsion(pos: &[Pos], k: f32, theta: f32) -> Vec<(f32, f32)> {
+    let n = pos.len();
+    let mut disp = vec![(0.0f32, 0.0f32); n];
+    if n < 2 {
+        return disp;
+    }
+    let (mut minx, mut miny) = (f32::INFINITY, f32::INFINITY);
+    let (mut maxx, mut maxy) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for p in pos {
+        minx = minx.min(p.x);
+        miny = miny.min(p.y);
+        maxx = maxx.max(p.x);
+        maxy = maxy.max(p.y);
+    }
+    let cx = (minx + maxx) * 0.5;
+    let cy = (miny + maxy) * 0.5;
+    let half = ((maxx - minx).max(maxy - miny) * 0.5).max(1.0) + 1.0;
+
+    let mut tree = QuadTree::new(cx, cy, half);
+    for (i, p) in pos.iter().enumerate() {
+        tree.insert(i, p.x, p.y);
+    }
+    tree.finalize();
+
+    let k2 = k * k;
+    for (i, p) in pos.iter().enumerate() {
+        let (fx, fy) = tree.force(0, p.x, p.y, i, theta, k2);
+        disp[i].0 = fx;
+        disp[i].1 = fy;
+    }
+    disp
 }
 
 fn splitmix_next(state: &mut u64) -> u64 {
@@ -141,5 +321,31 @@ mod tests {
         assert_eq!(a.len(), 8);
         assert_eq!(a, b, "layout must be deterministic");
         assert!(a.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
+    }
+
+    #[test]
+    fn barnes_hut_scales_and_stays_finite() {
+        // a 400-node ring exercises the quadtree path; must be finite + deterministic
+        let n = 400;
+        let keys: Vec<String> = (0..n).map(|i| format!("n{i}")).collect();
+        let edges: Vec<(usize, usize)> = (0..n).map(|i| (i, (i + 1) % n)).collect();
+        let seed = HashMap::new();
+        let a = fruchterman_reingold(&keys, &edges, 30, &seed);
+        let b = fruchterman_reingold(&keys, &edges, 30, &seed);
+        assert_eq!(a.len(), n);
+        assert_eq!(a, b, "Barnes–Hut layout must be deterministic");
+        assert!(a.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
+    }
+
+    #[test]
+    fn coincident_points_do_not_hang_or_nan() {
+        // all-same seed positions stress the depth guard
+        let keys: Vec<String> = (0..16).map(|i| format!("n{i}")).collect();
+        let mut seed = HashMap::new();
+        for k in &keys {
+            seed.insert(k.clone(), (5.0, 5.0));
+        }
+        let p = fruchterman_reingold(&keys, &[(0, 1), (1, 2)], 20, &seed);
+        assert!(p.iter().all(|q| q.x.is_finite() && q.y.is_finite()));
     }
 }

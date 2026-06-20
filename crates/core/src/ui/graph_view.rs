@@ -76,6 +76,7 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
             if let Ok(me) = ev.dyn_into::<MouseEvent>() {
                 let mut a = s.borrow_mut();
                 a.dragging = true;
+                a.did_drag = false;
                 a.last_mouse = (me.offset_x() as f64, me.offset_y() as f64);
             }
         });
@@ -94,6 +95,9 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                 let mut a = s.borrow_mut();
                 if a.dragging {
                     let (lx, ly) = a.last_mouse;
+                    if (mx - lx).abs() + (my - ly).abs() > 2.0 {
+                        a.did_drag = true;
+                    }
                     a.camera.x += mx - lx;
                     a.camera.y += my - ly;
                     a.last_mouse = (mx, my);
@@ -118,6 +122,44 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
         let s = shared.clone();
         on(canvas.as_ref(), event, move |_| {
             s.borrow_mut().dragging = false;
+        });
+    }
+    // click-to-drill: a click that wasn't a drag focuses the clicked node's ego
+    // network (§M3); clicking empty space clears the focus.
+    {
+        let s = shared.clone();
+        let c = canvas.clone();
+        on(canvas.as_ref(), "click", move |ev| {
+            let Ok(me) = ev.dyn_into::<MouseEvent>() else {
+                return;
+            };
+            let hit = {
+                let a = s.borrow();
+                if a.did_drag {
+                    return;
+                }
+                let (mx, my) = (me.offset_x() as f64, me.offset_y() as f64);
+                canvas2d::hit_test(
+                    mx,
+                    my,
+                    c.width() as f64,
+                    c.height() as f64,
+                    &a.proj,
+                    &a.layout_pos,
+                    &a.camera,
+                )
+            };
+            {
+                let mut a = s.borrow_mut();
+                // toggle: clicking the focused node again clears focus
+                a.focus = match (hit, a.focus.clone()) {
+                    (Some(k), Some(f)) if k == f => None,
+                    (Some(k), _) => Some(k),
+                    (None, _) => None,
+                };
+            }
+            super::recompute_projection(&s);
+            let _ = super::rerender(&s);
         });
     }
 }
