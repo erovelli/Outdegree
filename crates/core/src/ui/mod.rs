@@ -52,10 +52,13 @@ pub(crate) struct App {
     pub layout_pos: HashMap<String, Pos>,
     pub hover: Option<String>,
     pub dragging: bool,
+    pub did_drag: bool,
     pub last_mouse: (f64, f64),
     pub selected_session: Option<f64>,
     /// Opt-in "in-app navigations" view: fold `events` + `spa` from scratch (§4.2).
     pub spa_mode: bool,
+    /// Drill-down focus: when set, the graph shows this node's ego network (§M3).
+    pub focus: Option<String>,
 }
 
 pub(crate) type Shared = Rc<RefCell<App>>;
@@ -111,9 +114,11 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         layout_pos: HashMap::new(),
         hover: None,
         dragging: false,
+        did_drag: false,
         last_mouse: (0.0, 0.0),
         selected_session: None,
         spa_mode: false,
+        focus: None,
     };
     let shared: Shared = Rc::new(RefCell::new(app));
 
@@ -128,7 +133,11 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
 /// start a fresh layout, preserving spatial memory for surviving nodes (§7.6).
 pub(crate) fn recompute_projection(shared: &Shared) {
     let mut a = shared.borrow_mut();
-    let proj = project::project(&a.buckets, a.gran, &a.filters);
+    let mut proj = project::project(&a.buckets, a.gran, &a.filters);
+    // Drill-down: reduce to the focused node's ego network (§M3).
+    if let Some(focus) = a.focus.clone() {
+        proj = project::ego(&proj, &focus);
+    }
 
     let keys: Vec<String> = proj.nodes.iter().map(|n| n.key.clone()).collect();
     let index: HashMap<&str, usize> = keys
