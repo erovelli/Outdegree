@@ -6,6 +6,10 @@ updates:
     schedule:
       interval: weekly
     labels: ["dependencies", "ci"]
+    # Supply-chain hardening: only propose versions that have been published for
+    # at least 7 days, so a compromised/yanked release is caught before adoption.
+    cooldown:
+      default-days: 7
 
   # npm dev dependencies (Vite, crxjs, TypeScript, types).
   - package-ecosystem: npm
@@ -13,6 +17,8 @@ updates:
     schedule:
       interval: weekly
     labels: ["dependencies", "javascript"]
+    cooldown:
+      default-days: 7
 
   # Rust crate dependencies for the core.
   - package-ecosystem: cargo
@@ -20,3 +26,5 @@ updates:
     schedule:
       interval: weekly
     labels: ["dependencies", "rust"]
+    cooldown:
+      default-days: 7
