@@ -1,9 +1,12 @@
 // service-worker.ts — append-only capture into one globally-ordered stream (§6.1).
 //
-// Listeners are registered synchronously at top level, and each navigation/link/
-// close/start handler **returns its write promise** so Chrome keeps the worker
-// alive until the IndexedDB commit. No per-tab or derived state is kept here —
-// all derivation happens at read time on the dashboard (§1).
+// Listeners are registered synchronously at top level. All `events` appends are
+// funneled through one serialized promise queue, so even when a handler needs an
+// async lookup (resolving windowId) the records are still committed in strict
+// firing order — preserving the global id order the read-time pass depends on.
+// Each handler returns its queued promise so Chrome keeps the worker alive until
+// the IndexedDB commit. No per-tab or derived state is kept (the queue tail is a
+// single promise, reset harmlessly on restart).
 
 import { ensureCreated, idbAdd } from "./idb";
 
@@ -20,13 +23,36 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // recorded as a navigation (§6.1, M0 accept criteria).
 const OWN_URL_PREFIX = chrome.runtime.getURL("");
 
+// Serialize all appends in firing order. `tail` is the only state here; chaining
+// each job onto it guarantees IndexedDB `add()` (and thus id assignment) happens
+// in the order events fired, even across async windowId resolution.
+let tail: Promise<unknown> = Promise.resolve();
+function enqueue(job: () => Promise<unknown>): Promise<unknown> {
+  const run = tail.then(job, job);
+  tail = run.catch(() => {});
+  return run;
+}
+
+// windowId is not on navigation event details. Resolving it via chrome.tabs.get
+// (windowId is available without the "tabs" permission) inside the serialized
+// queue gives real per-window sessions without reordering appends. Falls back to
+// 0 if the tab is already gone.
+async function resolveWindowId(tabId: number): Promise<number> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return tab.windowId ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 // ── Schema lifecycle ──────────────────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
   void ensureCreated();
 });
 
 chrome.runtime.onStartup.addListener(() =>
-  idbAdd("events", { kind: "start", ts: Date.now() })
+  enqueue(() => idbAdd("events", { kind: "start", ts: Date.now() }))
 );
 
 // Readiness handshake: ensure-create the DB, then ack so the dashboard opens
@@ -46,18 +72,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 chrome.webNavigation.onCommitted.addListener((d) => {
   if (d.frameId !== 0 || paused) return;
   if (d.url.startsWith(OWN_URL_PREFIX)) return;
-  // windowId is not on onCommitted details; it only scopes sessions, so we
-  // default it and keep the append synchronous to preserve global id order
-  // (§6.1). No per-tab state is kept here by design.
-  return idbAdd("events", {
-    kind: "nav",
-    ts: d.timeStamp ?? Date.now(),
-    tabId: d.tabId,
-    windowId: 0,
-    toUrl: d.url,
-    transitionType: d.transitionType,
-    qualifiers: d.transitionQualifiers,
-  });
+  const ts = d.timeStamp ?? Date.now();
+  return enqueue(async () =>
+    idbAdd("events", {
+      kind: "nav",
+      ts,
+      tabId: d.tabId,
+      windowId: await resolveWindowId(d.tabId),
+      toUrl: d.url,
+      transitionType: d.transitionType,
+      qualifiers: d.transitionQualifiers,
+    })
+  );
 });
 
 // In-page (history.pushState) navigations go to the separate high-volume store,
@@ -65,32 +91,39 @@ chrome.webNavigation.onCommitted.addListener((d) => {
 chrome.webNavigation.onHistoryStateUpdated.addListener((d) => {
   if (d.frameId !== 0 || paused) return;
   if (d.url.startsWith(OWN_URL_PREFIX)) return;
-  return idbAdd("spa", {
-    kind: "nav",
-    ts: d.timeStamp ?? Date.now(),
-    tabId: d.tabId,
-    windowId: 0,
-    toUrl: d.url,
-    transitionType: d.transitionType,
-    qualifiers: d.transitionQualifiers,
-  });
+  const ts = d.timeStamp ?? Date.now();
+  return enqueue(async () =>
+    idbAdd("spa", {
+      kind: "nav",
+      ts,
+      tabId: d.tabId,
+      windowId: await resolveWindowId(d.tabId),
+      toUrl: d.url,
+      transitionType: d.transitionType,
+      qualifiers: d.transitionQualifiers,
+    })
+  );
 });
 
 // Open-link-in-new-tab: the link's source becomes the child's origin (§7.3).
 chrome.webNavigation.onCreatedNavigationTarget.addListener((d) => {
   if (paused) return;
-  return idbAdd("events", {
-    kind: "link",
-    ts: d.timeStamp ?? Date.now(),
-    newTabId: d.tabId,
-    sourceTabId: d.sourceTabId,
-  });
+  const ts = d.timeStamp ?? Date.now();
+  return enqueue(() =>
+    idbAdd("events", {
+      kind: "link",
+      ts,
+      newTabId: d.tabId,
+      sourceTabId: d.sourceTabId,
+    })
+  );
 });
 
 // Tab close: lets the read-time pass evict per-tab state precisely (§7.3).
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (paused) return;
-  return idbAdd("events", { kind: "close", ts: Date.now(), tabId });
+  const ts = Date.now();
+  return enqueue(() => idbAdd("events", { kind: "close", ts, tabId }));
 });
 
 // Toolbar click opens the dashboard.
