@@ -24,18 +24,15 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         .map_err(|_| JsValue::from_str("canvas cast"))?;
     let _ = canvas.set_attribute("id", "bg-canvas");
 
-    // Fill the viewport below the toolbar/tabs. Fixed-position so the canvas is
-    // not constrained by the body's flex height (which left a blank gap before).
-    let top = body.get_bounding_client_rect().top().max(0.0);
+    // The canvas *is* the app: full-bleed under the floating chrome. Fixed so it
+    // fills the viewport; the glass panels sit above it (higher z-index).
     let w = win_dim(&win, true).max(320.0);
-    let h = (win_dim(&win, false) - top).max(320.0);
+    let h = win_dim(&win, false).max(320.0);
     canvas.set_width(w as u32);
     canvas.set_height(h as u32);
     let _ = canvas.set_attribute(
         "style",
-        &format!(
-            "position:fixed;left:0;top:{top:.0}px;width:{w:.0}px;height:{h:.0}px;display:block"
-        ),
+        "position:fixed;inset:0;width:100vw;height:100vh;display:block;z-index:0",
     );
     let _ = body.append_child(&canvas);
 
@@ -81,6 +78,45 @@ fn install_resize_hook(shared: &Shared) {
 
 fn ctx_of(canvas: &HtmlCanvasElement) -> Option<CanvasRenderingContext2d> {
     canvas.get_context("2d").ok().flatten()?.dyn_into().ok()
+}
+
+/// The live graph canvas, if the Graph view is mounted.
+fn canvas_el(shared: &Shared) -> Option<HtmlCanvasElement> {
+    shared
+        .borrow()
+        .doc
+        .get_element_by_id("bg-canvas")?
+        .dyn_into()
+        .ok()
+}
+
+/// Redraw the canvas at the current camera (no re-fit). Used by toolbar zoom.
+pub(crate) fn redraw(shared: &Shared) {
+    if let Some(c) = canvas_el(shared) {
+        draw_now(shared, &c);
+    }
+}
+
+/// Multiply the zoom about the canvas center and redraw.
+pub(crate) fn zoom(shared: &Shared, factor: f64) {
+    {
+        let mut a = shared.borrow_mut();
+        a.camera.scale = (a.camera.scale * factor).clamp(0.1, 8.0);
+    }
+    redraw(shared);
+}
+
+/// Re-frame all nodes to fit the canvas and redraw (the "fit-to-screen" button).
+pub(crate) fn fit_view(shared: &Shared) {
+    if let Some(c) = canvas_el(shared) {
+        let (w, h) = (c.width() as f64, c.height() as f64);
+        let cam = {
+            let a = shared.borrow();
+            canvas2d::fit(&a.proj, &a.layout_pos, w, h)
+        };
+        shared.borrow_mut().camera = cam;
+        draw_now(shared, &c);
+    }
 }
 
 fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {

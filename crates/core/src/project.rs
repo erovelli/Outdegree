@@ -14,6 +14,67 @@ pub struct Filters {
     pub provenance_in: Option<Vec<Provenance>>,
 }
 
+/// Time window over the day-bucket history (design "Range" control). The window
+/// is measured back from the most recent bucket present, so historical data is
+/// still visible under the wider ranges.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum TimeRange {
+    /// The most recent session ≈ the latest day with data.
+    Session,
+    Day,
+    Week,
+    Month,
+    /// Default: effectively "all recent history" for a normal browsing record.
+    #[default]
+    Year,
+}
+
+impl TimeRange {
+    /// Trailing window length in days (inclusive of the latest day).
+    fn days(self) -> i64 {
+        match self {
+            TimeRange::Session | TimeRange::Day => 1,
+            TimeRange::Week => 7,
+            TimeRange::Month => 30,
+            TimeRange::Year => 365,
+        }
+    }
+}
+
+/// Days since the Unix epoch for a `YYYY-MM-DD` UTC date (Howard Hinnant's
+/// `days_from_civil`). Returns `None` for a malformed date.
+fn day_number(date: &str) -> Option<i64> {
+    let mut it = date.split('-');
+    let y: i64 = it.next()?.parse().ok()?;
+    let m: i64 = it.next()?.parse().ok()?;
+    let d: i64 = it.next()?.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146097 + doe - 719468)
+}
+
+/// Keep only the buckets whose date falls within `range`'s trailing window of the
+/// latest dated bucket. Buckets with unparseable dates (or when no date parses)
+/// are passed through unchanged so a bad date can never blank the view.
+pub fn select_window(buckets: &[DayBucket], range: TimeRange) -> Vec<DayBucket> {
+    let latest = buckets.iter().filter_map(|b| day_number(&b.date)).max();
+    let Some(latest) = latest else {
+        return buckets.to_vec();
+    };
+    let cutoff = latest - (range.days() - 1);
+    buckets
+        .iter()
+        .filter(|b| day_number(&b.date).map(|d| d >= cutoff).unwrap_or(true))
+        .cloned()
+        .collect()
+}
+
 /// Merge the buckets spanning a range, regroup to the requested granularity, and
 /// filter (§7.5).
 pub fn project(buckets: &[DayBucket], gran: Granularity, filters: &Filters) -> GraphProjection {
@@ -330,6 +391,42 @@ mod tests {
         let g = project(&[b], Granularity::Hostname, &filters);
         assert_eq!(g.nodes.len(), 1);
         assert_eq!(g.nodes[0].key, "wiki.org");
+    }
+
+    #[test]
+    fn day_number_matches_known_epochs() {
+        assert_eq!(day_number("1970-01-01"), Some(0));
+        assert_eq!(day_number("1970-01-02"), Some(1));
+        assert_eq!(day_number("2021-01-01"), Some(18628));
+        assert!(day_number("not-a-date").is_none());
+        // ordering across a month boundary
+        assert!(day_number("2021-02-01") > day_number("2021-01-31"));
+    }
+
+    #[test]
+    fn select_window_keeps_trailing_days_from_latest() {
+        let bs = vec![
+            bucket("2021-01-01"),
+            bucket("2021-01-05"),
+            bucket("2021-01-10"),
+            bucket("2021-01-11"), // latest
+        ];
+        // Week = 7-day trailing window from 01-11 → cutoff 01-05.
+        let w = select_window(&bs, TimeRange::Week);
+        let dates: std::collections::HashSet<&str> = w.iter().map(|b| b.date.as_str()).collect();
+        assert_eq!(dates, ["2021-01-05", "2021-01-10", "2021-01-11"].into());
+        // Day = just the latest day.
+        let d = select_window(&bs, TimeRange::Day);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].date, "2021-01-11");
+        // Year keeps everything here.
+        assert_eq!(select_window(&bs, TimeRange::Year).len(), 4);
+    }
+
+    #[test]
+    fn select_window_passes_through_when_no_dates_parse() {
+        let bs = vec![bucket("garbage"), bucket("also-bad")];
+        assert_eq!(select_window(&bs, TimeRange::Day).len(), 2);
     }
 
     #[test]

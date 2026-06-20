@@ -15,7 +15,7 @@ mod tables;
 
 use crate::layout::{self, Pos};
 use crate::model::{Granularity, GraphProjection};
-use crate::project::{self, Filters};
+use crate::project::{self, Filters, TimeRange};
 use crate::render::canvas2d::Camera;
 use crate::rollup::{DayBucket, SessionRec};
 use crate::store::{self, Db};
@@ -43,9 +43,13 @@ pub(crate) struct App {
     pub positions: HashMap<String, (f32, f32)>,
     pub gran: Granularity,
     pub filters: Filters,
+    pub time_range: TimeRange,
     pub view: View,
     pub camera: Camera,
     pub paused: bool,
+    /// "Lock" the layout: re-project on filter changes but keep node positions
+    /// (no fresh force iterations), so the graph stops re-settling.
+    pub locked: bool,
     pub doc: Document,
     pub root: Element,
     pub proj: GraphProjection,
@@ -107,9 +111,11 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         positions,
         gran: Granularity::Hostname,
         filters: Filters::default(),
+        time_range: TimeRange::default(),
         view: View::Graph,
         camera: Camera::default(),
         paused,
+        locked: false,
         doc,
         root,
         proj: GraphProjection::default(),
@@ -136,7 +142,9 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
 /// start a fresh layout, preserving spatial memory for surviving nodes (§7.6).
 pub(crate) fn recompute_projection(shared: &Shared) {
     let mut a = shared.borrow_mut();
-    let mut proj = project::project(&a.buckets, a.gran, &a.filters);
+    // Restrict to the selected time window (design "Range" control), then project.
+    let window = project::select_window(&a.buckets, a.time_range);
+    let mut proj = project::project(&window, a.gran, &a.filters);
     // Drill-down: reduce to the focused node's ego network (§M3).
     if let Some(focus) = a.focus.clone() {
         proj = project::ego(&proj, &focus);
@@ -155,7 +163,9 @@ pub(crate) fn recompute_projection(shared: &Shared) {
         .collect();
 
     let seed = a.positions.clone();
-    let placed = layout::fruchterman_reingold(&keys, &edges, 320, &seed);
+    // Locked → 0 iterations: keep existing positions, only place brand-new nodes.
+    let iters = if a.locked { 0 } else { 320 };
+    let placed = layout::fruchterman_reingold(&keys, &edges, iters, &seed);
 
     let mut layout_pos = HashMap::new();
     for (k, p) in keys.iter().zip(placed.iter()) {
@@ -200,7 +210,7 @@ pub(crate) fn reload_buckets(shared: &Shared) {
 
 /// Render the active view into the body container.
 pub(crate) fn rerender(shared: &Shared) -> Result<(), JsValue> {
-    app::set_active_tab(shared);
+    app::sync_chrome(shared);
     let view = shared.borrow().view;
     match view {
         View::Graph => graph_view::render(shared)?,
