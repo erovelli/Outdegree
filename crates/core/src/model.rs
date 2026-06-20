@@ -1,0 +1,286 @@
+//! Core data model: the captured `Event` stream (the IndexedDB contract, §4.1)
+//! plus the derived provenance / edge-kind taxonomy and graph aggregates.
+//!
+//! Everything here is pure and target-agnostic so it compiles under `cargo test`.
+
+use serde::{Deserialize, Serialize};
+
+/// The unified, globally-ordered capture stream (§4.1).
+///
+/// All capture kinds share one `id` auto-increment sequence in the `events`
+/// store so the read-time pass can order them globally (§7.3). `id`/`ts`/ids
+/// are `f64` because they cross the JS boundary as IndexedDB numbers.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Event {
+    #[serde(rename = "nav")]
+    Nav {
+        id: f64,
+        ts: f64,
+        #[serde(rename = "tabId")]
+        tab_id: f64,
+        #[serde(rename = "windowId")]
+        window_id: f64,
+        #[serde(rename = "toUrl")]
+        to_url: String,
+        #[serde(rename = "transitionType")]
+        transition_type: String,
+        qualifiers: Vec<String>,
+    },
+    #[serde(rename = "link")]
+    Link {
+        id: f64,
+        ts: f64,
+        #[serde(rename = "newTabId")]
+        new_tab_id: f64,
+        #[serde(rename = "sourceTabId")]
+        source_tab_id: f64,
+    },
+    #[serde(rename = "close")]
+    Close {
+        id: f64,
+        ts: f64,
+        #[serde(rename = "tabId")]
+        tab_id: f64,
+    },
+    #[serde(rename = "start")]
+    Start { id: f64, ts: f64 },
+}
+
+impl Event {
+    /// Global ordering key (the `events` primary key).
+    pub fn id(&self) -> f64 {
+        match self {
+            Event::Nav { id, .. }
+            | Event::Link { id, .. }
+            | Event::Close { id, .. }
+            | Event::Start { id, .. } => *id,
+        }
+    }
+
+    pub fn ts(&self) -> f64 {
+        match self {
+            Event::Nav { ts, .. }
+            | Event::Link { ts, .. }
+            | Event::Close { ts, .. }
+            | Event::Start { ts, .. } => *ts,
+        }
+    }
+}
+
+/// How a page was arrived at (derived from `transitionType`, §7.2).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum Provenance {
+    Link,
+    Form,
+    TypedUrl,
+    SearchOrigin,
+    Bookmark,
+    Start,
+    Reload,
+    Other,
+}
+
+impl Provenance {
+    /// `Reload`/`Other` produce no node, edge, or per-tab state change (§7.3 step 2).
+    pub fn is_ignored(self) -> bool {
+        matches!(self, Provenance::Reload | Provenance::Other)
+    }
+
+    /// Only `Link`/`Form` traversals produce a graph edge (§7.2 "Edge?" column).
+    pub fn is_edge(self) -> bool {
+        matches!(self, Provenance::Link | Provenance::Form)
+    }
+
+    /// "Rootless" provenances emit a node visit but no edge and reset the
+    /// per-tab chain (typed/search/bookmark/start).
+    pub fn is_rootless(self) -> bool {
+        matches!(
+            self,
+            Provenance::TypedUrl
+                | Provenance::SearchOrigin
+                | Provenance::Bookmark
+                | Provenance::Start
+        )
+    }
+
+    /// Node fill color for the canvas2d renderer (§7.7). Pure so it is testable
+    /// and shared with any future renderer.
+    pub fn color(self) -> &'static str {
+        match self {
+            Provenance::Link => "#4f8ef7",
+            Provenance::Form => "#f78e4f",
+            Provenance::TypedUrl => "#9b59b6",
+            Provenance::SearchOrigin => "#2ecc71",
+            Provenance::Bookmark => "#f1c40f",
+            Provenance::Start => "#95a5a6",
+            Provenance::Reload => "#7f8c8d",
+            Provenance::Other => "#bdc3c7",
+        }
+    }
+}
+
+/// The kind of a traversal edge (§7.1). Coloring is per-traversal then aggregated
+/// to the dominant kind (decision #1).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum EdgeKind {
+    Link,
+    SearchLink,
+    Form,
+}
+
+impl EdgeKind {
+    pub fn color(self) -> &'static str {
+        match self {
+            EdgeKind::Link => "#8aa0b6",
+            EdgeKind::SearchLink => "#2ecc71",
+            EdgeKind::Form => "#f78e4f",
+        }
+    }
+}
+
+/// Per-node provenance histogram. Stored in `rollup_days` (§4.3) and summed at
+/// merge; `dominant()` drives node fill.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ProvBreakdown {
+    pub link: u32,
+    pub form: u32,
+    #[serde(rename = "typedUrl")]
+    pub typed_url: u32,
+    #[serde(rename = "searchOrigin")]
+    pub search_origin: u32,
+    pub bookmark: u32,
+    pub start: u32,
+    pub reload: u32,
+    pub other: u32,
+}
+
+impl ProvBreakdown {
+    pub fn add(&mut self, p: Provenance) {
+        match p {
+            Provenance::Link => self.link += 1,
+            Provenance::Form => self.form += 1,
+            Provenance::TypedUrl => self.typed_url += 1,
+            Provenance::SearchOrigin => self.search_origin += 1,
+            Provenance::Bookmark => self.bookmark += 1,
+            Provenance::Start => self.start += 1,
+            Provenance::Reload => self.reload += 1,
+            Provenance::Other => self.other += 1,
+        }
+    }
+
+    pub fn merge(&mut self, o: &ProvBreakdown) {
+        self.link += o.link;
+        self.form += o.form;
+        self.typed_url += o.typed_url;
+        self.search_origin += o.search_origin;
+        self.bookmark += o.bookmark;
+        self.start += o.start;
+        self.reload += o.reload;
+        self.other += o.other;
+    }
+
+    /// Dominant provenance (decision #7). Ties broken by the fixed declaration
+    /// order below for determinism.
+    pub fn dominant(&self) -> Provenance {
+        let ranked = [
+            (Provenance::Link, self.link),
+            (Provenance::Form, self.form),
+            (Provenance::TypedUrl, self.typed_url),
+            (Provenance::SearchOrigin, self.search_origin),
+            (Provenance::Bookmark, self.bookmark),
+            (Provenance::Start, self.start),
+            (Provenance::Reload, self.reload),
+            (Provenance::Other, self.other),
+        ];
+        let mut best = ranked[0];
+        for &(p, c) in &ranked[1..] {
+            if c > best.1 {
+                best = (p, c);
+            }
+        }
+        best.0
+    }
+}
+
+/// Per-edge kind histogram. Stored in `rollup_days` (§4.3); `dominant()` drives
+/// edge color (decision #1, #7).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KindBreakdown {
+    pub link: u32,
+    #[serde(rename = "searchLink")]
+    pub search_link: u32,
+    pub form: u32,
+}
+
+impl KindBreakdown {
+    pub fn add(&mut self, k: EdgeKind) {
+        match k {
+            EdgeKind::Link => self.link += 1,
+            EdgeKind::SearchLink => self.search_link += 1,
+            EdgeKind::Form => self.form += 1,
+        }
+    }
+
+    pub fn merge(&mut self, o: &KindBreakdown) {
+        self.link += o.link;
+        self.search_link += o.search_link;
+        self.form += o.form;
+    }
+
+    pub fn dominant(&self) -> EdgeKind {
+        let ranked = [
+            (EdgeKind::Link, self.link),
+            (EdgeKind::SearchLink, self.search_link),
+            (EdgeKind::Form, self.form),
+        ];
+        let mut best = ranked[0];
+        for &(k, c) in &ranked[1..] {
+            if c > best.1 {
+                best = (k, c);
+            }
+        }
+        best.0
+    }
+}
+
+/// A node in a projected graph view (§7.1).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct NodeAgg {
+    pub key: String,
+    pub visits: u32,
+    pub prov: ProvBreakdown,
+}
+
+/// An edge in a projected graph view (§7.1).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct EdgeAgg {
+    pub from: String,
+    pub to: String,
+    pub weight: u32,
+    pub kinds: KindBreakdown,
+}
+
+/// A fully merged + filtered graph ready for layout/render (§7.1).
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct GraphProjection {
+    pub nodes: Vec<NodeAgg>,
+    pub edges: Vec<EdgeAgg>,
+}
+
+/// Node-key granularity (decision #9). `Hostname` is the storage + default
+/// granularity; `Registrable` (eTLD+1) is regrouped at merge time.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Granularity {
+    Hostname,
+    Registrable,
+}
+
+impl Default for Granularity {
+    fn default() -> Self {
+        Granularity::Hostname
+    }
+}
