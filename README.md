@@ -144,6 +144,17 @@ cargo test          # ~30 tests, all pure, no browser required
 
 ---
 
+## Documentation
+
+- [`docs/M0-CHECKLIST.md`](docs/M0-CHECKLIST.md) — the manual capture-verification
+  gate (load unpacked, run the navigation scenarios, tune the constants).
+- [`docs/privacy-policy.md`](docs/privacy-policy.md) — hosted via GitHub Pages.
+- [`docs/STORE-LISTING.md`](docs/STORE-LISTING.md) — Chrome Web Store submission
+  material + pre-submit checklist.
+- [`docs/SCREENSHOTS.md`](docs/SCREENSHOTS.md) — capturing the store hero shot.
+
+---
+
 ## License
 
 MIT © Evan Rovelli. See [`LICENSE`](LICENSE).

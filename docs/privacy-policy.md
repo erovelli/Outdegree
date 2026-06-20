@@ -1,3 +1,7 @@
+---
+title: Privacy Policy
+---
+
 # Browsing Graph — Privacy Policy
 
 _Last updated: 2026-06-20_
