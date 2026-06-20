@@ -57,7 +57,7 @@ jobs:
 
       # Provides a chromedriver matching the runner's preinstalled Chrome, on PATH,
       # which wasm-bindgen-test-runner uses to drive headless Chrome.
-      - uses: nanasess/setup-chromedriver@v2
+      - uses: nanasess/setup-chromedriver@v3
 
       - name: Run wasm-bindgen browser tests (store + bridge)
         run: wasm-pack test --headless --chrome crates/core
