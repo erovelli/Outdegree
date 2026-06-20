@@ -228,7 +228,10 @@ mod tests {
         let g = project(&[b], Granularity::Registrable, &Filters::default());
         // github.com + other.org
         assert_eq!(g.nodes.len(), 2);
-        assert!(g.nodes.iter().any(|n| n.key == "github.com" && n.visits == 2));
+        assert!(g
+            .nodes
+            .iter()
+            .any(|n| n.key == "github.com" && n.visits == 2));
         // The github->github edge is a self-loop and dropped; github->other.org survives.
         assert_eq!(g.edges.len(), 1);
         assert_eq!(g.edges[0].from, "github.com");

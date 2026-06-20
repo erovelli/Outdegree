@@ -114,7 +114,7 @@ fn new_tab_origin_is_source_then_current_page() {
     let events = vec![
         nav(1, 100.0, 1, 1, "https://a.com/", "typed", &[]),
         nav(2, 200.0, 1, 1, "https://m.com/", "link", &[]), // finalizes a.com; last_url=a.com
-        link(3, 250.0, 2, 1), // snapshot tab1.last_url == a.com
+        link(3, 250.0, 2, 1),                               // snapshot tab1.last_url == a.com
         nav(4, 300.0, 1, 1, "https://b.com/", "link", &[]), // source navigates on
         nav(5, 400.0, 2, 1, "https://c.com/", "link", &[]), // child's first nav
         close(6, 500.0, 2),
@@ -122,7 +122,10 @@ fn new_tab_origin_is_source_then_current_page() {
     ];
     let (map, _, _) = run_all(&events);
     // child edge originates from the snapshot (a.com), not m.com / b.com.
-    assert!(has_edge(&map, "a.com", "c.com"), "snapshot origin a.com->c.com");
+    assert!(
+        has_edge(&map, "a.com", "c.com"),
+        "snapshot origin a.com->c.com"
+    );
     assert!(!has_edge(&map, "m.com", "c.com"));
     assert!(!has_edge(&map, "b.com", "c.com"));
     // sanity: within-tab chain edges
@@ -155,8 +158,24 @@ fn client_redirect_burst_collapses() {
     let events = vec![
         nav(1, 100.0, 1, 1, "https://p.com/", "typed", &[]),
         nav(2, 200.0, 1, 1, "https://r1.com/", "link", &[]),
-        nav(3, 500.0, 1, 1, "https://r2.com/", "link", &["client_redirect"]),
-        nav(4, 900.0, 1, 1, "https://r3.com/", "link", &["client_redirect"]),
+        nav(
+            3,
+            500.0,
+            1,
+            1,
+            "https://r2.com/",
+            "link",
+            &["client_redirect"],
+        ),
+        nav(
+            4,
+            900.0,
+            1,
+            1,
+            "https://r3.com/",
+            "link",
+            &["client_redirect"],
+        ),
         close(5, 1000.0, 1),
     ];
     let (map, _, _) = run_all(&events);
@@ -177,7 +196,15 @@ fn redirect_outside_window_not_collapsed() {
         nav(1, 100.0, 1, 1, "https://p.com/", "typed", &[]),
         nav(2, 200.0, 1, 1, "https://r1.com/", "link", &[]),
         // 5s later: outside the 1s redirect window even with the qualifier.
-        nav(3, 5200.0, 1, 1, "https://r2.com/", "link", &["client_redirect"]),
+        nav(
+            3,
+            5200.0,
+            1,
+            1,
+            "https://r2.com/",
+            "link",
+            &["client_redirect"],
+        ),
         close(4, 6000.0, 1),
     ];
     let (map, _, _) = run_all(&events);
@@ -196,7 +223,15 @@ fn forward_back_no_edge_advances_search_prov() {
         nav(1, 100.0, 1, 1, "https://results.com/", "generated", &[]),
         nav(2, 200.0, 1, 1, "https://article.com/", "link", &[]),
         // back button to the results page
-        nav(3, 300.0, 1, 1, "https://results.com/", "generated", &["forward_back"]),
+        nav(
+            3,
+            300.0,
+            1,
+            1,
+            "https://results.com/",
+            "generated",
+            &["forward_back"],
+        ),
         nav(4, 400.0, 1, 1, "https://article2.com/", "link", &[]),
         close(5, 500.0, 1),
     ];
@@ -227,7 +262,10 @@ fn rootless_resets_stale_chain() {
     ];
     let (map, _, _) = run_all(&events);
     assert!(has_edge(&map, "a.com", "b.com"));
-    assert!(!has_edge(&map, "b.com", "c.com"), "typed nav breaks the chain");
+    assert!(
+        !has_edge(&map, "b.com", "c.com"),
+        "typed nav breaks the chain"
+    );
     assert!(has_edge(&map, "c.com", "d.com"));
 }
 
@@ -341,7 +379,10 @@ fn utc_day_bucketing() {
     assert!(map.contains_key("2021-01-01"));
     assert!(map.contains_key("2021-01-02"));
     // a.com finalized on the 1st; c.com finalized on the 2nd
-    assert_eq!(map["2021-01-01"].nodes.get("a.com").map(|n| n.visits), Some(1));
+    assert_eq!(
+        map["2021-01-01"].nodes.get("a.com").map(|n| n.visits),
+        Some(1)
+    );
     assert!(map["2021-01-02"].nodes.contains_key("c.com"));
 }
 
@@ -358,14 +399,38 @@ fn rich_stream() -> Vec<Event> {
         nav(2, 2_000.0, 1, 1, "https://b.com/", "link", &[]),
         link(3, 2_500.0, 2, 1), // new tab from tab1 (origin snapshot a.com)
         nav(4, 3_000.0, 2, 1, "https://c.com/", "link", &[]),
-        nav(5, 3_200.0, 2, 1, "https://c2.com/", "link", &["client_redirect"]), // burst
+        nav(
+            5,
+            3_200.0,
+            2,
+            1,
+            "https://c2.com/",
+            "link",
+            &["client_redirect"],
+        ), // burst
         nav(6, 4_000.0, 1, 1, "https://results.com/", "generated", &[]),
         nav(7, 4_500.0, 1, 1, "https://art.com/", "link", &[]),
-        nav(8, 4_700.0, 1, 1, "https://results.com/", "generated", &["forward_back"]),
+        nav(
+            8,
+            4_700.0,
+            1,
+            1,
+            "https://results.com/",
+            "generated",
+            &["forward_back"],
+        ),
         nav(9, 4_300.0, 1, 1, "https://art2.com/", "link", &[]), // backward ts
         nav(10, 5_000.0, 3, 2, "https://w2.com/", "typed", &[]), // second window
         close(11, 6_000.0, 2),
-        nav(12, 6_000.0 + gap + 1.0, 1, 1, "https://later.com/", "typed", &[]), // idle-gap split
+        nav(
+            12,
+            6_000.0 + gap + 1.0,
+            1,
+            1,
+            "https://later.com/",
+            "typed",
+            &[],
+        ), // idle-gap split
         start(13, 9_999_999.0), // restart: flush + close all sessions
         nav(14, 10_000_000.0, 1, 1, "https://post.com/", "link", &[]),
         close(15, 10_001_000.0, 1),

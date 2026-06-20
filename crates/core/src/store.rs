@@ -67,8 +67,7 @@ impl Db {
             .transaction(&["events"], TransactionMode::ReadOnly)
             .map_err(je)?;
         let store = tx.store("events").map_err(je)?;
-        let range =
-            KeyRange::lower_bound(&JsValue::from_f64(watermark), Some(true)).map_err(je)?;
+        let range = KeyRange::lower_bound(&JsValue::from_f64(watermark), Some(true)).map_err(je)?;
         let values = store.get_all(Some(range), None).await.map_err(je)?;
         tx.done().await.map_err(je)?;
         deserialize_all(values)
@@ -196,11 +195,7 @@ impl Db {
         }
     }
 
-    pub async fn write_cursor(
-        &self,
-        watermark: f64,
-        state: &DeriveState,
-    ) -> Result<(), JsValue> {
+    pub async fn write_cursor(&self, watermark: f64, state: &DeriveState) -> Result<(), JsValue> {
         let c = Cursor {
             watermark,
             derive_state: state.clone(),
@@ -216,10 +211,7 @@ impl Db {
         }
     }
 
-    pub async fn write_positions(
-        &self,
-        pos: &HashMap<String, (f32, f32)>,
-    ) -> Result<(), JsValue> {
+    pub async fn write_positions(&self, pos: &HashMap<String, (f32, f32)>) -> Result<(), JsValue> {
         let json = serde_json::to_string(pos).map_err(je)?;
         self.write_meta_json("positions", &json).await
     }
@@ -278,10 +270,7 @@ impl Db {
         self.invalidate_rollups().await
     }
 
-    async fn delete_events_where<F: Fn(&Event) -> bool>(
-        &self,
-        pred: F,
-    ) -> Result<(), JsValue> {
+    async fn delete_events_where<F: Fn(&Event) -> bool>(&self, pred: F) -> Result<(), JsValue> {
         for store_name in ["events", "spa"] {
             let tx = self
                 .rexie
@@ -308,8 +297,16 @@ impl Db {
             .rexie
             .transaction(&["rollup_days", "sessions"], TransactionMode::ReadWrite)
             .map_err(je)?;
-        tx.store("rollup_days").map_err(je)?.clear().await.map_err(je)?;
-        tx.store("sessions").map_err(je)?.clear().await.map_err(je)?;
+        tx.store("rollup_days")
+            .map_err(je)?
+            .clear()
+            .await
+            .map_err(je)?;
+        tx.store("sessions")
+            .map_err(je)?
+            .clear()
+            .await
+            .map_err(je)?;
         tx.done().await.map_err(je)?;
         self.write_cursor(0.0, &DeriveState::default()).await
     }
@@ -359,7 +356,9 @@ impl Db {
     }
 }
 
-fn deserialize_all<T: serde::de::DeserializeOwned>(values: Vec<JsValue>) -> Result<Vec<T>, JsValue> {
+fn deserialize_all<T: serde::de::DeserializeOwned>(
+    values: Vec<JsValue>,
+) -> Result<Vec<T>, JsValue> {
     values
         .into_iter()
         .map(|v| serde_wasm_bindgen::from_value(v).map_err(je))

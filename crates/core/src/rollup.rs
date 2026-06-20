@@ -6,7 +6,7 @@
 //! pass in [`crate::derive`] and accumulates UTC-day bucket deltas + closed
 //! session records.
 
-use crate::model::{KindBreakdown, Provenance, ProvBreakdown};
+use crate::model::{KindBreakdown, ProvBreakdown, Provenance};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -100,8 +100,11 @@ impl OpenSession {
 
     /// Materialize the persisted session record on close.
     pub fn to_record(&self) -> SessionRec {
-        let mut hosts: Vec<(String, u32)> =
-            self.host_counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        let mut hosts: Vec<(String, u32)> = self
+            .host_counts
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
         // Deterministic ordering: count desc, then key asc.
         hosts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         hosts.truncate(5);
@@ -243,7 +246,10 @@ impl Acc {
 ///
 /// Buffers and open sessions remain in `state` so they carry across folds; this
 /// is what makes the incremental result equal a from-scratch recompute.
-pub fn fold(state: &mut DeriveState, new_events: &[crate::model::Event]) -> (Vec<DayBucketDelta>, Vec<SessionRec>) {
+pub fn fold(
+    state: &mut DeriveState,
+    new_events: &[crate::model::Event],
+) -> (Vec<DayBucketDelta>, Vec<SessionRec>) {
     let mut acc = Acc::default();
     for ev in new_events {
         acc.cur_id = ev.id();
