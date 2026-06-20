@@ -67,3 +67,6 @@ webgpu = ["dep:wgpu", "dep:bytemuck"]
 [lints.clippy]
 # The derive pass intentionally carries many fields; allow a few ergonomic patterns.
 too_many_arguments = "allow"
+
+[dev-dependencies]
+proptest = "1"
