@@ -38,6 +38,38 @@ impl Camera {
     }
 }
 
+/// Compute a camera that frames all of `proj`'s laid-out nodes within a `w`×`h`
+/// canvas (with padding). Without this, a sparse/edgeless layout spreads nodes
+/// off-screen and the graph looks blank.
+pub fn fit(proj: &GraphProjection, pos: &HashMap<String, Pos>, w: f64, h: f64) -> Camera {
+    let (mut minx, mut miny) = (f64::INFINITY, f64::INFINITY);
+    let (mut maxx, mut maxy) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+    let mut any = false;
+    for n in &proj.nodes {
+        if let Some(p) = pos.get(&n.key) {
+            any = true;
+            minx = minx.min(p.x as f64);
+            miny = miny.min(p.y as f64);
+            maxx = maxx.max(p.x as f64);
+            maxy = maxy.max(p.y as f64);
+        }
+    }
+    if !any {
+        return Camera::default();
+    }
+    let pad = 80.0;
+    let bw = (maxx - minx).max(1.0);
+    let bh = (maxy - miny).max(1.0);
+    let scale = ((w - pad) / bw).min((h - pad) / bh).clamp(0.05, 3.0);
+    let (cx, cy) = ((minx + maxx) / 2.0, (miny + maxy) / 2.0);
+    // screen = pos*scale + cam + size/2; center the bbox at the canvas center.
+    Camera {
+        x: -cx * scale,
+        y: -cy * scale,
+        scale,
+    }
+}
+
 fn set_fill(ctx: &CanvasRenderingContext2d, c: &str) {
     ctx.set_fill_style_str(c);
 }
