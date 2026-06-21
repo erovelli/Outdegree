@@ -55,7 +55,6 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     let logo = el(doc, "div");
     let _ = logo.set_attribute("class", "logo");
     logo.set_inner_html(LOGO);
-    let word = span(doc, "wordmark", "Browsing Graph");
     let rule = el(doc, "div");
     let _ = rule.set_attribute("class", "vrule");
 
@@ -83,7 +82,6 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     }
 
     let _ = p.append_child(&logo);
-    let _ = p.append_child(&word);
     let _ = p.append_child(&rule);
     let _ = p.append_child(&rec);
     p

@@ -239,7 +239,12 @@ pub fn draw(
     });
     let lit = |key: &str| highlight.as_ref().map(|s| s.contains(key)).unwrap_or(true);
 
-    // ── edges ────────────────────────────────────────────────────────────────
+    // ── edges (directional: arrowhead at the target end) ─────────────────────
+    let vis: HashMap<&str, u32> = proj
+        .nodes
+        .iter()
+        .map(|n| (n.key.as_str(), n.visits))
+        .collect();
     let ew = (1.2 * cam.scale).clamp(0.6, 4.0);
     ctx.set_line_width(ew);
     for e in &proj.edges {
@@ -251,12 +256,44 @@ pub fn draw(
             let dashed = matches!(kind, crate::model::EdgeKind::SearchLink);
             let base = if dashed { 0.5 } else { 0.34 };
             set_stroke(ctx, kind.color());
+            set_fill(ctx, kind.color());
+
+            // Stop the shaft at the target node's rim so the arrow reads cleanly.
+            let dx = bx - ax;
+            let dy = by - ay;
+            let len = (dx * dx + dy * dy).sqrt();
+            let tr = vis
+                .get(e.to.as_str())
+                .map(|v| radius(*v, cam.scale))
+                .unwrap_or(4.0);
+            let (tipx, tipy) = if len > 1.0 {
+                (bx - dx / len * (tr + 1.5), by - dy / len * (tr + 1.5))
+            } else {
+                (bx, by)
+            };
+
             ctx.set_global_alpha(if touches { base } else { 0.06 });
             set_dash(ctx, if dashed { &[5.0, 5.0] } else { &[] });
             ctx.begin_path();
             ctx.move_to(ax, ay);
-            ctx.line_to(bx, by);
+            ctx.line_to(tipx, tipy);
             ctx.stroke();
+
+            // arrowhead (solid, slightly brighter so direction is legible)
+            if len > tr + 4.0 {
+                let (ux, uy) = (dx / len, dy / len);
+                let (px, py) = (-uy, ux);
+                let ah = (5.0 * cam.scale).clamp(4.0, 9.0);
+                let (bxh, byh) = (tipx - ux * ah, tipy - uy * ah);
+                set_dash(ctx, &[]);
+                ctx.set_global_alpha(if touches { (base + 0.3).min(0.9) } else { 0.08 });
+                ctx.begin_path();
+                ctx.move_to(tipx, tipy);
+                ctx.line_to(bxh + px * ah * 0.55, byh + py * ah * 0.55);
+                ctx.line_to(bxh - px * ah * 0.55, byh - py * ah * 0.55);
+                ctx.close_path();
+                ctx.fill();
+            }
         }
     }
     set_dash(ctx, &[]);
@@ -284,12 +321,10 @@ pub fn draw(
             ctx.fill();
             ctx.stroke();
 
-            // Labels only for higher-traffic hosts (else they clutter).
-            if n.visits >= 16 {
-                ctx.set_global_alpha(if hot { 1.0 } else { 0.35 });
-                set_fill(ctx, LABEL);
-                let _ = ctx.fill_text(&n.key, x, y + r + fs + 2.0);
-            }
+            // Every node is labeled, always (dimmed when another node is hovered).
+            ctx.set_global_alpha(if hot { 1.0 } else { 0.35 });
+            set_fill(ctx, LABEL);
+            let _ = ctx.fill_text(&n.key, x, y + r + fs + 2.0);
         }
     }
     ctx.set_global_alpha(1.0);

@@ -7,6 +7,7 @@
 
 // ── Pure core (runs under `cargo test`) ────────────────────────────────────────
 pub mod derive;
+pub mod flow;
 pub mod graph;
 pub mod interpret;
 pub mod layout;

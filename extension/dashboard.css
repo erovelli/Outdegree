@@ -222,7 +222,12 @@ td { color: var(--text-secondary); }
 a { color: var(--text-primary); }
 .muted { color: var(--text-tertiary); }
 
-/* session picker (two-pane) */
+/* session picker (two-pane) + sankey */
+.sp-flow h3, .sp-list h3 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+.sankey { display: block; max-width: 100%; margin-top: 8px; }
+.sankey-label {
+  font: 12px var(--mono); fill: var(--text-secondary); dominant-baseline: middle;
+}
 .sp-row { display: flex; gap: 16px; height: 100%; }
 .sp-list { flex: 0 0 320px; overflow: auto; }
 .sp-flow { flex: 1; overflow: auto; }
