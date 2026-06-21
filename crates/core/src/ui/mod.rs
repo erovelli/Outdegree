@@ -268,9 +268,10 @@ pub(crate) fn recompute_projection(shared: &Shared) {
     // Restrict to the selected time window (design "Range" control), then project.
     let window = project::select_window(&a.buckets, a.time_range);
     let mut proj = project::project(&window, a.gran, &a.filters);
-    // Drill-down: reduce to the focused node's ego network (§M3).
+    // Drill-down: reduce to the focused node's full connected component, then the
+    // graph view fits it on screen (§M3).
     if let Some(focus) = a.focus.clone() {
-        proj = project::ego(&proj, &focus);
+        proj = project::component(&proj, &focus);
     }
 
     let keys: Vec<String> = proj.nodes.iter().map(|n| n.key.clone()).collect();
