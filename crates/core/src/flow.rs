@@ -8,7 +8,7 @@
 
 use crate::interpret::{classify, node_key};
 use crate::model::{Event, Granularity};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 /// A host in the flow, assigned to a column (`layer`) and sized by `throughput`
 /// (the larger of its total inbound / outbound transition weight).
@@ -68,6 +68,21 @@ fn intern(h: &str, index: &mut HashMap<String, usize>, keys: &mut Vec<String>) -
 /// transitions still appear as nodes. This is the cross-tab-aware entry point:
 /// a link opened in a new tab is just a transition `source-host → new-tab-host`.
 pub fn build_transitions(transitions: &[(String, String)], starts: &[String]) -> FlowGraph {
+    build_flow(transitions, starts, &[])
+}
+
+/// Core builder. `pinned_starts` are interned and pinned to column 0 (their
+/// inbound links curve back). `detached_starts` are added as *separate* column-0
+/// "entry point" nodes that are **not** merged with the host's chain node — so a
+/// host reached both mid-chain (`A → B → C`) and on its own (a bookmark to `B`)
+/// keeps the chain intact and shows the bookmark as a standalone `B` start,
+/// instead of yanking the chain's `B` back to the left. Detached starts are
+/// aggregated per host (count → throughput).
+fn build_flow(
+    transitions: &[(String, String)],
+    pinned_starts: &[String],
+    detached_starts: &[String],
+) -> FlowGraph {
     let mut index: HashMap<String, usize> = HashMap::new();
     let mut keys: Vec<String> = Vec::new();
     let mut link_w: HashMap<(usize, usize), u32> = HashMap::new();
@@ -81,13 +96,13 @@ pub fn build_transitions(transitions: &[(String, String)], starts: &[String]) ->
     // Session entry hosts are pinned to the leftmost column so the diagram reads
     // as "where the session started → where it went". Intern them so isolated
     // starts (a tab with a single nav) still appear.
-    let start_set: HashSet<usize> = starts
+    let start_set: HashSet<usize> = pinned_starts
         .iter()
         .map(|h| intern(h, &mut index, &mut keys))
         .collect();
 
     let n = keys.len();
-    if n == 0 {
+    if n == 0 && detached_starts.is_empty() {
         return FlowGraph::default();
     }
 
@@ -161,7 +176,7 @@ pub fn build_transitions(transitions: &[(String, String)], starts: &[String]) ->
     }
 
     let layers = layer.iter().copied().max().unwrap_or(0) + 1;
-    let nodes = keys
+    let mut nodes: Vec<FlowNode> = keys
         .into_iter()
         .enumerate()
         .map(|(i, key)| FlowNode {
@@ -170,6 +185,20 @@ pub fn build_transitions(transitions: &[(String, String)], starts: &[String]) ->
             throughput: in_sum[i].max(out_sum[i]).max(1),
         })
         .collect();
+    // Standalone entry points (e.g. a bookmark to a mid-chain host): one extra
+    // column-0 node per host, sized by how many times it was entered. They carry
+    // no links, so they read as lone start bars beside the pinned starts.
+    let mut detached: BTreeMap<&str, u32> = BTreeMap::new();
+    for h in detached_starts {
+        *detached.entry(h.as_str()).or_insert(0) += 1;
+    }
+    for (key, count) in detached {
+        nodes.push(FlowNode {
+            key: key.to_string(),
+            layer: 0,
+            throughput: count.max(1),
+        });
+    }
     let mut links: Vec<FlowLink> = link_w
         .into_iter()
         .map(|((from, to), weight)| FlowLink { from, to, weight })
@@ -191,7 +220,10 @@ pub fn build_transitions(transitions: &[(String, String)], starts: &[String]) ->
 /// - **Typed-URL / bookmark / search / start** navigations are *rootless*: they
 ///   begin a **new flow** (a fresh left-column start), not an edge from wherever
 ///   you happened to be. So jumping to a bookmark or pasting a URL while on site
-///   B does not draw a `B → …` ribbon — it starts its own web.
+///   B does not draw a `B → …` ribbon — it starts its own web. And if that landing
+///   host is *also* a real mid-chain node (`A → B → C` and you bookmark `B`), the
+///   chain stays intact and the re-entry draws as its own standalone `B` start,
+///   instead of pulling the chain's `B` back to column 0.
 /// - **Reload / other** change nothing.
 ///
 /// This is the cross-tab-aware, provenance-aware entry point used by the Sankey.
@@ -248,7 +280,15 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
             _ => {}
         }
     }
-    build_transitions(&transitions, &starts)
+    // A rootless start whose host is *also* a link target (a real mid-chain node)
+    // becomes a standalone entry node, so re-entering it (e.g. a bookmark) doesn't
+    // drag the chain's node back to column 0 — the chain stays intact and the
+    // re-entry shows as its own start. Pure starts stay pinned as before.
+    let targets: HashSet<&str> = transitions.iter().map(|(_, t)| t.as_str()).collect();
+    let (detached, pinned): (Vec<String>, Vec<String>) = starts
+        .into_iter()
+        .partition(|h| targets.contains(h.as_str()));
+    build_flow(&transitions, &pinned, &detached)
 }
 
 /// Lay out a flow graph and emit an inline SVG Sankey: hosts are column bars,
@@ -467,6 +507,61 @@ mod tests {
         assert_eq!(layer_of(&g, "a.com"), 0);
         assert_eq!(layer_of(&g, "c.com"), 0);
         assert_eq!(layer_of(&g, "e.com"), 0);
+    }
+
+    #[test]
+    fn reentering_a_mid_chain_host_keeps_the_chain_and_adds_a_standalone_start() {
+        // A → B → C by link, then a bookmark back to B. The chain must stay
+        // A(0) → B(1) → C(2), and B must *also* appear as its own column-0 start
+        // (the bookmark) rather than dragging the chain's B back to the left.
+        let events = vec![
+            nav(1, 1, "https://a.com/", "typed"),
+            nav(2, 1, "https://b.com/", "link"),
+            nav(3, 1, "https://c.com/", "link"),
+            nav(4, 1, "https://b.com/", "auto_bookmark"),
+        ];
+        let g = from_session_events(&events, Granularity::Hostname);
+        // chain intact
+        assert!(has(&g, "a.com", "b.com"));
+        assert!(has(&g, "b.com", "c.com"));
+        assert_eq!(g.links.len(), 2, "bookmark must not add an edge");
+        assert_eq!(layer_of(&g, "a.com"), 0);
+        assert_eq!(layer_of(&g, "c.com"), 2, "chain still reaches column 2");
+        // b.com appears twice: the chain node (layer 1) and a standalone start (0)
+        let b_layers: Vec<usize> = g
+            .nodes
+            .iter()
+            .filter(|n| n.key == "b.com")
+            .map(|n| n.layer)
+            .collect();
+        assert_eq!(
+            b_layers.len(),
+            2,
+            "expected a chain B and a standalone start B"
+        );
+        assert!(b_layers.contains(&1), "chain B stays mid-layer");
+        assert!(b_layers.contains(&0), "bookmark B is a column-0 start");
+    }
+
+    #[test]
+    fn repeated_reentry_aggregates_into_one_standalone_start() {
+        // Bookmark B twice while A → B → C exists: one standalone B start, sized 2.
+        let events = vec![
+            nav(1, 1, "https://a.com/", "typed"),
+            nav(2, 1, "https://b.com/", "link"),
+            nav(3, 1, "https://c.com/", "link"),
+            nav(4, 1, "https://b.com/", "auto_bookmark"),
+            nav(5, 1, "https://x.com/", "typed"), // move away so the next B re-enters
+            nav(6, 1, "https://b.com/", "auto_bookmark"),
+        ];
+        let g = from_session_events(&events, Granularity::Hostname);
+        let standalone = g
+            .nodes
+            .iter()
+            .filter(|n| n.key == "b.com" && n.layer == 0)
+            .collect::<Vec<_>>();
+        assert_eq!(standalone.len(), 1, "re-entries collapse to one start node");
+        assert_eq!(standalone[0].throughput, 2, "sized by entry count");
     }
 
     #[test]
