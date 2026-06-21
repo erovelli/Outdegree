@@ -261,7 +261,36 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
 
     let chips = el(doc, "div");
     let _ = chips.set_attribute("class", "chips");
-    let gran = chip(doc, "chip-gran", "Hostname ⌄");
+    // Hostname / Domain grouping — a segmented slide-select matching the Sankey's.
+    let (gran_seg, gran_btns) = seg(
+        doc,
+        "ghost",
+        &[("hostname", "Hostname"), ("registrable", "Domain")],
+    );
+    let _ = gran_seg.set_attribute("id", "seg-gran");
+    let _ = gran_seg.set_attribute("title", "Toggle hostname / registrable-domain grouping");
+    let cur_gran = if shared.borrow().gran == Granularity::Registrable {
+        "registrable"
+    } else {
+        "hostname"
+    };
+    for (val, btn) in &gran_btns {
+        if val.as_str() == cur_gran {
+            let _ = btn.set_attribute("class", "active");
+        }
+        let gran = if val.as_str() == "registrable" {
+            Granularity::Registrable
+        } else {
+            Granularity::Hostname
+        };
+        let s = shared.clone();
+        on(btn, "click", move |_| {
+            s.borrow_mut().gran = gran;
+            recompute_projection(&s);
+            persist_positions(&s);
+            let _ = rerender(&s);
+        });
+    }
     let mv = el(doc, "select");
     let _ = mv.set_attribute("class", "chip chip-select");
     let _ = mv.set_attribute("id", "chip-minvisits");
@@ -274,26 +303,9 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
     }
     let hubs = chip(doc, "chip-hubs", "hide search hubs");
     let _ = hubs.set_attribute("title", "Collapse search-engine origin nodes");
-    let _ = gran.set_attribute("title", "Toggle hostname / registrable-domain grouping");
-    let _ = chips.append_child(&gran);
+    let _ = chips.append_child(&gran_seg);
     let _ = chips.append_child(&mv);
     let _ = chips.append_child(&hubs);
-    {
-        let s = shared.clone();
-        on(&gran, "click", move |_| {
-            {
-                let mut a = s.borrow_mut();
-                a.gran = if a.gran == Granularity::Hostname {
-                    Granularity::Registrable
-                } else {
-                    Granularity::Hostname
-                };
-            }
-            recompute_projection(&s);
-            persist_positions(&s);
-            let _ = rerender(&s);
-        });
-    }
     {
         let s = shared.clone();
         on(&mv, "change", move |ev| {
@@ -588,16 +600,15 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         rows_el.set_inner_html(&html);
     }
 
-    // chips
-    set_text(
-        &doc,
-        "chip-gran",
-        if a.gran == Granularity::Registrable {
-            "Domain ⌄"
-        } else {
-            "Hostname ⌄"
-        },
-    );
+    // chips: reflect the active granularity on the segmented slide-select
+    if let Some(seg_el) = doc.get_element_by_id("seg-gran") {
+        let registrable = a.gran == Granularity::Registrable;
+        for (val, on) in [("hostname", !registrable), ("registrable", registrable)] {
+            if let Ok(Some(btn)) = seg_el.query_selector(&format!("[data-seg=\"{val}\"]")) {
+                let _ = btn.set_attribute("class", if on { "active" } else { "" });
+            }
+        }
+    }
     toggle_active(&doc, "chip-hubs", a.filters.hide_search_hubs);
 
     // REC indicator

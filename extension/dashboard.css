@@ -272,7 +272,8 @@ a { color: var(--text-primary); }
 .sp-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .sp-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .sp-toolbar .muted { font-size: 12px; }
-.sp-toolbar .seg {
+.sp-toolbar .seg,
+.chips .seg {
   background: oklch(1 0 0 / 0.04); border: 1px solid var(--toolbar-divider);
   border-radius: 8px; padding: 3px;
 }
