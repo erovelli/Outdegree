@@ -257,7 +257,7 @@ fn prov_from_key(key: &str) -> Option<Provenance> {
 fn legend_html(b: &ProvBreakdown, filter: Option<Provenance>) -> String {
     // (count, label, dot color class, provenance, data-prov key). Reload folds
     // into Other; External (start_page) is its own category.
-    let rows = [
+    let rows: Vec<(u32, &str, &str, Provenance, &str)> = [
         (
             b.search_origin,
             "Search",
@@ -295,7 +295,12 @@ fn legend_html(b: &ProvBreakdown, filter: Option<Provenance>) -> String {
             Provenance::Other,
             "other",
         ),
-    ];
+    ]
+    .into_iter()
+    // Omit empty categories: they'd sit at 0% and, when clicked, dim the whole
+    // graph to nothing (genuine Other/Reload never produce nodes).
+    .filter(|(c, ..)| *c > 0)
+    .collect();
     let counts: Vec<u32> = rows.iter().map(|(c, ..)| *c).collect();
     let pcts = percentages(&counts);
     let mut html = String::new();
@@ -386,7 +391,9 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
             let Ok(ke) = ev.dyn_into::<KeyboardEvent>() else {
                 return;
             };
+            let doc = s.borrow().doc.clone();
             if ke.key() != "Enter" {
+                set_text(&doc, "bg-search-hint", ""); // typing clears the hint
                 return;
             }
             let q = ke
@@ -395,6 +402,7 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
                 .map(|i| i.value().trim().to_lowercase())
                 .unwrap_or_default();
             if q.is_empty() {
+                set_text(&doc, "bg-search-hint", "");
                 return;
             }
             let hit = s
@@ -404,9 +412,13 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
                 .iter()
                 .find(|n| n.key.to_lowercase().contains(&q))
                 .map(|n| n.key.clone());
-            if let Some(k) = hit {
-                s.borrow_mut().view = View::Graph;
-                super::focus_and_animate(&s, Some(k));
+            match hit {
+                Some(k) => {
+                    set_text(&doc, "bg-search-hint", "");
+                    s.borrow_mut().view = View::Graph;
+                    super::focus_and_animate(&s, Some(k));
+                }
+                None => set_text(&doc, "bg-search-hint", &format!("No host matches “{q}”")),
             }
         });
     }
@@ -487,6 +499,9 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
     }
 
     let _ = p.append_child(&sbox);
+    let hint = span(doc, "search-hint", "");
+    let _ = hint.set_attribute("id", "bg-search-hint");
+    let _ = p.append_child(&hint);
     let _ = p.append_child(&chips);
     p
 }
@@ -547,6 +562,48 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
                     Err(e) => super::log_err(&e),
                 }
             });
+        });
+    }
+
+    let import = menu_btn(doc, "Import JSON");
+    {
+        let s = shared.clone();
+        on(&import, "click", move |_| {
+            close_popover(&s);
+            let doc = s.borrow().doc.clone();
+            let Ok(el) = doc.create_element("input") else {
+                return;
+            };
+            let _ = el.set_attribute("type", "file");
+            let _ = el.set_attribute("accept", "application/json,.json");
+            let Ok(inp) = el.dyn_into::<HtmlInputElement>() else {
+                return;
+            };
+            let s2 = s.clone();
+            let picker = inp.clone();
+            on(&inp, "change", move |_| {
+                let Some(file) = picker.files().and_then(|f| f.get(0)) else {
+                    return;
+                };
+                let s3 = s2.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let json = match wasm_bindgen_futures::JsFuture::from(file.text()).await {
+                        Ok(v) => v.as_string().unwrap_or_default(),
+                        Err(e) => return super::log_err(&e),
+                    };
+                    let db = s3.borrow().db.clone();
+                    // Replace every store, then re-derive from the imported events so
+                    // the view is consistent even if the file only carried `events`.
+                    if let Err(e) = db.import_json(&json).await {
+                        return super::log_err(&e);
+                    }
+                    if let Err(e) = db.reset_derivation().await {
+                        return super::log_err(&e);
+                    }
+                    reload_and_rerender(&s3);
+                });
+            });
+            inp.click();
         });
     }
 
@@ -622,6 +679,7 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
     let _ = pop.append_child(&sep);
     let _ = pop.append_child(&raw);
     let _ = pop.append_child(&export);
+    let _ = pop.append_child(&import);
     let _ = pop.append_child(&forget);
     let _ = pop.append_child(&delete);
     let _ = pop.append_child(&rebuild);

@@ -316,6 +316,8 @@ pub fn draw(
     set_stroke(ctx, BG);
     ctx.set_line_width(moat);
 
+    let hotness =
+        |key: &str, prov: Provenance| lit(key) && filter.map(|f| prov == f).unwrap_or(true);
     for n in &proj.nodes {
         if let Some(p) = pos.get(&n.key) {
             let (x, y) = cam.project(p, w, h);
@@ -324,18 +326,46 @@ pub fn draw(
             // redundant channel). A node stays bright only if it survives both the
             // hover spotlight and (if set) the legend provenance filter.
             let prov = n.prov.dominant().display();
-            let hot = lit(&n.key) && filter.map(|f| prov == f).unwrap_or(true);
-            ctx.set_global_alpha(if hot { 1.0 } else { 0.22 });
+            ctx.set_global_alpha(if hotness(&n.key, prov) { 1.0 } else { 0.22 });
             set_fill(ctx, prov.color());
             trace_marker(ctx, prov.shape(), x, y, r);
             ctx.fill();
             ctx.stroke();
-
-            // Every node is labeled, always (dimmed when another node is hovered).
-            ctx.set_global_alpha(if hot { 1.0 } else { 0.35 });
-            set_fill(ctx, LABEL);
-            let _ = ctx.fill_text(&n.key, x, y + r + fs + 2.0);
         }
+    }
+    ctx.set_global_alpha(1.0);
+
+    // ── labels (decluttered) ─────────────────────────────────────────────────
+    // Place the most-visited first and skip any label that would overlap one
+    // already placed, so dense clusters / zoomed-out views don't collapse into
+    // overlapping text. The hovered/filtered selection is always labeled. Widths
+    // are estimated from the monospace metrics (no per-frame measureText).
+    let mut placed: Vec<(f64, f64, f64, f64)> = Vec::new();
+    let mut order: Vec<usize> = (0..proj.nodes.len()).collect();
+    order.sort_by(|&a, &b| proj.nodes[b].visits.cmp(&proj.nodes[a].visits));
+    for i in order {
+        let n = &proj.nodes[i];
+        let Some(p) = pos.get(&n.key) else { continue };
+        let (x, y) = cam.project(p, w, h);
+        let r = radius(n.visits, cam.scale);
+        let prov = n.prov.dominant().display();
+        let hot = hotness(&n.key, prov);
+        let label = clip(&n.key, 28);
+        let tw = label.chars().count() as f64 * fs * 0.6;
+        let cy = y + r + fs + 2.0;
+        let (bx0, bx1, by0, by1) = (x - tw / 2.0, x + tw / 2.0, cy - fs, cy + 2.0);
+        let overlaps = placed
+            .iter()
+            .any(|&(ox0, oy0, ox1, oy1)| bx0 < ox1 && bx1 > ox0 && by0 < oy1 && by1 > oy0);
+        // Always keep the active hover/filter selection's label; else drop on collision.
+        let force = hot && (hover.is_some() || filter.is_some());
+        if overlaps && !force {
+            continue;
+        }
+        placed.push((bx0, by0, bx1, by1));
+        ctx.set_global_alpha(if hot { 1.0 } else { 0.35 });
+        set_fill(ctx, LABEL);
+        let _ = ctx.fill_text(&label, x, cy);
     }
     ctx.set_global_alpha(1.0);
 
