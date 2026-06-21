@@ -1,9 +1,7 @@
 //! Session picker (§7.7): lists closed + provisional-open sessions; selecting one
 //! renders its per-tab flow (§4.4, sankey.rs).
 
-use super::{
-    body_container, el, esc, on, persist_positions, recompute_projection, rerender, Shared,
-};
+use super::{body_container, el, esc, on, persist_positions, recompute_projection, Shared};
 use crate::model::Granularity;
 use wasm_bindgen::JsValue;
 
@@ -93,11 +91,28 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
             Granularity::Hostname
         };
         let s = shared.clone();
+        let sw = seg_wrap.clone();
         on(btn, "click", move |_| {
+            if s.borrow().gran == gran {
+                return; // already grouping this way → nothing to regenerate
+            }
             s.borrow_mut().gran = gran;
+            // Keep the graph view's projection consistent for when it's next shown.
             recompute_projection(&s);
             persist_positions(&s);
-            let _ = rerender(&s);
+            // Reflect the active segment and re-render only the flow — a full
+            // rerender would tear down and rebuild the whole picker (session list
+            // + toolbar), which flashes. `sankey::render` swaps the diagram only if
+            // it actually changed.
+            for (v, active) in [
+                ("hostname", gran == Granularity::Hostname),
+                ("registrable", gran == Granularity::Registrable),
+            ] {
+                if let Ok(Some(b)) = sw.query_selector(&format!("[data-seg=\"{v}\"]")) {
+                    let _ = b.set_attribute("class", if active { "active" } else { "" });
+                }
+            }
+            let _ = super::sankey::render(&s);
         });
     }
     let _ = bar.append_child(&lbl);

@@ -14,7 +14,11 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     };
 
     let Some(sid) = shared.borrow().selected_session else {
-        flow_el.set_inner_html("<div class=\"bg-empty\">Select a session to see its flow.</div>");
+        if flow_el.get_attribute("data-sig").as_deref() != Some("none") {
+            flow_el
+                .set_inner_html("<div class=\"bg-empty\">Select a session to see its flow.</div>");
+            let _ = flow_el.set_attribute("data-sig", "none");
+        }
         return Ok(());
     };
     let sess = shared
@@ -30,7 +34,17 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let gran = shared.borrow().gran;
     let db = shared.borrow().db.clone();
     let s = shared.clone();
-    flow_el.set_inner_html("<div class=\"bg-empty\">Loading session…</div>");
+    // Only show the loading placeholder when nothing is rendered yet. On a
+    // re-render (e.g. toggling Hostname/Domain) keep the current diagram on screen
+    // so there's no flash — the async pass below swaps only if the flow actually
+    // changed (guarded by a signature of the rendered markup).
+    let has_flow = flow_el
+        .get_attribute("data-sig")
+        .is_some_and(|v| v != "none");
+    if !has_flow {
+        flow_el.set_inner_html("<div class=\"bg-empty\">Loading session…</div>");
+        let _ = flow_el.remove_attribute("data-sig");
+    }
 
     wasm_bindgen_futures::spawn_local(async move {
         let events = db
@@ -52,7 +66,22 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
             sess.nav_count, sess.window_id
         );
         html.push_str(&flow::render_svg(&fg, vw));
+
+        // Same data → same picture: skip the DOM swap when the markup is identical
+        // (e.g. a Hostname/Domain toggle that leaves the flow unchanged), so there
+        // is no flash.
+        let sig = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            html.hash(&mut h);
+            h.finish()
+        }
+        .to_string();
+        if flow_el.get_attribute("data-sig").as_deref() == Some(sig.as_str()) {
+            return;
+        }
         flow_el.set_inner_html(&html);
+        let _ = flow_el.set_attribute("data-sig", &sig);
     });
 
     Ok(())
