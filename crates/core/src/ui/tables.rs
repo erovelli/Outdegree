@@ -1,7 +1,7 @@
 //! Table views (§7.7, M2): hubs, top edges, origination breakdown, and a raw
 //! event stream (M1).
 
-use super::{body_container, esc, Shared};
+use super::{body_container, esc, plural, Shared};
 use crate::graph;
 use crate::model::Event;
 use crate::project;
@@ -20,17 +20,23 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let mut html = String::new();
 
     html.push_str(
-        "<h3>Top hubs (by weighted degree)</h3><table><tr><th>Host</th><th>Degree</th></tr>",
+        "<h3>Top hubs (by weighted degree)</h3>\
+         <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Degree</th></tr>",
     );
     for (k, d) in &hubs {
-        html.push_str(&format!("<tr><td>{}</td><td>{}</td></tr>", esc(k), d));
+        html.push_str(&format!(
+            "<tr><td>{}</td><td class=\"num\">{}</td></tr>",
+            esc(k),
+            d
+        ));
     }
     html.push_str("</table>");
 
-    html.push_str("<h3>Top edges (by weight)</h3><table><tr><th>From</th><th>To</th><th>Weight</th><th>Kind</th></tr>");
+    html.push_str("<h3>Top edges (by weight)</h3>\
+        <table class=\"tbl\"><tr><th>From</th><th>To</th><th class=\"num\">Weight</th><th>Kind</th></tr>");
     for e in &edges {
         html.push_str(&format!(
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{:?}</td></tr>",
+            "<tr><td>{}</td><td>{}</td><td class=\"num\">{}</td><td>{:?}</td></tr>",
             esc(&e.from),
             esc(&e.to),
             e.weight,
@@ -39,7 +45,10 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     }
     html.push_str("</table>");
 
-    html.push_str("<h3>Origination (how pages were reached)</h3><table><tr><th>Provenance</th><th>Count</th></tr>");
+    html.push_str(
+        "<h3>Origination (how pages were reached)</h3>\
+        <table class=\"tbl\"><tr><th>Provenance</th><th class=\"num\">Count</th></tr>",
+    );
     for (name, count) in [
         ("Link", prov.link),
         ("Form", prov.form),
@@ -50,7 +59,9 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         ("Reload", prov.reload),
         ("Other", prov.other),
     ] {
-        html.push_str(&format!("<tr><td>{name}</td><td>{count}</td></tr>"));
+        html.push_str(&format!(
+            "<tr><td>{name}</td><td class=\"num\">{count}</td></tr>"
+        ));
     }
     html.push_str("</table>");
 
@@ -72,20 +83,37 @@ pub(crate) fn render_raw(shared: &Shared) {
             return;
         };
         let total = events.len();
+        // Only claim to truncate when we actually did (total > 1000); otherwise the
+        // "showing first 1000" line contradicts a smaller, fully-shown count.
+        let heading = if total > 1000 {
+            format!("Raw events ({total} total, showing first 1000)")
+        } else {
+            format!("Raw events ({})", plural(total as u64, "event"))
+        };
         let mut html = format!(
-            "<h3>Raw events ({} total, showing first 1000)</h3><table><tr><th>id</th><th>kind</th><th>ts</th><th>detail</th></tr>",
-            total
+            "<h3>{heading}</h3><table><tr><th>id</th><th>kind</th><th>ts</th><th>detail</th></tr>"
         );
         for ev in events.iter().take(1000) {
             let (id, kind, ts, detail) = describe(ev);
             html.push_str(&format!(
-                "<tr><td>{id}</td><td>{kind}</td><td>{ts:.0}</td><td>{}</td></tr>",
+                "<tr><td class=\"mono\">{id:.0}</td><td>{kind}</td>\
+                 <td class=\"mono\" title=\"{ts:.0}\">{}</td><td>{}</td></tr>",
+                esc(&fmt_ts(ts)),
                 esc(&detail)
             ));
         }
         html.push_str("</table>");
         body.set_inner_html(&html);
     });
+}
+
+/// Format an epoch-millisecond timestamp as an ISO-8601 UTC string — unambiguous
+/// and sortable, matching the UTC-day bucketing the rest of the app uses (the raw
+/// millisecond value is kept in the cell's `title` for debugging).
+fn fmt_ts(ms: f64) -> String {
+    js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ms))
+        .to_iso_string()
+        .into()
 }
 
 fn describe(ev: &Event) -> (f64, &'static str, f64, String) {

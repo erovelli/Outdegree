@@ -1,7 +1,7 @@
 //! Session picker (§7.7): lists closed + provisional-open sessions; selecting one
 //! renders its per-tab flow (§4.4, sankey.rs).
 
-use super::{body_container, el, esc, on, persist_positions, recompute_projection, Shared};
+use super::{body_container, el, esc, on, persist_positions, plural, recompute_projection, Shared};
 use crate::model::Granularity;
 use wasm_bindgen::JsValue;
 
@@ -36,7 +36,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     }
 
     for sess in &sessions {
-        let item = el(&doc, "div");
+        let item = el(&doc, "button");
+        let _ = item.set_attribute("type", "button");
         let _ = item.set_attribute("class", "sp-item");
         let top = sess
             .top_hosts
@@ -45,8 +46,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
             .collect::<Vec<_>>()
             .join(", ");
         item.set_inner_html(&format!(
-            "<b>{} navs</b> · window {}<br><span class=\"muted\">{}</span>",
-            sess.nav_count,
+            "<b>{}</b> · window {}<br><span class=\"muted\">{}</span>",
+            plural(sess.nav_count as u64, "nav"),
             sess.window_id,
             esc(&top)
         ));

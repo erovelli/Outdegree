@@ -7,7 +7,7 @@
 
 use super::filters::{chip, icon, icon_btn, menu_btn, menu_toggle, panel, seg, LOGO};
 use super::{
-    el, graph_view, on, persist_positions, recompute_projection, reload_and_rerender,
+    el, graph_view, on, persist_positions, plural, recompute_projection, reload_and_rerender,
     reload_buckets, rerender, Shared, View,
 };
 use crate::model::{Granularity, ProvBreakdown};
@@ -55,13 +55,18 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     let logo = el(doc, "div");
     let _ = logo.set_attribute("class", "logo");
     logo.set_inner_html(LOGO);
+    let name = span(doc, "wordmark", "Browsing Graph");
     let rule = el(doc, "div");
     let _ = rule.set_attribute("class", "vrule");
 
-    let rec = el(doc, "div");
+    // A real <button> (not a clickable <div>) so the privacy control is keyboard-
+    // operable and gets a focus ring; its label is updated to match the state.
+    let rec = el(doc, "button");
+    let _ = rec.set_attribute("type", "button");
     let _ = rec.set_attribute("class", "rec");
     let _ = rec.set_attribute("id", "bg-rec");
     let _ = rec.set_attribute("title", "Toggle recording");
+    let _ = rec.set_attribute("aria-label", "Pause recording");
     let dot = el(doc, "span");
     let _ = dot.set_attribute("class", "rec-dot");
     let lbl = span(doc, "rec-label", "REC");
@@ -82,6 +87,7 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     }
 
     let _ = p.append_child(&logo);
+    let _ = p.append_child(&name);
     let _ = p.append_child(&rule);
     let _ = p.append_child(&rec);
     p
@@ -148,16 +154,23 @@ fn view_panel(doc: &Document, shared: &Shared) -> Element {
         });
     }
     let gear = icon_btn(doc, "bg-gear", "Settings", &icon("gear"));
+    let _ = gear.set_attribute("aria-haspopup", "menu");
+    let _ = gear.set_attribute("aria-expanded", "false");
     {
         let s = shared.clone();
         on(&gear, "click", move |_| {
-            if let Some(pop) = s.borrow().doc.get_element_by_id("bg-settings") {
-                let open = pop.class_name().contains("open");
-                pop.set_class_name(if open {
-                    "panel popover"
-                } else {
+            let doc = s.borrow().doc.clone();
+            if let Some(pop) = doc.get_element_by_id("bg-settings") {
+                let now_open = !pop.class_name().contains("open");
+                pop.set_class_name(if now_open {
                     "panel popover open"
+                } else {
+                    "panel popover"
                 });
+                if let Some(g) = doc.get_element_by_id("bg-gear") {
+                    let _ =
+                        g.set_attribute("aria-expanded", if now_open { "true" } else { "false" });
+                }
             }
         });
     }
@@ -304,7 +317,7 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
         opt.set_text_content(Some("All sites"));
         let _ = mv.append_child(&opt);
     }
-    let hubs = chip(doc, "chip-hubs", "hide search hubs");
+    let hubs = chip(doc, "chip-hubs", "Hide search hubs");
     let _ = hubs.set_attribute("title", "Collapse search-engine origin nodes");
     let _ = chips.append_child(&gran_seg);
     let _ = chips.append_child(&mv);
@@ -352,7 +365,9 @@ fn readout_panel(doc: &Document) -> Element {
     let _ = rule2.set_attribute("class", "vrule");
     let spectrum = el(doc, "div");
     let _ = spectrum.set_attribute("class", "spectrum");
-    let slabel = span(doc, "spectrum-label", "visits");
+    // The bar is the provenance hue ramp (node fill = how you arrived). Visit
+    // count is encoded by node *size*, not color, so this is labeled accordingly.
+    let slabel = span(doc, "spectrum-label", "provenance");
     let _ = p.append_child(&nodes);
     let _ = p.append_child(&rule1);
     let _ = p.append_child(&edges);
@@ -485,8 +500,12 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
 }
 
 fn close_popover(shared: &Shared) {
-    if let Some(pop) = shared.borrow().doc.get_element_by_id("bg-settings") {
+    let doc = shared.borrow().doc.clone();
+    if let Some(pop) = doc.get_element_by_id("bg-settings") {
         pop.set_class_name("panel popover");
+    }
+    if let Some(g) = doc.get_element_by_id("bg-gear") {
+        let _ = g.set_attribute("aria-expanded", "false");
     }
 }
 
@@ -562,12 +581,12 @@ pub(crate) fn sync_chrome(shared: &Shared) {
     set_text(
         &doc,
         "bg-count-nodes",
-        &format!("{} nodes", a.proj.nodes.len()),
+        &plural(a.proj.nodes.len() as u64, "node"),
     );
     set_text(
         &doc,
         "bg-count-edges",
-        &format!("{} edges", a.proj.edges.len()),
+        &plural(a.proj.edges.len() as u64, "edge"),
     );
 
     // provenance legend (percentages over the visible projection)
@@ -618,6 +637,14 @@ pub(crate) fn sync_chrome(shared: &Shared) {
     // REC indicator
     if let Some(rec) = doc.get_element_by_id("bg-rec") {
         rec.set_class_name(if a.paused { "rec paused" } else { "rec" });
+        let _ = rec.set_attribute(
+            "aria-label",
+            if a.paused {
+                "Resume recording"
+            } else {
+                "Pause recording"
+            },
+        );
     }
     set_text(
         &doc,

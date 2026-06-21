@@ -113,7 +113,11 @@ body {
 }
 .vrule { width: 1px; align-self: stretch; background: var(--divider); }
 .panel.brand .vrule { height: 18px; align-self: center; }
-.rec { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.rec {
+  appearance: none; border: 0; padding: 0; background: transparent;
+  font: inherit; color: inherit;
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+}
 .rec-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: oklch(0.66 0.2 12);
@@ -156,6 +160,17 @@ body {
 .iconbtn:hover { background: oklch(1 0 0 / 0.06); color: var(--text-primary); }
 .iconbtn.active { color: var(--text-primary); background: oklch(1 0 0 / 0.08); }
 .iconbtn svg { width: 17px; height: 17px; }
+
+/* Keyboard focus: a visible ring for every interactive control (there was none —
+ * `appearance: none` had suppressed the default outline). Mouse clicks don't
+ * trigger :focus-visible, so this only shows for keyboard/AT users. */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid oklch(0.64 0.205 264);
+  outline-offset: 2px;
+}
 
 /* 4. provenance legend */
 .panel.legend { flex-direction: column; align-items: stretch; width: 184px; gap: 0; }
@@ -258,6 +273,17 @@ th, td {
 }
 th { color: var(--text-muted); font-weight: 600; }
 td { color: var(--text-secondary); }
+/* The analytic tables are narrow (2–4 cols) — cap them so the value sits a
+ * readable distance from its label instead of stranded across a full-width row.
+ * The raw-events table (long URLs) intentionally stays full width. */
+.mode-data table.tbl { max-width: 560px; }
+/* Numeric columns: right-aligned, monospace, tabular figures so they compare
+ * cleanly down the column. `.mono` is for identifier/timestamp cells. */
+th.num, td.num {
+  text-align: right;
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+}
+td.mono { font-family: var(--mono); color: var(--text-tertiary); white-space: nowrap; }
 a { color: var(--text-primary); }
 .muted { color: var(--text-tertiary); }
 
@@ -280,6 +306,8 @@ a { color: var(--text-primary); }
 .sp-flow { flex: 1; overflow: auto; }
 .sp-tab { margin: 8px 0; }
 .sp-item {
+  appearance: none; width: 100%; display: block; text-align: left;
+  font: inherit; color: inherit; background: transparent;
   padding: 8px 10px; border: 1px solid var(--toolbar-divider);
   border-radius: 8px; margin-bottom: 6px; cursor: pointer;
 }

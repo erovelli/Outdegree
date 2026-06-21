@@ -489,3 +489,13 @@ pub(crate) fn esc(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
 }
+
+/// Pluralize a regular count noun: `1 nav`, `2 navs`, `0 nodes`. Keeps the
+/// readouts and counts grammatical instead of always appending `s`.
+pub(crate) fn plural(n: u64, noun: &str) -> String {
+    if n == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{n} {noun}s")
+    }
+}
