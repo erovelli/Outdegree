@@ -24,9 +24,10 @@ Lead both with **"100% local · no network · open source."**
 > **Browsing Graph** turns your browsing history into an interactive directed
 > graph you can explore over time — by session, day, week, month, or year. See
 > which sites you move between, which are hubs, and how you got there (link,
-> search, typed, form). Everything is processed and stored **locally on your
-> device**; the extension makes **no network requests** and cannot read page
-> content. Open source.
+> search, typed, form), or follow a single session as a left-to-right flow.
+> Pan, zoom, drag nodes to arrange, and search. Everything is processed and
+> stored **locally on your device**; the extension makes **no network requests**
+> and cannot read page content. Open source.
 
 ## Per-permission justifications (§12.3)
 
