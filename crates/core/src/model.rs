@@ -115,7 +115,9 @@ impl Provenance {
     pub fn color(self) -> &'static str {
         match self {
             Provenance::SearchOrigin => "oklch(0.64 0.205 264)",
-            Provenance::Start => "oklch(0.64 0.205 248)",
+            // "External" (start_page). A colder cyan-blue that stands clear of
+            // Search's periwinkle (264), extending the cold end of the ramp.
+            Provenance::Start => "oklch(0.64 0.205 210)",
             Provenance::Link => "oklch(0.64 0.205 288)",
             Provenance::TypedUrl => "oklch(0.64 0.205 312)",
             Provenance::Bookmark => "oklch(0.64 0.205 340)",
@@ -125,20 +127,23 @@ impl Provenance {
         }
     }
 
-    /// Fold the categories we don't surface separately (`Start`, `Reload`) into
-    /// `Other` for *display* — color, glyph, legend, callout. The data model still
-    /// records the precise provenance; this only changes what the user sees, so a
-    /// browser-start or reload landing no longer renders as its own near-duplicate
-    /// hue (blue ≈ Search, pink ≈ Bookmark).
+    /// Fold the one category we don't surface separately (`Reload`) into `Other`
+    /// for *display* — color, glyph, legend, callout. The data model still records
+    /// the precise provenance; this only changes what the user sees.
+    ///
+    /// `Start` is **not** folded: in practice Chrome reports `start_page` for tabs
+    /// opened from another application (the genuine browser-start page is
+    /// `chrome://newtab/`, which we drop as non-http), so it surfaces as its own
+    /// "External" category.
     pub fn display(self) -> Provenance {
         match self {
-            Provenance::Start | Provenance::Reload => Provenance::Other,
+            Provenance::Reload => Provenance::Other,
             p => p,
         }
     }
 
     /// Marker shape encoding provenance *without* relying on color (CVD-safe
-    /// redundant channel). Folds through [`Self::display`], so only the six
+    /// redundant channel). Folds through [`Self::display`], so only the seven
     /// surfaced categories map to a shape.
     pub fn shape(self) -> Shape {
         match self.display() {
@@ -147,7 +152,8 @@ impl Provenance {
             Provenance::TypedUrl => Shape::Square,
             Provenance::Bookmark => Shape::Diamond,
             Provenance::Form => Shape::Hexagon,
-            _ => Shape::Cross, // Other (and folded Start / Reload)
+            Provenance::Start => Shape::Star, // "External" — opened from another app
+            _ => Shape::Cross,                // Other (and folded Reload)
         }
     }
 }
@@ -163,6 +169,7 @@ pub enum Shape {
     Diamond,
     Hexagon,
     Cross,
+    Star,
 }
 
 impl Shape {
@@ -211,6 +218,19 @@ impl Shape {
                     (cx - a, cy - a),
                 ]
             }
+            Shape::Star => {
+                // 5-point star: alternate outer (r) / inner (0.5r) vertices,
+                // starting at the top point.
+                let inner = r * 0.5;
+                (0..10)
+                    .map(|i| {
+                        let ang =
+                            -std::f64::consts::FRAC_PI_2 + (i as f64) * std::f64::consts::PI / 5.0;
+                        let rad = if i % 2 == 0 { r } else { inner };
+                        (cx + rad * ang.cos(), cy + rad * ang.sin())
+                    })
+                    .collect()
+            }
         };
         Some(pts)
     }
@@ -225,6 +245,7 @@ impl Shape {
             Shape::Diamond => "glyph-diamond",
             Shape::Hexagon => "glyph-hexagon",
             Shape::Cross => "glyph-cross",
+            Shape::Star => "glyph-star",
         }
     }
 }

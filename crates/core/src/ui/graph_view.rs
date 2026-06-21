@@ -254,6 +254,7 @@ fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
         &a.camera,
         a.hover.as_deref(),
         a.focus.as_deref(),
+        a.legend_filter,
     );
 }
 

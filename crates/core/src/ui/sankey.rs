@@ -17,6 +17,7 @@ fn keys_html() -> String {
         ("Typed URL", "dot-typed", P::TypedUrl),
         ("Bookmark", "dot-bookmark", P::Bookmark),
         ("Form", "dot-form", P::Form),
+        ("External", "dot-external", P::Start),
         ("Other", "dot-other", P::Other),
     ];
     let mut h = String::from(

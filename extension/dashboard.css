@@ -182,8 +182,18 @@ select:focus-visible {
   font: 10px var(--mono); text-transform: uppercase; letter-spacing: 0.1em;
   color: var(--text-muted); margin-bottom: 10px;
 }
-.legend-rows { display: flex; flex-direction: column; gap: 8px; }
-.legend-row { display: flex; align-items: center; gap: 8px; }
+.legend-rows { display: flex; flex-direction: column; gap: 3px; }
+/* Rows are buttons: click a key to highlight only that provenance's nodes. */
+.legend-row {
+  display: flex; align-items: center; gap: 8px;
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  width: 100%; text-align: left; color: inherit; font: inherit;
+  padding: 4px 5px; border-radius: 6px;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+.legend-row:hover { background: oklch(1 0 0 / 0.05); }
+.legend-row.is-active { background: oklch(1 0 0 / 0.1); }
+.legend-row.is-dim { opacity: 0.42; }
 .dot {
   width: 9px; height: 9px; border-radius: 50%; flex: none;
   display: inline-block; vertical-align: middle;
@@ -196,6 +206,7 @@ select:focus-visible {
 .dot-typed { background: oklch(0.64 0.205 312); }
 .dot-bookmark { background: oklch(0.64 0.205 340); }
 .dot-form { background: oklch(0.64 0.205 8); }
+.dot-external { background: oklch(0.64 0.205 210); }
 .dot-other { background: oklch(0.64 0.205 30); }
 /* edge-kind colors for the Sankey ribbon key (desaturated, like the edges) */
 .dot-edge-link { background: oklch(0.6 0.14 288); }
@@ -215,6 +226,13 @@ select:focus-visible {
   clip-path: polygon(
     38% 0, 62% 0, 62% 38%, 100% 38%, 100% 62%, 62% 62%,
     62% 100%, 38% 100%, 38% 62%, 0 62%, 0 38%, 38% 38%
+  );
+}
+.glyph-star {
+  border-radius: 0;
+  clip-path: polygon(
+    50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%,
+    50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%
   );
 }
 

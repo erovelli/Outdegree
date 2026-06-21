@@ -32,7 +32,7 @@ pub(crate) fn build_shell(shared: &Shared) -> Result<(), JsValue> {
     let _ = root.append_child(&brand_panel(&doc, shared));
     let _ = root.append_child(&range_panel(&doc, shared));
     let _ = root.append_child(&view_panel(&doc, shared));
-    let _ = root.append_child(&legend_panel(&doc));
+    let _ = root.append_child(&legend_panel(&doc, shared));
     let _ = root.append_child(&zoom_panel(&doc, shared));
     let _ = root.append_child(&search_panel(&doc, shared));
     let _ = root.append_child(&readout_panel(&doc));
@@ -202,15 +202,132 @@ fn view_panel(doc: &Document, shared: &Shared) -> Element {
 }
 
 // ── 4. provenance legend (right) ─────────────────────────────────────────────
-fn legend_panel(doc: &Document) -> Element {
+fn legend_panel(doc: &Document, shared: &Shared) -> Element {
     let p = panel(doc, "legend at-rt");
     let title = span(doc, "legend-title", "PROVENANCE");
     let rows = el(doc, "div");
     let _ = rows.set_attribute("id", "bg-legend-rows");
     let _ = rows.set_attribute("class", "legend-rows");
+    // Click a key to highlight only that provenance's nodes (toggle). One
+    // delegated listener on the container survives the innerHTML rebuilds.
+    {
+        let s = shared.clone();
+        on(&rows, "click", move |ev| {
+            let key = ev
+                .target()
+                .and_then(|t| t.dyn_into::<Element>().ok())
+                .and_then(|e| e.closest(".legend-row").ok().flatten())
+                .and_then(|row| row.get_attribute("data-prov"));
+            let Some(prov) = key.as_deref().and_then(prov_from_key) else {
+                return;
+            };
+            {
+                let mut a = s.borrow_mut();
+                a.legend_filter = if a.legend_filter == Some(prov) {
+                    None
+                } else {
+                    Some(prov)
+                };
+            }
+            set_legend(&s);
+            graph_view::redraw(&s);
+        });
+    }
     let _ = p.append_child(&title);
     let _ = p.append_child(&rows);
     p
+}
+
+/// Map a legend row's `data-prov` key to its provenance (External = `start_page`).
+fn prov_from_key(key: &str) -> Option<Provenance> {
+    Some(match key {
+        "search" => Provenance::SearchOrigin,
+        "link" => Provenance::Link,
+        "typed" => Provenance::TypedUrl,
+        "bookmark" => Provenance::Bookmark,
+        "form" => Provenance::Form,
+        "external" => Provenance::Start,
+        "other" => Provenance::Other,
+        _ => return None,
+    })
+}
+
+/// The legend rows as HTML buttons (`data-prov` + active/dim state). Pure so both
+/// `sync_chrome` and the click handler render an identical list.
+fn legend_html(b: &ProvBreakdown, filter: Option<Provenance>) -> String {
+    // (count, label, dot color class, provenance, data-prov key). Reload folds
+    // into Other; External (start_page) is its own category.
+    let rows = [
+        (
+            b.search_origin,
+            "Search",
+            "dot-search",
+            Provenance::SearchOrigin,
+            "search",
+        ),
+        (b.link, "Link", "dot-link", Provenance::Link, "link"),
+        (
+            b.typed_url,
+            "Typed URL",
+            "dot-typed",
+            Provenance::TypedUrl,
+            "typed",
+        ),
+        (
+            b.bookmark,
+            "Bookmark",
+            "dot-bookmark",
+            Provenance::Bookmark,
+            "bookmark",
+        ),
+        (b.form, "Form", "dot-form", Provenance::Form, "form"),
+        (
+            b.start,
+            "External",
+            "dot-external",
+            Provenance::Start,
+            "external",
+        ),
+        (
+            b.other + b.reload,
+            "Other",
+            "dot-other",
+            Provenance::Other,
+            "other",
+        ),
+    ];
+    let counts: Vec<u32> = rows.iter().map(|(c, ..)| *c).collect();
+    let pcts = percentages(&counts);
+    let mut html = String::new();
+    for ((_, label, dot, prov, key), pct) in rows.iter().zip(pcts) {
+        let state = match filter {
+            Some(f) if f == *prov => " is-active",
+            Some(_) => " is-dim",
+            None => "",
+        };
+        html.push_str(&format!(
+            "<button type=\"button\" class=\"legend-row{state}\" data-prov=\"{key}\">\
+             <span class=\"dot {dot} {glyph}\"></span>\
+             <span class=\"legend-label\">{label}</span>\
+             <span class=\"legend-pct\">{pct}%</span></button>",
+            glyph = prov.shape().css()
+        ));
+    }
+    html
+}
+
+/// Rebuild just the legend rows from current state (used by the click/Esc paths;
+/// `sync_chrome` inlines the same call while it already holds the borrow).
+fn set_legend(shared: &Shared) {
+    let a = shared.borrow();
+    let mut b = ProvBreakdown::default();
+    for n in &a.proj.nodes {
+        b.merge(&n.prov);
+    }
+    let html = legend_html(&b, a.legend_filter);
+    if let Some(rows_el) = a.doc.get_element_by_id("bg-legend-rows") {
+        rows_el.set_inner_html(&html);
+    }
 }
 
 // ── 5. zoom toolbar (bottom-right) ───────────────────────────────────────────
@@ -532,8 +649,15 @@ fn install_palette_shortcut(shared: &Shared) {
         };
         if ke.key() == "Escape" {
             close_popover(&s);
+            let cleared = {
+                let mut a = s.borrow_mut();
+                a.legend_filter.take().is_some()
+            };
             if s.borrow().focus.is_some() {
-                super::focus_and_animate(&s, None);
+                super::focus_and_animate(&s, None); // re-renders: rebuilds legend + canvas
+            } else if cleared {
+                set_legend(&s);
+                graph_view::redraw(&s);
             }
             return;
         }
@@ -644,41 +768,8 @@ pub(crate) fn sync_chrome(shared: &Shared) {
     for n in &a.proj.nodes {
         b.merge(&n.prov);
     }
-    // (count, label, dot color class, provenance) — colors live in CSS so no
-    // inline style is needed (the page CSP blocks inline styles); the glyph is
-    // derived from the provenance so legend shape matches the canvas marker.
-    // Start/Reload fold into Other (they aren't surfaced as their own categories).
-    let rows = [
-        (
-            b.search_origin,
-            "Search",
-            "dot-search",
-            Provenance::SearchOrigin,
-        ),
-        (b.link, "Link", "dot-link", Provenance::Link),
-        (b.typed_url, "Typed URL", "dot-typed", Provenance::TypedUrl),
-        (b.bookmark, "Bookmark", "dot-bookmark", Provenance::Bookmark),
-        (b.form, "Form", "dot-form", Provenance::Form),
-        (
-            b.other + b.start + b.reload,
-            "Other",
-            "dot-other",
-            Provenance::Other,
-        ),
-    ];
-    let counts: Vec<u32> = rows.iter().map(|(c, ..)| *c).collect();
-    let pcts = percentages(&counts);
-    let mut html = String::new();
-    for ((_, label, dot, prov), pct) in rows.iter().zip(pcts) {
-        html.push_str(&format!(
-            "<div class=\"legend-row\"><span class=\"dot {dot} {glyph}\"></span>\
-             <span class=\"legend-label\">{label}</span>\
-             <span class=\"legend-pct\">{pct}%</span></div>",
-            glyph = prov.shape().css()
-        ));
-    }
     if let Some(rows_el) = doc.get_element_by_id("bg-legend-rows") {
-        rows_el.set_inner_html(&html);
+        rows_el.set_inner_html(&legend_html(&b, a.legend_filter));
     }
 
     // chips: reflect the active granularity on the segmented slide-select

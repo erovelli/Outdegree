@@ -50,7 +50,7 @@ fn prov_label(p: Provenance) -> &'static str {
         Provenance::TypedUrl => "Typed URL",
         Provenance::SearchOrigin => "Search",
         Provenance::Bookmark => "Bookmark",
-        Provenance::Start => "Start",
+        Provenance::Start => "External",
         Provenance::Reload => "Reload",
         Provenance::Other => "Other",
     }
@@ -211,7 +211,8 @@ fn draw_hub(
 }
 
 /// Draw the full graph. `hover` labels + spotlights a node; `selected` (the
-/// drilled-down focus) wears the reticle bracket.
+/// drilled-down focus) wears the reticle bracket; `filter` (a clicked legend key)
+/// keeps only nodes of that provenance bright and dims the rest + all edges.
 pub fn draw(
     ctx: &CanvasRenderingContext2d,
     w: f64,
@@ -221,6 +222,7 @@ pub fn draw(
     cam: &Camera,
     hover: Option<&str>,
     selected: Option<&str>,
+    filter: Option<Provenance>,
 ) {
     draw_backdrop(ctx, w, h, cam);
     draw_hub(ctx, w, h, proj, pos, cam);
@@ -255,7 +257,10 @@ pub fn draw(
             let (ax, ay) = cam.project(a, w, h);
             let (bx, by) = cam.project(b, w, h);
             let kind = e.kinds.dominant();
-            let touches = hover.map(|f| e.from == f || e.to == f).unwrap_or(true);
+            // A legend filter dims every edge (the highlight is about nodes of a
+            // provenance, and edges have no single provenance).
+            let touches =
+                filter.is_none() && hover.map(|f| e.from == f || e.to == f).unwrap_or(true);
             let dashed = matches!(kind, crate::model::EdgeKind::SearchLink);
             let base = if dashed { 0.5 } else { 0.34 };
             set_stroke(ctx, kind.color());
@@ -315,11 +320,12 @@ pub fn draw(
         if let Some(p) = pos.get(&n.key) {
             let (x, y) = cam.project(p, w, h);
             let r = radius(n.visits, cam.scale);
-            let hot = lit(&n.key);
-            ctx.set_global_alpha(if hot { 1.0 } else { 0.22 });
             // Fill = dominant provenance; shape = same provenance (a CVD-safe
-            // redundant channel). 2px black moat so markers read over the edges.
+            // redundant channel). A node stays bright only if it survives both the
+            // hover spotlight and (if set) the legend provenance filter.
             let prov = n.prov.dominant().display();
+            let hot = lit(&n.key) && filter.map(|f| prov == f).unwrap_or(true);
+            ctx.set_global_alpha(if hot { 1.0 } else { 0.22 });
             set_fill(ctx, prov.color());
             trace_marker(ctx, prov.shape(), x, y, r);
             ctx.fill();

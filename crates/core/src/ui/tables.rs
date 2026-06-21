@@ -62,7 +62,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         ("Typed URL", prov.typed_url),
         ("Search origin", prov.search_origin),
         ("Bookmark", prov.bookmark),
-        ("Start", prov.start),
+        ("External", prov.start),
         ("Reload", prov.reload),
         ("Other", prov.other),
     ] {

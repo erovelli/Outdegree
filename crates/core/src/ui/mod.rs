@@ -14,7 +14,7 @@ mod session_picker;
 mod tables;
 
 use crate::layout::{self, Pos};
-use crate::model::{Granularity, GraphProjection};
+use crate::model::{Granularity, GraphProjection, Provenance};
 use crate::project::{self, Filters, TimeRange};
 use crate::render::canvas2d::Camera;
 use crate::rollup::{DayBucket, SessionRec};
@@ -73,6 +73,8 @@ pub(crate) struct App {
     pub spa_mode: bool,
     /// Drill-down focus: when set, the graph shows this node's ego network (§M3).
     pub focus: Option<String>,
+    /// Legend highlight: a clicked provenance key keeps only its nodes bright.
+    pub legend_filter: Option<Provenance>,
     /// Whether the window-resize listener has been installed (install once).
     pub resize_hooked: bool,
     /// Whether the live-refresh listeners have been installed (install once).
@@ -149,6 +151,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         selected_session: None,
         spa_mode: false,
         focus: None,
+        legend_filter: None,
         resize_hooked: false,
         live_hooked: false,
         refreshing: false,
