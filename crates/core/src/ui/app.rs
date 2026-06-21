@@ -10,7 +10,7 @@ use super::{
     el, graph_view, on, persist_positions, recompute_projection, reload_and_rerender,
     reload_buckets, rerender, Shared, View,
 };
-use crate::model::{Granularity, ProvBreakdown, Provenance};
+use crate::model::{Granularity, ProvBreakdown};
 use crate::project::TimeRange;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element, HtmlElement, HtmlInputElement, KeyboardEvent};
@@ -51,7 +51,7 @@ fn span(doc: &Document, class: &str, text: &str) -> Element {
 
 // ── 1. brand + REC (top-left) ────────────────────────────────────────────────
 fn brand_panel(doc: &Document, shared: &Shared) -> Element {
-    let p = panel(doc, "brand", "top:22px;left:22px");
+    let p = panel(doc, "brand at-tl");
     let logo = el(doc, "div");
     let _ = logo.set_attribute("class", "logo");
     logo.set_inner_html(LOGO);
@@ -91,11 +91,7 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
 
 // ── 2. range (top-center) ────────────────────────────────────────────────────
 fn range_panel(doc: &Document, shared: &Shared) -> Element {
-    let p = panel(
-        doc,
-        "seg-panel",
-        "top:22px;left:50%;transform:translateX(-50%)",
-    );
+    let p = panel(doc, "seg-panel at-tc");
     let (wrap, btns) = seg(
         doc,
         "solid",
@@ -130,7 +126,7 @@ fn range_panel(doc: &Document, shared: &Shared) -> Element {
 
 // ── 3. view + settings gear (top-right) ──────────────────────────────────────
 fn view_panel(doc: &Document, shared: &Shared) -> Element {
-    let p = panel(doc, "viewbar", "top:22px;right:22px");
+    let p = panel(doc, "viewbar at-tr");
     let (wrap, btns) = seg(
         doc,
         "ghost",
@@ -174,7 +170,7 @@ fn view_panel(doc: &Document, shared: &Shared) -> Element {
 
 // ── 4. provenance legend (right) ─────────────────────────────────────────────
 fn legend_panel(doc: &Document) -> Element {
-    let p = panel(doc, "legend", "top:84px;right:22px");
+    let p = panel(doc, "legend at-rt");
     let title = span(doc, "legend-title", "PROVENANCE");
     let rows = el(doc, "div");
     let _ = rows.set_attribute("id", "bg-legend-rows");
@@ -186,7 +182,7 @@ fn legend_panel(doc: &Document) -> Element {
 
 // ── 5. zoom toolbar (bottom-right) ───────────────────────────────────────────
 fn zoom_panel(doc: &Document, shared: &Shared) -> Element {
-    let p = panel(doc, "toolbar", "bottom:22px;right:22px");
+    let p = panel(doc, "toolbar at-br");
     let zin = icon_btn(doc, "bg-zoom-in", "Zoom in", &icon("plus"));
     let zout = icon_btn(doc, "bg-zoom-out", "Zoom out", &icon("minus"));
     let fit = icon_btn(doc, "bg-fit", "Fit to screen", &icon("fit"));
@@ -218,7 +214,7 @@ fn zoom_panel(doc: &Document, shared: &Shared) -> Element {
 
 // ── 6. search + filter chips (bottom-left) ───────────────────────────────────
 fn search_panel(doc: &Document, shared: &Shared) -> Element {
-    let p = panel(doc, "search", "bottom:22px;left:22px");
+    let p = panel(doc, "search at-bl");
 
     let sbox = el(doc, "div");
     let _ = sbox.set_attribute("class", "searchbox");
@@ -332,11 +328,7 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
 
 // ── 7. readout + spectrum (bottom-center) ────────────────────────────────────
 fn readout_panel(doc: &Document) -> Element {
-    let p = panel(
-        doc,
-        "readout",
-        "bottom:22px;left:50%;transform:translateX(-50%)",
-    );
+    let p = panel(doc, "readout at-bc");
     let nodes = span(doc, "metric", "0 nodes");
     let _ = nodes.set_attribute("id", "bg-count-nodes");
     let edges = span(doc, "metric", "0 edges");
@@ -359,7 +351,7 @@ fn readout_panel(doc: &Document) -> Element {
 
 // ── 8. settings popover (hidden until the gear is clicked) ────────────────────
 fn settings_popover(doc: &Document, shared: &Shared) -> Element {
-    let pop = panel(doc, "popover", "top:70px;right:22px");
+    let pop = panel(doc, "popover at-pop");
     let _ = pop.set_attribute("id", "bg-settings");
 
     let (spa_row, spa_input) = menu_toggle(doc, "In-app navigations", false);
@@ -540,28 +532,28 @@ pub(crate) fn sync_chrome(shared: &Shared) {
     for n in &a.proj.nodes {
         b.merge(&n.prov);
     }
+    // (count, label, dot color class) — colors live in CSS so no inline style
+    // is needed (the page CSP blocks inline styles).
     let rows = [
-        (Provenance::SearchOrigin, b.search_origin, "Search"),
-        (Provenance::Link, b.link, "Link"),
-        (Provenance::TypedUrl, b.typed_url, "Typed URL"),
-        (Provenance::Bookmark, b.bookmark, "Bookmark"),
-        (Provenance::Form, b.form, "Form"),
-        (Provenance::Other, b.other + b.start + b.reload, "Other"),
+        (b.search_origin, "Search", "dot-search"),
+        (b.link, "Link", "dot-link"),
+        (b.typed_url, "Typed URL", "dot-typed"),
+        (b.bookmark, "Bookmark", "dot-bookmark"),
+        (b.form, "Form", "dot-form"),
+        (b.other + b.start + b.reload, "Other", "dot-other"),
     ];
-    let total: u32 = rows.iter().map(|(_, c, _)| *c).sum();
+    let total: u32 = rows.iter().map(|(c, _, _)| *c).sum();
     let mut html = String::new();
-    for (prov, count, label) in rows {
+    for (count, label, dot) in rows {
         let pct = if total > 0 {
             (count as f64 * 100.0 / total as f64).round() as u32
         } else {
             0
         };
         html.push_str(&format!(
-            "<div class=\"legend-row\"><span class=\"dot\" style=\"background:{}\"></span>\
-             <span class=\"legend-label\">{}</span><span class=\"legend-pct\">{}%</span></div>",
-            prov.color(),
-            label,
-            pct
+            "<div class=\"legend-row\"><span class=\"dot {dot}\"></span>\
+             <span class=\"legend-label\">{label}</span>\
+             <span class=\"legend-pct\">{pct}%</span></div>"
         ));
     }
     if let Some(rows_el) = doc.get_element_by_id("bg-legend-rows") {

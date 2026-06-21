@@ -12,17 +12,17 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let doc = shared.borrow().doc.clone();
 
     let container = el(&doc, "div");
-    let _ = container.set_attribute("style", "display:flex; gap:16px; height:100%");
+    let _ = container.set_attribute("class", "sp-row");
 
     let list = el(&doc, "div");
-    let _ = list.set_attribute("style", "flex:0 0 320px; overflow:auto");
+    let _ = list.set_attribute("class", "sp-list");
     let heading = el(&doc, "h3");
     heading.set_text_content(Some("Sessions"));
     let _ = list.append_child(&heading);
 
     let flow = el(&doc, "div");
     let _ = flow.set_attribute("id", "bg-flow");
-    let _ = flow.set_attribute("style", "flex:1; overflow:auto");
+    let _ = flow.set_attribute("class", "sp-flow");
 
     let mut sessions = shared.borrow().sessions.clone();
     sessions.sort_by(|a, b| {
@@ -40,10 +40,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
 
     for sess in &sessions {
         let item = el(&doc, "div");
-        let _ = item.set_attribute(
-            "style",
-            "padding:8px; border:1px solid var(--line); border-radius:6px; margin-bottom:6px; cursor:pointer",
-        );
+        let _ = item.set_attribute("class", "sp-item");
         let top = sess
             .top_hosts
             .iter()
@@ -51,7 +48,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
             .collect::<Vec<_>>()
             .join(", ");
         item.set_inner_html(&format!(
-            "<b>{} navs</b> · window {}<br><span style=\"color:var(--muted)\">{}</span>",
+            "<b>{} navs</b> · window {}<br><span class=\"muted\">{}</span>",
             sess.nav_count,
             sess.window_id,
             esc(&top)

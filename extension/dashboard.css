@@ -1,0 +1,244 @@
+/*
+ * Palantir-AIP visual language (design handoff): pure-black canvas-is-the-app
+ * workspace with translucent floating glass chrome. All chrome is monochrome;
+ * the only color belongs to the data spectrum drawn on the canvas.
+ *
+ * This is an EXTERNAL stylesheet (not an inline <style> block) and the UI uses
+ * CSS classes rather than inline style="" attributes: the extension page CSP is
+ * `default-src 'self'` with no `'unsafe-inline'`, which blocks inline styles but
+ * permits a same-origin stylesheet. Keeping styles here preserves the strict CSP
+ * (and the zero-network-egress guarantee) untouched.
+ *
+ * Fonts: the handoff specifies Hanken Grotesk + JetBrains Mono. We name them
+ * first (used if the user has them) and fall back to the system grotesque/mono —
+ * never a Google Fonts import (CSP `connect-src 'none'` forbids runtime fetches).
+ */
+:root {
+  color-scheme: dark;
+  --grotesque: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --bg: #000000;
+  --glass-fill: oklch(0.13 0.004 285 / 0.72);
+  --glass-border: oklch(1 0 0 / 0.08);
+  --glass-shadow: 0 8px 30px -12px rgba(0, 0, 0, 0.7);
+  --divider: oklch(1 0 0 / 0.1);
+  --toolbar-divider: oklch(1 0 0 / 0.06);
+  --text-primary: #f4f4f5;
+  --text-secondary: #c8c8cc;
+  --text-tertiary: #9a9aa0;
+  --text-muted: #7a7a80;
+  --text-faint: #5a5a5e;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font: 14px/1.5 var(--grotesque);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+#app { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+
+/* The view body: the graph canvas (full-bleed) or the data tables. */
+.bg-body { position: fixed; inset: 0; }
+.bg-body.mode-graph { pointer-events: none; z-index: 0; }
+.bg-body.mode-graph #bg-canvas { pointer-events: auto; }
+.bg-body.mode-data {
+  z-index: 1; overflow: auto; pointer-events: auto;
+  padding: 88px 24px 96px;
+}
+#bg-canvas {
+  position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 0;
+}
+
+/* ── glass panels ── */
+.panel {
+  position: fixed; z-index: 10;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  pointer-events: auto;
+}
+/* edge/corner placement (was inline style="" — moved here for CSP) */
+.at-tl { top: 22px; left: 22px; }
+.at-tc { top: 22px; left: 50%; transform: translateX(-50%); }
+.at-tr { top: 22px; right: 22px; }
+.at-rt { top: 84px; right: 22px; }
+.at-br { bottom: 22px; right: 22px; }
+.at-bl { bottom: 22px; left: 22px; }
+.at-bc { bottom: 22px; left: 50%; transform: translateX(-50%); }
+.at-pop { top: 70px; right: 22px; }
+
+/* 1. brand + REC */
+.panel.brand { gap: 11px; padding: 8px 14px; }
+.logo { width: 20px; height: 20px; display: block; }
+.wordmark {
+  font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.vrule { width: 1px; align-self: stretch; background: var(--divider); }
+.panel.brand .vrule { height: 18px; align-self: center; }
+.rec { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.rec-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: oklch(0.66 0.2 12);
+  animation: recpulse 2.4s ease-in-out infinite;
+}
+.rec-label {
+  font: 11px var(--mono); letter-spacing: 0.04em; color: var(--text-tertiary);
+}
+.rec.paused .rec-dot { animation: none; opacity: 0.35; }
+@keyframes recpulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* 2./3. segmented controls */
+.panel.seg-panel, .panel.viewbar { padding: 4px; gap: 6px; }
+.seg { display: flex; gap: 2px; }
+.seg button {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  padding: 6px 14px; border-radius: 6px; color: var(--text-tertiary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.seg-solid button { font: 12px var(--mono); }
+.seg-ghost button { font: 12px var(--grotesque); }
+.seg button:hover { color: var(--text-secondary); }
+.seg-solid button.active {
+  background: var(--text-primary); color: #0a0a0a; font-weight: 600;
+}
+.seg-ghost button.active {
+  background: oklch(1 0 0 / 0.1); color: var(--text-primary);
+}
+
+/* icon buttons */
+.iconbtn {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  width: 38px; height: 38px; border-radius: 10px;
+  display: grid; place-items: center; color: var(--text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.iconbtn:hover { background: oklch(1 0 0 / 0.06); color: var(--text-primary); }
+.iconbtn.active { color: var(--text-primary); background: oklch(1 0 0 / 0.08); }
+.iconbtn svg { width: 17px; height: 17px; }
+
+/* 4. provenance legend */
+.panel.legend { flex-direction: column; align-items: stretch; width: 184px; gap: 0; }
+.legend-title {
+  font: 10px var(--mono); text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-muted); margin-bottom: 10px;
+}
+.legend-rows { display: flex; flex-direction: column; gap: 8px; }
+.legend-row { display: flex; align-items: center; gap: 8px; }
+.legend-row .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.legend-label { flex: 1; font-size: 11.5px; color: var(--text-secondary); }
+.legend-pct { font: 10px var(--mono); color: var(--text-muted); }
+/* provenance dot colors (was inline style="background:…" — moved here for CSP) */
+.dot-search { background: oklch(0.64 0.205 264); }
+.dot-link { background: oklch(0.64 0.205 288); }
+.dot-typed { background: oklch(0.64 0.205 312); }
+.dot-bookmark { background: oklch(0.64 0.205 340); }
+.dot-form { background: oklch(0.64 0.205 8); }
+.dot-other { background: oklch(0.64 0.205 30); }
+
+/* 5. zoom toolbar */
+.panel.toolbar { flex-direction: column; padding: 0; gap: 0; overflow: hidden; }
+.panel.toolbar .iconbtn { width: 40px; height: 40px; border-radius: 0; }
+.panel.toolbar .iconbtn + .iconbtn { border-top: 1px solid var(--toolbar-divider); }
+
+/* 6. search + filter chips */
+.panel.search { flex-direction: column; align-items: stretch; gap: 8px; }
+.searchbox { display: flex; align-items: center; gap: 8px; width: 236px; }
+.search-ico { display: grid; place-items: center; color: var(--text-muted); }
+.search-ico svg { width: 15px; height: 15px; }
+.search-input {
+  flex: 1; min-width: 0; background: transparent; border: 0; outline: 0;
+  color: var(--text-primary); font: 13px var(--mono);
+}
+.search-input::placeholder { color: var(--text-muted); }
+.kbd {
+  font: 10px var(--mono); color: var(--text-faint);
+  border: 1px solid var(--divider); border-radius: 4px; padding: 1px 5px;
+}
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  appearance: none; cursor: pointer;
+  font-size: 11.5px; color: var(--text-secondary);
+  padding: 9px 12px; border-radius: 9px;
+  background: oklch(1 0 0 / 0.04); border: 1px solid var(--toolbar-divider);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.chip:hover { background: oklch(1 0 0 / 0.08); }
+#chip-hubs { color: var(--text-muted); }
+#chip-hubs.active { color: var(--text-primary); background: oklch(1 0 0 / 0.1); }
+
+/* 7. readout + spectrum */
+.panel.readout { gap: 12px; padding: 8px 14px; }
+.panel.readout .vrule { height: 14px; }
+.metric { font: 11px var(--mono); color: var(--text-secondary); }
+.spectrum {
+  width: 120px; height: 7px; border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    oklch(0.64 0.2 264), oklch(0.62 0.23 305), oklch(0.64 0.24 340),
+    oklch(0.66 0.2 8), oklch(0.67 0.19 28)
+  );
+}
+.spectrum-label { font: 10px var(--mono); color: var(--text-muted); }
+
+/* 8. settings popover */
+.popover {
+  flex-direction: column; align-items: stretch; gap: 2px;
+  min-width: 210px; padding: 8px; display: none;
+}
+.popover.open { display: flex; }
+.menu-item {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  text-align: left; color: var(--text-secondary);
+  font: 12.5px var(--grotesque); padding: 8px 10px; border-radius: 6px;
+}
+.menu-item:hover { background: oklch(1 0 0 / 0.06); color: var(--text-primary); }
+.menu-toggle { display: flex; align-items: center; justify-content: space-between; }
+.menu-toggle input { accent-color: var(--text-secondary); }
+.menu-sep { height: 1px; background: var(--divider); margin: 4px 0; }
+
+/* data views (tables / raw / sessions) rendered into mode-data body */
+table { border-collapse: collapse; width: 100%; }
+th, td {
+  text-align: left; padding: 6px 12px;
+  border-bottom: 1px solid var(--toolbar-divider);
+}
+th { color: var(--text-muted); font-weight: 600; }
+td { color: var(--text-secondary); }
+a { color: var(--text-primary); }
+.muted { color: var(--text-tertiary); }
+
+/* session picker (two-pane) */
+.sp-row { display: flex; gap: 16px; height: 100%; }
+.sp-list { flex: 0 0 320px; overflow: auto; }
+.sp-flow { flex: 1; overflow: auto; }
+.sp-tab { margin: 8px 0; }
+.sp-item {
+  padding: 8px 10px; border: 1px solid var(--toolbar-divider);
+  border-radius: 8px; margin-bottom: 6px; cursor: pointer;
+}
+.sp-item:hover { background: oklch(1 0 0 / 0.05); }
+
+/* empty / loading states */
+.bg-empty {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  color: var(--text-tertiary); font: 13px var(--mono); text-align: center;
+  padding: 28px 36px; border-radius: 10px;
+  background: var(--glass-fill); border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+}
+.mode-data .bg-empty { position: static; transform: none; display: inline-block; }

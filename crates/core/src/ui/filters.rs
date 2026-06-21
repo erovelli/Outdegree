@@ -8,12 +8,12 @@
 use super::el;
 use web_sys::{Document, Element};
 
-/// A floating glass panel pinned by the inline `style` (edge/corner placement).
-/// `extra` adds layout modifiers (e.g. `"seg"`, `"toolbar"`).
-pub(crate) fn panel(doc: &Document, extra: &str, style: &str) -> Element {
+/// A floating glass panel. `extra` carries the layout + placement classes
+/// (e.g. `"brand at-tl"`, `"toolbar at-br"`). Placement is class-based — never an
+/// inline `style` — so it survives the page CSP (`default-src 'self'`).
+pub(crate) fn panel(doc: &Document, extra: &str) -> Element {
     let p = el(doc, "div");
     let _ = p.set_attribute("class", &format!("panel {extra}"));
-    let _ = p.set_attribute("style", style);
     p
 }
 

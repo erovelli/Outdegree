@@ -61,7 +61,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         };
         let mut html = format!(
             "<h3>Session flow · {} navs · window {}</h3>\
-             <p style=\"color:var(--muted)\">Per-tab navigation chains within this session.</p>",
+             <p class=\"muted\">Per-tab navigation chains within this session.</p>",
             sess.nav_count, sess.window_id
         );
         for (tab, chain) in &per_tab {
@@ -71,7 +71,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
                 .collect::<Vec<_>>()
                 .join(" &rarr; ");
             html.push_str(&format!(
-                "<div style=\"margin:8px 0\"><b>Tab {tab}</b>: {path}</div>"
+                "<div class=\"sp-tab\"><b>Tab {tab}</b>: {path}</div>"
             ));
         }
         if per_tab.is_empty() {

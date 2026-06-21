@@ -24,16 +24,14 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         .map_err(|_| JsValue::from_str("canvas cast"))?;
     let _ = canvas.set_attribute("id", "bg-canvas");
 
-    // The canvas *is* the app: full-bleed under the floating chrome. Fixed so it
-    // fills the viewport; the glass panels sit above it (higher z-index).
+    // The canvas *is* the app: full-bleed under the floating chrome. Its
+    // position/size live in CSS (`#bg-canvas`) — not an inline style — so it
+    // survives the page CSP (`default-src 'self'`, no inline styles). Only the
+    // bitmap resolution is set here (width/height attributes, not CSS).
     let w = win_dim(&win, true).max(320.0);
     let h = win_dim(&win, false).max(320.0);
     canvas.set_width(w as u32);
     canvas.set_height(h as u32);
-    let _ = canvas.set_attribute(
-        "style",
-        "position:fixed;inset:0;width:100vw;height:100vh;display:block;z-index:0",
-    );
     let _ = body.append_child(&canvas);
 
     // Frame the laid-out nodes so the graph is visible even when sparse/edgeless.
