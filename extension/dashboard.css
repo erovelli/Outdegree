@@ -78,6 +78,8 @@ body {
 #bg-canvas {
   position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 0;
 }
+#bg-canvas.grabbable { cursor: grab; }
+#bg-canvas.grabbing { cursor: grabbing; }
 
 /* ── glass panels ── */
 .panel {

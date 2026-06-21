@@ -169,15 +169,25 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
             }
         });
     }
-    // drag start
+    // drag start: grabbing a node repositions it; empty space pans the canvas.
     {
         let s = shared.clone();
+        let c = canvas.clone();
         on(canvas.as_ref(), "mousedown", move |ev| {
             if let Ok(me) = ev.dyn_into::<MouseEvent>() {
+                let (mx, my) = (me.offset_x() as f64, me.offset_y() as f64);
                 let mut a = s.borrow_mut();
-                a.dragging = true;
+                let (w, h) = logical_dims(&c);
+                let hit = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
                 a.did_drag = false;
-                a.last_mouse = (me.offset_x() as f64, me.offset_y() as f64);
+                a.last_mouse = (mx, my);
+                match hit {
+                    Some(key) => {
+                        a.drag_node = Some(key);
+                        c.set_class_name("grabbing");
+                    }
+                    None => a.dragging = true,
+                }
             }
         });
     }
@@ -193,8 +203,28 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
             let mut redraw = false;
             {
                 let mut a = s.borrow_mut();
-                if a.dragging {
-                    let (lx, ly) = a.last_mouse;
+                let (lx, ly) = a.last_mouse;
+                if let Some(key) = a.drag_node.clone() {
+                    // Move the node: screen delta → world delta (÷ zoom). Update
+                    // both the live layout and the persisted seed so it sticks.
+                    if (mx - lx).abs() + (my - ly).abs() > 2.0 {
+                        a.did_drag = true;
+                    }
+                    let (dx, dy) = (
+                        ((mx - lx) / a.camera.scale) as f32,
+                        ((my - ly) / a.camera.scale) as f32,
+                    );
+                    if let Some(p) = a.layout_pos.get_mut(&key) {
+                        p.x += dx;
+                        p.y += dy;
+                    }
+                    a.positions.entry(key).and_modify(|p| {
+                        p.0 += dx;
+                        p.1 += dy;
+                    });
+                    a.last_mouse = (mx, my);
+                    redraw = true;
+                } else if a.dragging {
                     if (mx - lx).abs() + (my - ly).abs() > 2.0 {
                         a.did_drag = true;
                     }
@@ -205,6 +235,7 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                 } else {
                     let (w, h) = logical_dims(&c);
                     let hov = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
+                    c.set_class_name(if hov.is_some() { "grabbable" } else { "" });
                     if hov != a.hover {
                         a.hover = hov;
                         redraw = true;
@@ -216,11 +247,22 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
             }
         });
     }
-    // drag end
+    // drag end: persist positions if a node was actually moved.
     for event in ["mouseup", "mouseleave"] {
         let s = shared.clone();
+        let c = canvas.clone();
         on(canvas.as_ref(), event, move |_| {
-            s.borrow_mut().dragging = false;
+            let moved = {
+                let mut a = s.borrow_mut();
+                let moved = a.drag_node.is_some() && a.did_drag;
+                a.drag_node = None;
+                a.dragging = false;
+                moved
+            };
+            c.set_class_name("");
+            if moved {
+                super::persist_positions(&s);
+            }
         });
     }
     // click-to-drill: a click that wasn't a drag focuses the clicked node's ego

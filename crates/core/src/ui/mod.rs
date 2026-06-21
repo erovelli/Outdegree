@@ -57,6 +57,8 @@ pub(crate) struct App {
     pub hover: Option<String>,
     pub dragging: bool,
     pub did_drag: bool,
+    /// The node currently being dragged to reposition it (else canvas pan).
+    pub drag_node: Option<String>,
     pub last_mouse: (f64, f64),
     pub selected_session: Option<f64>,
     /// Opt-in "in-app navigations" view: fold `events` + `spa` from scratch (§4.2).
@@ -132,6 +134,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         hover: None,
         dragging: false,
         did_drag: false,
+        drag_node: None,
         last_mouse: (0.0, 0.0),
         selected_session: None,
         spa_mode: false,
