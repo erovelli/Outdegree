@@ -212,6 +212,52 @@ pub fn ego(p: &GraphProjection, focus: &str) -> GraphProjection {
     GraphProjection { nodes, edges }
 }
 
+/// Drill-down: the whole connected component containing `focus` — every node
+/// reachable through edges (treated as undirected) and the edges among that set.
+/// Unlike [`ego`] (1-hop), this is the node's *full* connected network (§M3).
+pub fn component(p: &GraphProjection, focus: &str) -> GraphProjection {
+    // Undirected adjacency over the projection's edges.
+    let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+    for e in &p.edges {
+        adj.entry(e.from.as_str()).or_default().push(e.to.as_str());
+        adj.entry(e.to.as_str()).or_default().push(e.from.as_str());
+    }
+    // Seed from the focus key as borrowed from `p` so every kept &str shares one
+    // lifetime; BFS the component.
+    let mut keep: HashSet<&str> = HashSet::new();
+    if let Some(seed) = p
+        .nodes
+        .iter()
+        .find(|n| n.key == focus)
+        .map(|n| n.key.as_str())
+    {
+        keep.insert(seed);
+        let mut stack = vec![seed];
+        while let Some(u) = stack.pop() {
+            if let Some(neighbors) = adj.get(u) {
+                for &v in neighbors {
+                    if keep.insert(v) {
+                        stack.push(v);
+                    }
+                }
+            }
+        }
+    }
+    let nodes = p
+        .nodes
+        .iter()
+        .filter(|n| keep.contains(n.key.as_str()))
+        .cloned()
+        .collect();
+    let edges = p
+        .edges
+        .iter()
+        .filter(|e| keep.contains(e.from.as_str()) && keep.contains(e.to.as_str()))
+        .cloned()
+        .collect();
+    GraphProjection { nodes, edges }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -454,5 +500,37 @@ mod tests {
         // only edges among the kept set survive (a->far is dropped)
         assert_eq!(g.edges.len(), 2);
         assert!(g.edges.iter().all(|x| x.to != "far" && x.from != "far"));
+    }
+
+    #[test]
+    fn component_returns_the_whole_connected_network() {
+        use crate::model::{EdgeAgg, NodeAgg};
+        let n = |k: &str| NodeAgg {
+            key: k.into(),
+            visits: 1,
+            prov: ProvBreakdown::default(),
+        };
+        let e = |f: &str, t: &str| EdgeAgg {
+            from: f.into(),
+            to: t.into(),
+            weight: 1,
+            kinds: crate::model::KindBreakdown::default(),
+        };
+        // Two components: a–b–c–d chain, and an isolated pair x–y.
+        let p = GraphProjection {
+            nodes: vec![n("a"), n("b"), n("c"), n("d"), n("x"), n("y")],
+            edges: vec![e("a", "b"), e("b", "c"), e("c", "d"), e("x", "y")],
+        };
+        // Focusing `b` returns the *whole* chain (not just b's neighbors a,c).
+        let g = component(&p, "b");
+        let keys: std::collections::HashSet<&str> =
+            g.nodes.iter().map(|x| x.key.as_str()).collect();
+        assert_eq!(keys, ["a", "b", "c", "d"].into_iter().collect());
+        assert_eq!(g.edges.len(), 3);
+        // The other component is excluded.
+        assert!(!keys.contains("x") && !keys.contains("y"));
+        // A node in the other component returns only its own pair.
+        let gx = component(&p, "x");
+        assert_eq!(gx.nodes.len(), 2);
     }
 }

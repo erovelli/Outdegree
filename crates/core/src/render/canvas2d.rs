@@ -105,10 +105,13 @@ pub fn fit(proj: &GraphProjection, pos: &HashMap<String, Pos>, w: f64, h: f64) -
     if !any {
         return Camera::default();
     }
-    let pad = 120.0;
+    // Leave 10% padding on each edge so the floating chrome (legend, toolbars,
+    // readout) doesn't cover the network — the graph fits the central 80%×80%.
     let bw = (maxx - minx).max(1.0);
     let bh = (maxy - miny).max(1.0);
-    let scale = ((w - pad) / bw).min((h - pad) / bh).clamp(0.05, 3.0);
+    let usable_w = (w * 0.8).max(1.0);
+    let usable_h = (h * 0.8).max(1.0);
+    let scale = (usable_w / bw).min(usable_h / bh).clamp(0.05, 3.0);
     let scale = if scale.is_finite() { scale } else { 1.0 };
     let (cx, cy) = ((minx + maxx) / 2.0, (miny + maxy) / 2.0);
     // screen = pos*scale + cam + size/2; center the bbox at the canvas center.
