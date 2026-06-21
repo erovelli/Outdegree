@@ -294,11 +294,14 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
     let mv = el(doc, "select");
     let _ = mv.set_attribute("class", "chip chip-select");
     let _ = mv.set_attribute("id", "chip-minvisits");
-    let _ = mv.set_attribute("title", "Minimum visit count to show a node");
-    for n in [0u32, 5, 10, 25, 50] {
+    let _ = mv.set_attribute("title", "Only show sites with at least this many visits");
+    // Options are filled in by `sync_chrome::populate_min_visits`, which adapts the
+    // thresholds to the current visit volume; this placeholder avoids an empty
+    // control before the first render.
+    {
         let opt = el(doc, "option");
-        let _ = opt.set_attribute("value", &n.to_string());
-        opt.set_text_content(Some(&format!("min visits ≥ {n}")));
+        let _ = opt.set_attribute("value", "1");
+        opt.set_text_content(Some("All sites"));
         let _ = mv.append_child(&opt);
     }
     let hubs = chip(doc, "chip-hubs", "hide search hubs");
@@ -610,6 +613,7 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         }
     }
     toggle_active(&doc, "chip-hubs", a.filters.hide_search_hubs);
+    populate_min_visits(&doc, &a);
 
     // REC indicator
     if let Some(rec) = doc.get_element_by_id("bg-rec") {
@@ -630,6 +634,64 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         });
         lock.set_inner_html(&icon(if a.locked { "lock" } else { "unlock" }));
     }
+}
+
+/// Rebuild the min-visits dropdown so its thresholds track the current visit
+/// volume — a "nice" 1-2-5 ladder up to the busiest site (see
+/// [`crate::project::visit_thresholds`]). Only rewrites the options when the
+/// ladder actually changes (guarded by a `data-ths` signature), and always
+/// reflects the active selection. The distribution is taken over the currently
+/// *visible* sites (every filter but the min-visits cut), so it adapts to the
+/// granularity and hub toggles.
+fn populate_min_visits(doc: &Document, a: &super::App) {
+    let Some(sel) = doc.get_element_by_id("chip-minvisits") else {
+        return;
+    };
+    let Ok(sel) = sel.dyn_into::<HtmlSelectElement>() else {
+        return;
+    };
+
+    let window = crate::project::select_window(&a.buckets, a.time_range);
+    let probe = crate::project::Filters {
+        min_visits: 0,
+        hide_search_hubs: a.filters.hide_search_hubs,
+        provenance_in: a.filters.provenance_in.clone(),
+    };
+    let max = crate::project::project(&window, a.gran, &probe)
+        .nodes
+        .iter()
+        .map(|n| n.visits)
+        .max()
+        .unwrap_or(0);
+
+    // `min_visits` 0 and 1 are equivalent (every site has ≥1 visit); show "all".
+    let cur = a.filters.min_visits.max(1);
+    let mut ths = crate::project::visit_thresholds(max);
+    if !ths.contains(&cur) {
+        ths.push(cur); // keep the user's explicit choice selectable
+        ths.sort_unstable();
+    }
+
+    let sig = ths
+        .iter()
+        .map(|t| t.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    if sel.get_attribute("data-ths").as_deref() != Some(sig.as_str()) {
+        sel.set_inner_html("");
+        for t in &ths {
+            let opt = el(doc, "option");
+            let _ = opt.set_attribute("value", &t.to_string());
+            opt.set_text_content(Some(&if *t <= 1 {
+                "All sites".to_string()
+            } else {
+                format!("Min {t} visits")
+            }));
+            let _ = sel.append_child(&opt);
+        }
+        let _ = sel.set_attribute("data-ths", &sig);
+    }
+    sel.set_value(&cur.to_string());
 }
 
 fn set_text(doc: &Document, id: &str, text: &str) {
