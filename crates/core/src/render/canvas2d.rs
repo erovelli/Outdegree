@@ -317,10 +317,11 @@ pub fn draw(
             let r = radius(n.visits, cam.scale);
             let hot = lit(&n.key);
             ctx.set_global_alpha(if hot { 1.0 } else { 0.22 });
-            // 2px black moat so discs read cleanly over the edges beneath them.
-            set_fill(ctx, n.prov.dominant().color());
-            ctx.begin_path();
-            let _ = ctx.arc(x, y, r, 0.0, PI * 2.0);
+            // Fill = dominant provenance; shape = same provenance (a CVD-safe
+            // redundant channel). 2px black moat so markers read over the edges.
+            let prov = n.prov.dominant().display();
+            set_fill(ctx, prov.color());
+            trace_marker(ctx, prov.shape(), x, y, r);
             ctx.fill();
             ctx.stroke();
 
@@ -417,7 +418,7 @@ fn draw_callout(
     ctx.set_line_width(1.0);
     ctx.stroke();
 
-    let prov = node.prov.dominant();
+    let prov = node.prov.dominant().display();
     // provenance dot
     set_fill(ctx, prov.color());
     ctx.begin_path();
@@ -434,6 +435,32 @@ fn draw_callout(
     let sub = format!("{} visits · {}", node.visits, prov_label(prov));
     let _ = ctx.fill_text(&sub, bx + 16.0, by + 41.0);
     ctx.set_text_baseline("alphabetic");
+}
+
+/// Trace a provenance marker (path only — caller fills/strokes): a circle, or the
+/// provenance's polygon when the shape isn't round.
+fn trace_marker(
+    ctx: &CanvasRenderingContext2d,
+    shape: crate::model::Shape,
+    x: f64,
+    y: f64,
+    r: f64,
+) {
+    ctx.begin_path();
+    match shape.points(x, y, r) {
+        None => {
+            let _ = ctx.arc(x, y, r, 0.0, PI * 2.0);
+        }
+        Some(pts) => {
+            if let Some(&(x0, y0)) = pts.first() {
+                ctx.move_to(x0, y0);
+                for &(px, py) in &pts[1..] {
+                    ctx.line_to(px, py);
+                }
+                ctx.close_path();
+            }
+        }
+    }
 }
 
 /// Trace a rounded rectangle (path only — caller fills/strokes).

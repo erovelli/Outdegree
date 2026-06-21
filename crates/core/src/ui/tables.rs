@@ -12,6 +12,13 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     };
     let a = shared.borrow();
 
+    if a.proj.nodes.is_empty() {
+        body.set_inner_html(
+            "<div class=\"bg-empty\">No data for this range yet. Browse a bit, then reopen this dashboard.</div>",
+        );
+        return Ok(());
+    }
+
     let g = graph::build(&a.proj);
     let hubs = graph::hubs(&g, 20);
     let edges = graph::top_edges(&a.proj, 20);

@@ -164,9 +164,31 @@ fn request_frame(cb: &Closure<dyn FnMut()>) {
 /// drop itself).
 type RafHandle = Rc<RefCell<Option<Closure<dyn FnMut()>>>>;
 
+/// Whether the user prefers reduced motion (OS/browser setting). When set, camera
+/// transitions jump instead of tweening.
+fn reduced_motion() -> bool {
+    web_sys::window()
+        .and_then(|w| {
+            w.match_media("(prefers-reduced-motion: reduce)")
+                .ok()
+                .flatten()
+        })
+        .map(|m| m.matches())
+        .unwrap_or(false)
+}
+
 /// Tween the camera to `target` (ease-out, ~380ms), redrawing each frame.
 /// Cancellable via `App::anim_gen` (a new tween or a manual pan/zoom supersedes).
 fn animate_to(shared: &Shared, target: Camera) {
+    // Respect reduced-motion: snap straight to the framed view, no tween.
+    if reduced_motion() {
+        let mut a = shared.borrow_mut();
+        a.anim_gen = a.anim_gen.wrapping_add(1); // cancel any in-flight tween
+        a.camera = target;
+        drop(a);
+        redraw(shared);
+        return;
+    }
     let start = {
         let mut a = shared.borrow_mut();
         a.anim_gen = a.anim_gen.wrapping_add(1);
