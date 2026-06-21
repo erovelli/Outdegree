@@ -72,32 +72,36 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let lbl = el(&doc, "span");
     let _ = lbl.set_attribute("class", "muted");
     lbl.set_text_content(Some("Group by"));
-    let gran_btn = el(&doc, "button");
-    let _ = gran_btn.set_attribute("class", "chip");
-    let _ = gran_btn.set_attribute("title", "Toggle hostname / registrable-domain grouping");
-    gran_btn.set_text_content(Some(if shared.borrow().gran == Granularity::Registrable {
-        "Domain ⌄"
+
+    let (seg_wrap, btns) = super::filters::seg(
+        &doc,
+        "ghost",
+        &[("hostname", "Hostname"), ("registrable", "Domain")],
+    );
+    let cur = if shared.borrow().gran == Granularity::Registrable {
+        "registrable"
     } else {
-        "Hostname ⌄"
-    }));
-    {
+        "hostname"
+    };
+    for (val, btn) in &btns {
+        if val.as_str() == cur {
+            let _ = btn.set_attribute("class", "active");
+        }
+        let gran = if val.as_str() == "registrable" {
+            Granularity::Registrable
+        } else {
+            Granularity::Hostname
+        };
         let s = shared.clone();
-        on(&gran_btn, "click", move |_| {
-            {
-                let mut a = s.borrow_mut();
-                a.gran = if a.gran == Granularity::Hostname {
-                    Granularity::Registrable
-                } else {
-                    Granularity::Hostname
-                };
-            }
+        on(btn, "click", move |_| {
+            s.borrow_mut().gran = gran;
             recompute_projection(&s);
             persist_positions(&s);
             let _ = rerender(&s);
         });
     }
     let _ = bar.append_child(&lbl);
-    let _ = bar.append_child(&gran_btn);
+    let _ = bar.append_child(&seg_wrap);
 
     let flow = el(&doc, "div");
     let _ = flow.set_attribute("id", "bg-flow");
