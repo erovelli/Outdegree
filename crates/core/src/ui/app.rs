@@ -253,13 +253,8 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
                 .find(|n| n.key.to_lowercase().contains(&q))
                 .map(|n| n.key.clone());
             if let Some(k) = hit {
-                {
-                    let mut a = s.borrow_mut();
-                    a.focus = Some(k);
-                    a.view = View::Graph;
-                }
-                recompute_projection(&s);
-                let _ = rerender(&s);
+                s.borrow_mut().view = View::Graph;
+                super::focus_and_animate(&s, Some(k));
             }
         });
     }
