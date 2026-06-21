@@ -39,7 +39,7 @@ are what the §7.2 mapping must match.
 | 9 | **Restart the browser** (quit + reopen) | a `start` record on startup |
 | 10 | **Close a tab** | a `close` record (`tabId`) |
 | 11 | Open the **dashboard** itself | **no** `nav` recorded for the extension page |
-| 12 | Toggle **Pause** in the dashboard, then navigate | **no** new records while paused |
+| 12 | Click **REC** (top-left) to pause, navigate, then click again to resume | **no** new `events` while paused; records **resume** after un-pausing (regression guard: the flag is stored as a string, so resume must actually restart capture) |
 
 ## What to tune from observations
 
@@ -61,3 +61,23 @@ are what the §7.2 mapping must match.
 All twelve rows behave as described; the redirect window and §7.2 table reflect
 reality. Then the derived views (graph, tables, sessions) on the dashboard
 should match what you browsed.
+
+## Derived-view acceptance (graph/Sankey behavior)
+
+Once capture is correct, confirm the read-side behaviors (these are the failure
+modes fixed during real-browser testing — each has a `cargo test`/CI guard, but
+verify the end-to-end result once in Chrome). The dashboard folds new events on
+open and **live-refreshes** on tab focus/visibility, so just switch back to it.
+
+| # | Action | Expect on the dashboard |
+|---|---|---|
+| A | Type a URL, then click a link on it; **stay** on the landing page | both hosts **and the edge** appear in the **Graph** (the current page shows via the provisional buffer flush), and in the **Sankey** flow |
+| B | From one page, open several links **in new tabs** (e.g. a list → articles) | the **Graph** shows edges `source → each new-tab host` (not isolated dots); the **Sankey** fans out from the source |
+| C | Browse a few pages in another tab, then switch back to the dashboard | new nodes/edges appear without reopening; returning **refits** the graph |
+| D | **Sankey** tab → pick a session | starting hosts on the **left**, flow → right; toggle **Hostname/Domain** regroups |
+| E | **Drag** a node on the Graph | it moves and stays put; reopening preserves the arrangement |
+| F | Settings (gear) → **Rebuild from raw events** | the whole graph re-derives from the stored `events` (recovery if the cursor ever drifts) |
+
+### Accept
+
+All rows behave as described; the Graph and Sankey agree on which hops happened.
