@@ -173,6 +173,34 @@ pub fn project(buckets: &[DayBucket], gran: Granularity, filters: &Filters) -> G
     }
 }
 
+/// A compact, "nice"-rounded ladder of min-visit thresholds for the filter
+/// dropdown, adapted to the data: always starts at `1` ("all sites"), then climbs
+/// a 1-2-5 × 10ⁿ ladder up to `max_visits`, capped to a handful of entries so the
+/// menu stays scannable. With little browsing you get a couple of options; with a
+/// heavy history you get coarser high-end cuts (e.g. ≥100, ≥200).
+pub fn visit_thresholds(max_visits: u32) -> Vec<u32> {
+    const LADDER: [u32; 16] = [
+        2, 5, 10, 20, 50, 100, 200, 500, 1_000, 2_000, 5_000, 10_000, 20_000, 50_000, 100_000,
+        200_000,
+    ];
+    const MAX_OPTS: usize = 6;
+
+    let mut out = vec![1u32];
+    for &v in LADDER.iter() {
+        if v > max_visits {
+            break;
+        }
+        out.push(v);
+    }
+    if out.len() > MAX_OPTS {
+        // Keep "all" plus the largest (most useful) high-end cuts.
+        let tail: Vec<u32> = out.split_off(out.len() - (MAX_OPTS - 1));
+        out.truncate(1);
+        out.extend(tail);
+    }
+    out
+}
+
 /// Total provenance breakdown across a range — the "origination" view (§M2).
 pub fn origination(buckets: &[DayBucket]) -> ProvBreakdown {
     let mut p = ProvBreakdown::default();
@@ -437,6 +465,23 @@ mod tests {
         let g = project(&[b], Granularity::Hostname, &filters);
         assert_eq!(g.nodes.len(), 1);
         assert_eq!(g.nodes[0].key, "wiki.org");
+    }
+
+    #[test]
+    fn visit_thresholds_adapt_to_volume() {
+        // Sparse data → just "all", or "all" + a step or two.
+        assert_eq!(visit_thresholds(0), vec![1]);
+        assert_eq!(visit_thresholds(1), vec![1]);
+        assert_eq!(visit_thresholds(3), vec![1, 2]);
+        assert_eq!(visit_thresholds(8), vec![1, 2, 5]);
+        // A medium history fills the low ladder exactly (no cap yet).
+        assert_eq!(visit_thresholds(50), vec![1, 2, 5, 10, 20, 50]);
+        // Heavy data is capped to six: "all" + the five largest applicable cuts.
+        assert_eq!(visit_thresholds(200), vec![1, 10, 20, 50, 100, 200]);
+        let huge = visit_thresholds(1_000_000);
+        assert_eq!(huge.len(), 6);
+        assert_eq!(huge[0], 1);
+        assert!(huge.windows(2).all(|w| w[0] < w[1]), "sorted & unique");
     }
 
     #[test]
