@@ -10,13 +10,19 @@
 
 import { ensureCreated, idbAdd } from "./idb";
 
-// The pause flag is SW-owned and lives in chrome.storage.local (§4.5).
+// The pause flag is SW-owned and lives in chrome.storage.local (§4.5). The
+// dashboard writes it as the STRING "true"/"false" (chromeBridge.storageLocalSet
+// only takes strings), so parse it the same way the dashboard reads it — a plain
+// `!!value` would treat the string "false" as truthy and wedge capture off.
+function flagOn(v: unknown): boolean {
+  return v === true || v === "true" || v === "1";
+}
 let paused = false;
 chrome.storage.local.get("paused").then((o) => {
-  paused = !!o.paused;
+  paused = flagOn(o.paused);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.paused) paused = !!changes.paused.newValue;
+  if (area === "local" && changes.paused) paused = flagOn(changes.paused.newValue);
 });
 
 // Skip the extension's own pages (e.g. the dashboard) so opening it is not

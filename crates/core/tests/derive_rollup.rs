@@ -114,24 +114,60 @@ fn node_visits(map: &Roll, key: &str) -> u32 {
 fn new_tab_origin_is_source_then_current_page() {
     let events = vec![
         nav(1, 100.0, 1, 1, "https://a.com/", "typed", &[]),
-        nav(2, 200.0, 1, 1, "https://m.com/", "link", &[]), // finalizes a.com; last_url=a.com
-        link(3, 250.0, 2, 1),                               // snapshot tab1.last_url == a.com
-        nav(4, 300.0, 1, 1, "https://b.com/", "link", &[]), // source navigates on
+        nav(2, 200.0, 1, 1, "https://m.com/", "link", &[]), // m.com is now the visible page (buffered)
+        link(3, 250.0, 2, 1),                               // snapshot tab1's current page == m.com
+        nav(4, 300.0, 1, 1, "https://b.com/", "link", &[]), // source navigates on, after the link
         nav(5, 400.0, 2, 1, "https://c.com/", "link", &[]), // child's first nav
         close(6, 500.0, 2),
         close(7, 600.0, 1),
     ];
     let (map, _, _) = run_all(&events);
-    // child edge originates from the snapshot (a.com), not m.com / b.com.
+    // The child originates from the page the link was clicked from (m.com), not
+    // the page before it (a.com) nor one loaded later (b.com).
     assert!(
-        has_edge(&map, "a.com", "c.com"),
-        "snapshot origin a.com->c.com"
+        has_edge(&map, "m.com", "c.com"),
+        "snapshot origin = source's current page m.com->c.com"
     );
-    assert!(!has_edge(&map, "m.com", "c.com"));
+    assert!(!has_edge(&map, "a.com", "c.com"));
     assert!(!has_edge(&map, "b.com", "c.com"));
     // sanity: within-tab chain edges
     assert!(has_edge(&map, "a.com", "m.com"));
     assert!(has_edge(&map, "m.com", "b.com"));
+}
+
+/// The page currently open in a tab sits in the redirect-lookahead buffer until
+/// the next event, so it isn't persisted yet — `provisional_buckets` surfaces it
+/// (display-only) so the graph shows where you are now, not just where you left.
+/// Reproduces: open Hacker News (typed), click the first link, then stop.
+#[test]
+fn provisional_buckets_surface_the_current_page_and_its_edge() {
+    use browsing_graph_core::derive::provisional_buckets;
+    let events = vec![
+        nav(
+            1,
+            100.0,
+            1,
+            1,
+            "https://news.ycombinator.com/",
+            "typed",
+            &[],
+        ),
+        nav(2, 200.0, 1, 1, "https://norvig.com/", "link", &[]),
+        // no close / further nav → norvig is still buffered
+    ];
+    let (mut map, _, st) = run_all(&events);
+    // Persisted: HN is finalized, but norvig + the link edge are still pending.
+    assert_eq!(node_visits(&map, "news.ycombinator.com"), 1);
+    assert_eq!(node_visits(&map, "norvig.com"), 0);
+    assert!(!has_edge(&map, "news.ycombinator.com", "norvig.com"));
+    // Provisional flush surfaces the current page and its edge.
+    apply(provisional_buckets(&st), &mut map);
+    assert_eq!(node_visits(&map, "norvig.com"), 1);
+    assert!(has_edge(&map, "news.ycombinator.com", "norvig.com"));
+    assert_eq!(
+        edge_dominant_kind(&map, "news.ycombinator.com", "norvig.com"),
+        Some(EdgeKind::Link)
+    );
 }
 
 /// Two interleaved tabs keep independent within-tab origins under a global sort.

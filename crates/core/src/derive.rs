@@ -89,9 +89,19 @@ fn on_close(state: &mut DeriveState, acc: &mut Acc, tab_id: i64) {
 /// `Link{newTabId, sourceTabId}`: snapshot the source's *current* page as the
 /// child's pending origin (this is why global order matters), then reset the
 /// child tab (§7.3).
+///
+/// The current page is the source tab's **buffered** Nav (the redirect-lookahead
+/// holds each load one step before it commits to `last_url`); only when there is
+/// no buffer (e.g. just after a forward/back) does `last_url` reflect what the
+/// user is looking at. Using `last_url` unconditionally would attribute the new
+/// tab to the page *before* the one the link was clicked from — or to nothing at
+/// all when the source page was that tab's first navigation.
 fn on_link(state: &mut DeriveState, new_tab_id: i64, source_tab_id: i64) {
     let (url, prov) = match state.tabs.get(&source_tab_id) {
-        Some(ts) => (ts.last_url.clone(), ts.last_prov),
+        Some(ts) => match &ts.buffer {
+            Some(b) => (Some(b.to_url.clone()), b.prov),
+            None => (ts.last_url.clone(), ts.last_prov),
+        },
         None => (None, Provenance::Other),
     };
     state
@@ -217,6 +227,26 @@ fn finalize(acc: &mut Acc, b: &Buffered) {
             }
         }
     }
+}
+
+/// Flush every tab's pending buffer (the page currently open in that tab, not yet
+/// confirmed by a following event) into provisional node/edge deltas.
+///
+/// These are **display-only** — never persisted, because a buffered nav can still
+/// collapse as a redirect — so the graph/tables show the page you are on *now*,
+/// not just the page you last navigated away from. Mirrors [`finalize`]; the
+/// caller appends these to the read buckets before projecting (the projection
+/// sums buckets by date, so duplicates merge harmlessly).
+pub fn provisional_buckets(state: &DeriveState) -> Vec<crate::rollup::DayBucketDelta> {
+    let mut acc = Acc::default();
+    let mut tabs: Vec<i64> = state.tabs.keys().copied().collect();
+    tabs.sort_unstable(); // deterministic
+    for t in tabs {
+        if let Some(b) = state.tabs.get(&t).and_then(|ts| ts.buffer.as_ref()) {
+            finalize(&mut acc, b);
+        }
+    }
+    acc.days.into_values().collect()
 }
 
 /// Per-window session tracking (§7.3 step 1). `clamp0` maps a backward clock jump

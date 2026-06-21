@@ -107,16 +107,21 @@ impl Provenance {
 
     /// Node fill color for the canvas2d renderer (§7.7). Pure so it is testable
     /// and shared with any future renderer.
+    ///
+    /// The palette is the single blue→violet→magenta→red OKLCH spectrum that is
+    /// the *only* color in the product (the data-encoding hue ramp from the
+    /// design handoff). Lightness/chroma are held constant (`L≈0.64 C≈0.205`) so
+    /// the categories read as evenly-spaced stops on one continuous bar.
     pub fn color(self) -> &'static str {
         match self {
-            Provenance::Link => "#4f8ef7",
-            Provenance::Form => "#f78e4f",
-            Provenance::TypedUrl => "#9b59b6",
-            Provenance::SearchOrigin => "#2ecc71",
-            Provenance::Bookmark => "#f1c40f",
-            Provenance::Start => "#95a5a6",
-            Provenance::Reload => "#7f8c8d",
-            Provenance::Other => "#bdc3c7",
+            Provenance::SearchOrigin => "oklch(0.64 0.205 264)",
+            Provenance::Start => "oklch(0.64 0.205 248)",
+            Provenance::Link => "oklch(0.64 0.205 288)",
+            Provenance::TypedUrl => "oklch(0.64 0.205 312)",
+            Provenance::Bookmark => "oklch(0.64 0.205 340)",
+            Provenance::Reload => "oklch(0.64 0.205 350)",
+            Provenance::Form => "oklch(0.64 0.205 8)",
+            Provenance::Other => "oklch(0.64 0.205 30)",
         }
     }
 }
@@ -132,11 +137,13 @@ pub enum EdgeKind {
 }
 
 impl EdgeKind {
+    /// Edge stroke color — the same spectrum as node fills but slightly desaturated
+    /// (`L≈0.6 C≈0.14`) so edges recede behind the nodes they connect.
     pub fn color(self) -> &'static str {
         match self {
-            EdgeKind::Link => "#8aa0b6",
-            EdgeKind::SearchLink => "#2ecc71",
-            EdgeKind::Form => "#f78e4f",
+            EdgeKind::SearchLink => "oklch(0.6 0.14 264)",
+            EdgeKind::Link => "oklch(0.6 0.14 288)",
+            EdgeKind::Form => "oklch(0.6 0.14 8)",
         }
     }
 }
