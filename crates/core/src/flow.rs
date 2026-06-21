@@ -6,6 +6,8 @@
 //! back edges with a DFS and layer only the resulting DAG — cycles still draw as
 //! ribbons but can't blow the column count up.
 
+use crate::interpret::{classify, node_key};
+use crate::model::{Event, Granularity};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// A host in the flow, assigned to a column (`layer`) and sized by `throughput`
@@ -179,6 +181,74 @@ pub fn build_transitions(transitions: &[(String, String)], starts: &[String]) ->
         links,
         layers,
     }
+}
+
+/// Build the session flow directly from the session's raw `events`, honoring how
+/// each page was reached (§7.2):
+///
+/// - **Link / Form** navigations chain — they add a transition from the tab's
+///   current page (or, for a link opened in a new tab, the source page).
+/// - **Typed-URL / bookmark / search / start** navigations are *rootless*: they
+///   begin a **new flow** (a fresh left-column start), not an edge from wherever
+///   you happened to be. So jumping to a bookmark or pasting a URL while on site
+///   B does not draw a `B → …` ribbon — it starts its own web.
+/// - **Reload / other** change nothing.
+///
+/// This is the cross-tab-aware, provenance-aware entry point used by the Sankey.
+pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
+    let mut current: HashMap<i64, String> = HashMap::new(); // tab → current host
+    let mut pending: HashMap<i64, String> = HashMap::new(); // new tab → spawn origin
+    let mut transitions: Vec<(String, String)> = Vec::new();
+    let mut starts: Vec<String> = Vec::new();
+    for ev in events {
+        match ev {
+            Event::Link {
+                new_tab_id,
+                source_tab_id,
+                ..
+            } => {
+                if let Some(src) = current.get(&(*source_tab_id as i64)) {
+                    pending.insert(*new_tab_id as i64, src.clone());
+                }
+            }
+            Event::Nav {
+                tab_id,
+                to_url,
+                transition_type,
+                ..
+            } => {
+                let t = *tab_id as i64;
+                let Some(host) = node_key(to_url, gran) else {
+                    continue;
+                };
+                let prov = classify(transition_type);
+                if prov.is_ignored() {
+                    continue; // reload / other: no flow change
+                }
+                if current.get(&t) == Some(&host) {
+                    continue; // collapse consecutive duplicates
+                }
+                if prov.is_edge() {
+                    // Natural traversal: chain from the tab's current page, or the
+                    // source page when the link opened this tab.
+                    let origin = pending.remove(&t).or_else(|| current.get(&t).cloned());
+                    match origin {
+                        Some(o) if o != host => transitions.push((o, host.clone())),
+                        _ => starts.push(host.clone()),
+                    }
+                } else {
+                    // Rootless (typed / bookmark / search / start): a new origin,
+                    // not an edge from the previous page. Any cross-tab spawn
+                    // origin is irrelevant here — you didn't follow that link.
+                    pending.remove(&t);
+                    starts.push(host.clone());
+                }
+                current.insert(t, host);
+            }
+            _ => {}
+        }
+    }
+    build_transitions(&transitions, &starts)
 }
 
 /// Lay out a flow graph and emit an inline SVG Sankey: hosts are column bars,
@@ -358,6 +428,59 @@ mod tests {
             .iter()
             .find(|l| g.nodes[l.from].key == f && g.nodes[l.to].key == t)
             .map(|l| l.weight)
+    }
+    fn has(g: &FlowGraph, f: &str, t: &str) -> bool {
+        weight(g, f, t).is_some()
+    }
+    fn nav(id: u64, tab: i64, url: &str, tt: &str) -> Event {
+        Event::Nav {
+            id: id as f64,
+            ts: id as f64,
+            tab_id: tab as f64,
+            window_id: 1.0,
+            to_url: url.to_string(),
+            transition_type: tt.to_string(),
+            qualifiers: vec![],
+        }
+    }
+
+    #[test]
+    fn rootless_navs_start_a_new_flow_not_an_edge() {
+        // Start at A (typed), click to B (link), then *type* C, then click to D.
+        // Typing C must NOT draw B→C; C is a fresh start, and C→D chains from it.
+        let events = vec![
+            nav(1, 1, "https://a.com/", "typed"),
+            nav(2, 1, "https://b.com/", "link"),
+            nav(3, 1, "https://c.com/", "typed"),
+            nav(4, 1, "https://d.com/", "link"),
+            nav(5, 1, "https://e.com/", "auto_bookmark"), // a bookmark is also rootless
+        ];
+        let g = from_session_events(&events, Granularity::Hostname);
+        assert!(has(&g, "a.com", "b.com"));
+        assert!(has(&g, "c.com", "d.com"));
+        assert!(
+            !has(&g, "b.com", "c.com"),
+            "typed URL must not chain from B"
+        );
+        assert!(!has(&g, "d.com", "e.com"), "bookmark must not chain from D");
+        // Every rootless landing is a leftmost start.
+        assert_eq!(layer_of(&g, "a.com"), 0);
+        assert_eq!(layer_of(&g, "c.com"), 0);
+        assert_eq!(layer_of(&g, "e.com"), 0);
+    }
+
+    #[test]
+    fn link_navs_still_chain_and_reload_is_ignored() {
+        let events = vec![
+            nav(1, 1, "https://a.com/", "typed"),
+            nav(2, 1, "https://b.com/", "link"),
+            nav(3, 1, "https://b.com/", "reload"), // ignored: no change
+            nav(4, 1, "https://c.com/", "form_submit"), // form chains like a link
+        ];
+        let g = from_session_events(&events, Granularity::Hostname);
+        assert!(has(&g, "a.com", "b.com"));
+        assert!(has(&g, "b.com", "c.com"));
+        assert_eq!(g.links.len(), 2);
     }
 
     #[test]
