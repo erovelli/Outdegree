@@ -155,9 +155,11 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
 /// visibility and a gentle visible-only poll (`install_live_refresh`).
 ///
 /// When nothing new arrived it returns without touching the DOM (so it never
-/// disrupts the user's current pan/zoom). On the Graph view it soft-refreshes —
-/// redrawing the new nodes at the current camera rather than re-fitting.
-pub(crate) fn live_refresh(shared: &Shared) {
+/// disrupts the user's current pan/zoom). `refit` re-frames the graph (used when
+/// returning to the tab, so new nodes aren't left off-screen); when false the
+/// graph soft-refreshes — redrawing at the current camera (used by the poll, so
+/// it doesn't yank a view you're actively examining).
+pub(crate) fn live_refresh(shared: &Shared, refit: bool) {
     {
         let mut a = shared.borrow_mut();
         if a.refreshing {
@@ -201,9 +203,10 @@ pub(crate) fn live_refresh(shared: &Shared) {
             a.view
         };
         recompute_projection(&s);
-        // Soft refresh on the graph (preserve the camera); full re-render for the
-        // data views (or when the graph canvas doesn't exist yet — empty state).
-        if view == View::Graph && s.borrow().doc.get_element_by_id("bg-canvas").is_some() {
+        // Soft refresh on the graph (preserve the camera) unless `refit` was
+        // requested; full re-render for the data views or the empty graph state.
+        let has_canvas = s.borrow().doc.get_element_by_id("bg-canvas").is_some();
+        if view == View::Graph && has_canvas && !refit {
             app::sync_chrome(&s);
             graph_view::redraw(&s);
         } else {
@@ -224,25 +227,27 @@ fn install_live_refresh(shared: &Shared) {
     let Some(win) = web_sys::window() else { return };
     let Some(doc) = win.document() else { return };
 
+    // Returning to the tab refits (new nodes shouldn't land off-screen)…
     {
         let s = shared.clone();
-        on(win.as_ref(), "focus", move |_| live_refresh(&s));
+        on(win.as_ref(), "focus", move |_| live_refresh(&s, true));
     }
     {
         let s = shared.clone();
         let d = doc.clone();
         on(doc.unchecked_ref(), "visibilitychange", move |_| {
             if !d.hidden() {
-                live_refresh(&s);
+                live_refresh(&s, true);
             }
         });
     }
+    // …while the gentle poll preserves the view you're actively examining.
     {
         let s = shared.clone();
         let d = doc.clone();
         let cb = Closure::wrap(Box::new(move || {
             if !d.hidden() {
-                live_refresh(&s);
+                live_refresh(&s, false);
             }
         }) as Box<dyn FnMut()>);
         let _ = win.set_interval_with_callback_and_timeout_and_arguments_0(

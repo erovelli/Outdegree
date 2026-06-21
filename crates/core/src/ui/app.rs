@@ -444,6 +444,24 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
         });
     }
 
+    // Recovery: clear the derived cache + cursor and re-derive everything from the
+    // raw event log (fixes a derivation cursor that has drifted past the events).
+    let rebuild = menu_btn(doc, "Rebuild from raw events");
+    {
+        let s = shared.clone();
+        on(&rebuild, "click", move |_| {
+            close_popover(&s);
+            let db = s.borrow().db.clone();
+            let s2 = s.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(e) = db.reset_derivation().await {
+                    return super::log_err(&e);
+                }
+                reload_and_rerender(&s2);
+            });
+        });
+    }
+
     let _ = pop.append_child(&spa_row);
     let sep = el(doc, "div");
     let _ = sep.set_attribute("class", "menu-sep");
@@ -452,6 +470,7 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
     let _ = pop.append_child(&export);
     let _ = pop.append_child(&forget);
     let _ = pop.append_child(&delete);
+    let _ = pop.append_child(&rebuild);
     pop
 }
 
