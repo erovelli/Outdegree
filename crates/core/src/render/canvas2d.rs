@@ -425,10 +425,10 @@ fn draw_callout(
     ctx.stroke();
 
     let prov = node.prov.dominant().display();
-    // provenance dot
+    // provenance marker — same shape as the node on the canvas (star for External,
+    // triangle for Search, …), not always a circle.
     set_fill(ctx, prov.color());
-    ctx.begin_path();
-    let _ = ctx.arc(bx + 16.0, by + 22.0, 4.0, 0.0, PI * 2.0);
+    trace_marker(ctx, prov.shape(), bx + 16.0, by + 22.0, 4.5);
     ctx.fill();
 
     ctx.set_text_align("left");
