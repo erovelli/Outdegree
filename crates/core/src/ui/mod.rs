@@ -65,6 +65,11 @@ pub(crate) struct App {
     pub focus: Option<String>,
     /// Whether the window-resize listener has been installed (install once).
     pub resize_hooked: bool,
+    /// Whether the live-refresh listeners have been installed (install once).
+    pub live_hooked: bool,
+    /// Guards against overlapping live-refresh folds (rollups merge, so a double
+    /// fold of the same events would double-count).
+    pub refreshing: bool,
 }
 
 pub(crate) type Shared = Rc<RefCell<App>>;
@@ -128,6 +133,8 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         spa_mode: false,
         focus: None,
         resize_hooked: false,
+        live_hooked: false,
+        refreshing: false,
     };
     let shared: Shared = Rc::new(RefCell::new(app));
 
@@ -135,7 +142,107 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
     app::build_shell(&shared)?;
     persist_positions(&shared);
     rerender(&shared)?;
+    install_live_refresh(&shared);
     Ok(())
+}
+
+/// Fold any events captured since the last fold and refresh the view, so new
+/// browsing shows up without reopening the dashboard. Installed on tab focus /
+/// visibility and a gentle visible-only poll (`install_live_refresh`).
+///
+/// When nothing new arrived it returns without touching the DOM (so it never
+/// disrupts the user's current pan/zoom). On the Graph view it soft-refreshes —
+/// redrawing the new nodes at the current camera rather than re-fitting.
+pub(crate) fn live_refresh(shared: &Shared) {
+    {
+        let mut a = shared.borrow_mut();
+        if a.refreshing {
+            return; // a fold is already in flight; rollups merge, don't double it
+        }
+        a.refreshing = true;
+    }
+    let s = shared.clone();
+    let db = shared.borrow().db.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        let (watermark, mut state) = match db.read_cursor().await {
+            Ok(v) => v,
+            Err(_) => {
+                s.borrow_mut().refreshing = false;
+                return;
+            }
+        };
+        let new_events = db.read_events_after(watermark).await.unwrap_or_default();
+        if new_events.is_empty() {
+            s.borrow_mut().refreshing = false;
+            return; // nothing new → leave the current view untouched
+        }
+        let (deltas, sessions_new) = crate::rollup::fold(&mut state, &new_events);
+        let _ = db.write_rollups(&deltas).await;
+        let _ = db.write_sessions(&sessions_new).await;
+        let _ = db.write_cursor(state.watermark, &state).await;
+
+        let buckets = db.read_all_rollups().await.unwrap_or_default();
+        let mut sessions = db.read_sessions().await.unwrap_or_default();
+        for os in state.open_sessions.values() {
+            sessions.push(os.provisional_record());
+        }
+        let view = {
+            let mut a = s.borrow_mut();
+            a.buckets = buckets;
+            a.sessions = sessions;
+            a.view
+        };
+        recompute_projection(&s);
+        // Soft refresh on the graph (preserve the camera); full re-render for the
+        // data views (or when the graph canvas doesn't exist yet — empty state).
+        if view == View::Graph && s.borrow().doc.get_element_by_id("bg-canvas").is_some() {
+            app::sync_chrome(&s);
+            graph_view::redraw(&s);
+        } else {
+            let _ = rerender(&s);
+        }
+        s.borrow_mut().refreshing = false;
+    });
+}
+
+/// Install the live-refresh triggers once: refresh on tab focus / becoming
+/// visible, plus a gentle visible-only poll for an unfocused (e.g. second-
+/// monitor) dashboard.
+fn install_live_refresh(shared: &Shared) {
+    if shared.borrow().live_hooked {
+        return;
+    }
+    shared.borrow_mut().live_hooked = true;
+    let Some(win) = web_sys::window() else { return };
+    let Some(doc) = win.document() else { return };
+
+    {
+        let s = shared.clone();
+        on(win.as_ref(), "focus", move |_| live_refresh(&s));
+    }
+    {
+        let s = shared.clone();
+        let d = doc.clone();
+        on(doc.unchecked_ref(), "visibilitychange", move |_| {
+            if !d.hidden() {
+                live_refresh(&s);
+            }
+        });
+    }
+    {
+        let s = shared.clone();
+        let d = doc.clone();
+        let cb = Closure::wrap(Box::new(move || {
+            if !d.hidden() {
+                live_refresh(&s);
+            }
+        }) as Box<dyn FnMut()>);
+        let _ = win.set_interval_with_callback_and_timeout_and_arguments_0(
+            cb.as_ref().unchecked_ref(),
+            15_000,
+        );
+        cb.forget();
+    }
 }
 
 /// Re-project the in-memory buckets at the current granularity/filters and warm-
