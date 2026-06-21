@@ -50,7 +50,7 @@ fn prov_label(p: Provenance) -> &'static str {
         Provenance::TypedUrl => "Typed URL",
         Provenance::SearchOrigin => "Search",
         Provenance::Bookmark => "Bookmark",
-        Provenance::Start => "Start",
+        Provenance::Start => "External",
         Provenance::Reload => "Reload",
         Provenance::Other => "Other",
     }
@@ -211,7 +211,8 @@ fn draw_hub(
 }
 
 /// Draw the full graph. `hover` labels + spotlights a node; `selected` (the
-/// drilled-down focus) wears the reticle bracket.
+/// drilled-down focus) wears the reticle bracket; `filter` (a clicked legend key)
+/// keeps only nodes of that provenance bright and dims the rest + all edges.
 pub fn draw(
     ctx: &CanvasRenderingContext2d,
     w: f64,
@@ -221,6 +222,7 @@ pub fn draw(
     cam: &Camera,
     hover: Option<&str>,
     selected: Option<&str>,
+    filter: Option<Provenance>,
 ) {
     draw_backdrop(ctx, w, h, cam);
     draw_hub(ctx, w, h, proj, pos, cam);
@@ -255,7 +257,10 @@ pub fn draw(
             let (ax, ay) = cam.project(a, w, h);
             let (bx, by) = cam.project(b, w, h);
             let kind = e.kinds.dominant();
-            let touches = hover.map(|f| e.from == f || e.to == f).unwrap_or(true);
+            // A legend filter dims every edge (the highlight is about nodes of a
+            // provenance, and edges have no single provenance).
+            let touches =
+                filter.is_none() && hover.map(|f| e.from == f || e.to == f).unwrap_or(true);
             let dashed = matches!(kind, crate::model::EdgeKind::SearchLink);
             let base = if dashed { 0.5 } else { 0.34 };
             set_stroke(ctx, kind.color());
@@ -315,12 +320,14 @@ pub fn draw(
         if let Some(p) = pos.get(&n.key) {
             let (x, y) = cam.project(p, w, h);
             let r = radius(n.visits, cam.scale);
-            let hot = lit(&n.key);
+            // Fill = dominant provenance; shape = same provenance (a CVD-safe
+            // redundant channel). A node stays bright only if it survives both the
+            // hover spotlight and (if set) the legend provenance filter.
+            let prov = n.prov.dominant().display();
+            let hot = lit(&n.key) && filter.map(|f| prov == f).unwrap_or(true);
             ctx.set_global_alpha(if hot { 1.0 } else { 0.22 });
-            // 2px black moat so discs read cleanly over the edges beneath them.
-            set_fill(ctx, n.prov.dominant().color());
-            ctx.begin_path();
-            let _ = ctx.arc(x, y, r, 0.0, PI * 2.0);
+            set_fill(ctx, prov.color());
+            trace_marker(ctx, prov.shape(), x, y, r);
             ctx.fill();
             ctx.stroke();
 
@@ -417,11 +424,11 @@ fn draw_callout(
     ctx.set_line_width(1.0);
     ctx.stroke();
 
-    let prov = node.prov.dominant();
-    // provenance dot
+    let prov = node.prov.dominant().display();
+    // provenance marker — same shape as the node on the canvas (star for External,
+    // triangle for Search, …), not always a circle.
     set_fill(ctx, prov.color());
-    ctx.begin_path();
-    let _ = ctx.arc(bx + 16.0, by + 22.0, 4.0, 0.0, PI * 2.0);
+    trace_marker(ctx, prov.shape(), bx + 16.0, by + 22.0, 4.5);
     ctx.fill();
 
     ctx.set_text_align("left");
@@ -431,9 +438,36 @@ fn draw_callout(
     let _ = ctx.fill_text(&clip(&node.key, 22), bx + 28.0, by + 22.0);
     set_fill(ctx, LABEL);
     ctx.set_font(&format!("11px {MONO}"));
-    let sub = format!("{} visits · {}", node.visits, prov_label(prov));
+    let noun = if node.visits == 1 { "visit" } else { "visits" };
+    let sub = format!("{} {noun} · {}", node.visits, prov_label(prov));
     let _ = ctx.fill_text(&sub, bx + 16.0, by + 41.0);
     ctx.set_text_baseline("alphabetic");
+}
+
+/// Trace a provenance marker (path only — caller fills/strokes): a circle, or the
+/// provenance's polygon when the shape isn't round.
+fn trace_marker(
+    ctx: &CanvasRenderingContext2d,
+    shape: crate::model::Shape,
+    x: f64,
+    y: f64,
+    r: f64,
+) {
+    ctx.begin_path();
+    match shape.points(x, y, r) {
+        None => {
+            let _ = ctx.arc(x, y, r, 0.0, PI * 2.0);
+        }
+        Some(pts) => {
+            if let Some(&(x0, y0)) = pts.first() {
+                ctx.move_to(x0, y0);
+                for &(px, py) in &pts[1..] {
+                    ctx.line_to(px, py);
+                }
+                ctx.close_path();
+            }
+        }
+    }
 }
 
 /// Trace a rounded rectangle (path only — caller fills/strokes).

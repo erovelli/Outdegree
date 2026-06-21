@@ -7,10 +7,10 @@
 
 use super::filters::{chip, icon, icon_btn, menu_btn, menu_toggle, panel, seg, LOGO};
 use super::{
-    el, graph_view, on, persist_positions, recompute_projection, reload_and_rerender,
+    el, graph_view, on, persist_positions, plural, recompute_projection, reload_and_rerender,
     reload_buckets, rerender, Shared, View,
 };
-use crate::model::{Granularity, ProvBreakdown};
+use crate::model::{Granularity, ProvBreakdown, Provenance};
 use crate::project::TimeRange;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element, HtmlElement, HtmlInputElement, HtmlSelectElement, KeyboardEvent};
@@ -32,14 +32,36 @@ pub(crate) fn build_shell(shared: &Shared) -> Result<(), JsValue> {
     let _ = root.append_child(&brand_panel(&doc, shared));
     let _ = root.append_child(&range_panel(&doc, shared));
     let _ = root.append_child(&view_panel(&doc, shared));
-    let _ = root.append_child(&legend_panel(&doc));
+    let _ = root.append_child(&legend_panel(&doc, shared));
     let _ = root.append_child(&zoom_panel(&doc, shared));
     let _ = root.append_child(&search_panel(&doc, shared));
     let _ = root.append_child(&readout_panel(&doc));
+    let _ = root.append_child(&focus_panel(&doc, shared));
     let _ = root.append_child(&settings_popover(&doc, shared));
     install_palette_shortcut(shared);
+    install_popover_dismiss(shared);
 
     Ok(())
+}
+
+// ── drill-down focus chip (top-center, shown only while a node is focused) ─────
+fn focus_panel(doc: &Document, shared: &Shared) -> Element {
+    let p = panel(doc, "focuschip at-fc");
+    let _ = p.set_attribute("id", "bg-focuschip");
+    let lbl = span(doc, "focus-label", "");
+    let _ = lbl.set_attribute("id", "bg-focus-label");
+    let x = el(doc, "button");
+    let _ = x.set_attribute("type", "button");
+    let _ = x.set_attribute("class", "focus-x");
+    let _ = x.set_attribute("aria-label", "Clear focus");
+    x.set_text_content(Some("✕"));
+    {
+        let s = shared.clone();
+        on(&x, "click", move |_| super::focus_and_animate(&s, None));
+    }
+    let _ = p.append_child(&lbl);
+    let _ = p.append_child(&x);
+    p
 }
 
 fn span(doc: &Document, class: &str, text: &str) -> Element {
@@ -55,13 +77,18 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     let logo = el(doc, "div");
     let _ = logo.set_attribute("class", "logo");
     logo.set_inner_html(LOGO);
+    let name = span(doc, "wordmark", "Browsing Graph");
     let rule = el(doc, "div");
     let _ = rule.set_attribute("class", "vrule");
 
-    let rec = el(doc, "div");
+    // A real <button> (not a clickable <div>) so the privacy control is keyboard-
+    // operable and gets a focus ring; its label is updated to match the state.
+    let rec = el(doc, "button");
+    let _ = rec.set_attribute("type", "button");
     let _ = rec.set_attribute("class", "rec");
     let _ = rec.set_attribute("id", "bg-rec");
     let _ = rec.set_attribute("title", "Toggle recording");
+    let _ = rec.set_attribute("aria-label", "Pause recording");
     let dot = el(doc, "span");
     let _ = dot.set_attribute("class", "rec-dot");
     let lbl = span(doc, "rec-label", "REC");
@@ -82,6 +109,7 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     }
 
     let _ = p.append_child(&logo);
+    let _ = p.append_child(&name);
     let _ = p.append_child(&rule);
     let _ = p.append_child(&rec);
     p
@@ -148,16 +176,23 @@ fn view_panel(doc: &Document, shared: &Shared) -> Element {
         });
     }
     let gear = icon_btn(doc, "bg-gear", "Settings", &icon("gear"));
+    let _ = gear.set_attribute("aria-haspopup", "menu");
+    let _ = gear.set_attribute("aria-expanded", "false");
     {
         let s = shared.clone();
         on(&gear, "click", move |_| {
-            if let Some(pop) = s.borrow().doc.get_element_by_id("bg-settings") {
-                let open = pop.class_name().contains("open");
-                pop.set_class_name(if open {
-                    "panel popover"
-                } else {
+            let doc = s.borrow().doc.clone();
+            if let Some(pop) = doc.get_element_by_id("bg-settings") {
+                let now_open = !pop.class_name().contains("open");
+                pop.set_class_name(if now_open {
                     "panel popover open"
+                } else {
+                    "panel popover"
                 });
+                if let Some(g) = doc.get_element_by_id("bg-gear") {
+                    let _ =
+                        g.set_attribute("aria-expanded", if now_open { "true" } else { "false" });
+                }
             }
         });
     }
@@ -167,15 +202,132 @@ fn view_panel(doc: &Document, shared: &Shared) -> Element {
 }
 
 // ── 4. provenance legend (right) ─────────────────────────────────────────────
-fn legend_panel(doc: &Document) -> Element {
+fn legend_panel(doc: &Document, shared: &Shared) -> Element {
     let p = panel(doc, "legend at-rt");
     let title = span(doc, "legend-title", "PROVENANCE");
     let rows = el(doc, "div");
     let _ = rows.set_attribute("id", "bg-legend-rows");
     let _ = rows.set_attribute("class", "legend-rows");
+    // Click a key to highlight only that provenance's nodes (toggle). One
+    // delegated listener on the container survives the innerHTML rebuilds.
+    {
+        let s = shared.clone();
+        on(&rows, "click", move |ev| {
+            let key = ev
+                .target()
+                .and_then(|t| t.dyn_into::<Element>().ok())
+                .and_then(|e| e.closest(".legend-row").ok().flatten())
+                .and_then(|row| row.get_attribute("data-prov"));
+            let Some(prov) = key.as_deref().and_then(prov_from_key) else {
+                return;
+            };
+            {
+                let mut a = s.borrow_mut();
+                a.legend_filter = if a.legend_filter == Some(prov) {
+                    None
+                } else {
+                    Some(prov)
+                };
+            }
+            set_legend(&s);
+            graph_view::redraw(&s);
+        });
+    }
     let _ = p.append_child(&title);
     let _ = p.append_child(&rows);
     p
+}
+
+/// Map a legend row's `data-prov` key to its provenance (External = `start_page`).
+fn prov_from_key(key: &str) -> Option<Provenance> {
+    Some(match key {
+        "search" => Provenance::SearchOrigin,
+        "link" => Provenance::Link,
+        "typed" => Provenance::TypedUrl,
+        "bookmark" => Provenance::Bookmark,
+        "form" => Provenance::Form,
+        "external" => Provenance::Start,
+        "other" => Provenance::Other,
+        _ => return None,
+    })
+}
+
+/// The legend rows as HTML buttons (`data-prov` + active/dim state). Pure so both
+/// `sync_chrome` and the click handler render an identical list.
+fn legend_html(b: &ProvBreakdown, filter: Option<Provenance>) -> String {
+    // (count, label, dot color class, provenance, data-prov key). Reload folds
+    // into Other; External (start_page) is its own category.
+    let rows = [
+        (
+            b.search_origin,
+            "Search",
+            "dot-search",
+            Provenance::SearchOrigin,
+            "search",
+        ),
+        (b.link, "Link", "dot-link", Provenance::Link, "link"),
+        (
+            b.typed_url,
+            "Typed URL",
+            "dot-typed",
+            Provenance::TypedUrl,
+            "typed",
+        ),
+        (
+            b.bookmark,
+            "Bookmark",
+            "dot-bookmark",
+            Provenance::Bookmark,
+            "bookmark",
+        ),
+        (b.form, "Form", "dot-form", Provenance::Form, "form"),
+        (
+            b.start,
+            "External",
+            "dot-external",
+            Provenance::Start,
+            "external",
+        ),
+        (
+            b.other + b.reload,
+            "Other",
+            "dot-other",
+            Provenance::Other,
+            "other",
+        ),
+    ];
+    let counts: Vec<u32> = rows.iter().map(|(c, ..)| *c).collect();
+    let pcts = percentages(&counts);
+    let mut html = String::new();
+    for ((_, label, dot, prov, key), pct) in rows.iter().zip(pcts) {
+        let state = match filter {
+            Some(f) if f == *prov => " is-active",
+            Some(_) => " is-dim",
+            None => "",
+        };
+        html.push_str(&format!(
+            "<button type=\"button\" class=\"legend-row{state}\" data-prov=\"{key}\">\
+             <span class=\"dot {dot} {glyph}\"></span>\
+             <span class=\"legend-label\">{label}</span>\
+             <span class=\"legend-pct\">{pct}%</span></button>",
+            glyph = prov.shape().css()
+        ));
+    }
+    html
+}
+
+/// Rebuild just the legend rows from current state (used by the click/Esc paths;
+/// `sync_chrome` inlines the same call while it already holds the borrow).
+fn set_legend(shared: &Shared) {
+    let a = shared.borrow();
+    let mut b = ProvBreakdown::default();
+    for n in &a.proj.nodes {
+        b.merge(&n.prov);
+    }
+    let html = legend_html(&b, a.legend_filter);
+    if let Some(rows_el) = a.doc.get_element_by_id("bg-legend-rows") {
+        rows_el.set_inner_html(&html);
+    }
 }
 
 // ── 5. zoom toolbar (bottom-right) ───────────────────────────────────────────
@@ -304,7 +456,7 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
         opt.set_text_content(Some("All sites"));
         let _ = mv.append_child(&opt);
     }
-    let hubs = chip(doc, "chip-hubs", "hide search hubs");
+    let hubs = chip(doc, "chip-hubs", "Hide search hubs");
     let _ = hubs.set_attribute("title", "Collapse search-engine origin nodes");
     let _ = chips.append_child(&gran_seg);
     let _ = chips.append_child(&mv);
@@ -348,17 +500,9 @@ fn readout_panel(doc: &Document) -> Element {
     let _ = edges.set_attribute("id", "bg-count-edges");
     let rule1 = el(doc, "div");
     let _ = rule1.set_attribute("class", "vrule");
-    let rule2 = el(doc, "div");
-    let _ = rule2.set_attribute("class", "vrule");
-    let spectrum = el(doc, "div");
-    let _ = spectrum.set_attribute("class", "spectrum");
-    let slabel = span(doc, "spectrum-label", "visits");
     let _ = p.append_child(&nodes);
     let _ = p.append_child(&rule1);
     let _ = p.append_child(&edges);
-    let _ = p.append_child(&rule2);
-    let _ = p.append_child(&spectrum);
-    let _ = p.append_child(&slabel);
     p
 }
 
@@ -485,12 +629,17 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
 }
 
 fn close_popover(shared: &Shared) {
-    if let Some(pop) = shared.borrow().doc.get_element_by_id("bg-settings") {
+    let doc = shared.borrow().doc.clone();
+    if let Some(pop) = doc.get_element_by_id("bg-settings") {
         pop.set_class_name("panel popover");
+    }
+    if let Some(g) = doc.get_element_by_id("bg-gear") {
+        let _ = g.set_attribute("aria-expanded", "false");
     }
 }
 
-/// ⌘K / Ctrl-K focuses the host search box (command-palette affordance).
+/// ⌘K / Ctrl-K focuses the host search box (command-palette affordance); Esc
+/// closes the settings menu and exits any drill-down focus.
 fn install_palette_shortcut(shared: &Shared) {
     let Some(win) = web_sys::window() else { return };
     let s = shared.clone();
@@ -498,6 +647,20 @@ fn install_palette_shortcut(shared: &Shared) {
         let Ok(ke) = ev.dyn_into::<KeyboardEvent>() else {
             return;
         };
+        if ke.key() == "Escape" {
+            close_popover(&s);
+            let cleared = {
+                let mut a = s.borrow_mut();
+                a.legend_filter.take().is_some()
+            };
+            if s.borrow().focus.is_some() {
+                super::focus_and_animate(&s, None); // re-renders: rebuilds legend + canvas
+            } else if cleared {
+                set_legend(&s);
+                graph_view::redraw(&s);
+            }
+            return;
+        }
         if (ke.meta_key() || ke.ctrl_key()) && ke.key().eq_ignore_ascii_case("k") {
             ke.prevent_default();
             if let Some(inp) = s.borrow().doc.get_element_by_id("bg-search") {
@@ -505,6 +668,36 @@ fn install_palette_shortcut(shared: &Shared) {
                     let _ = h.focus();
                 }
             }
+        }
+    });
+}
+
+/// Dismiss the settings popover on a mousedown outside it (and outside the gear
+/// that toggles it) — the expected "click-away closes the menu" behavior.
+fn install_popover_dismiss(shared: &Shared) {
+    let Some(win) = web_sys::window() else { return };
+    let Some(doc) = win.document() else { return };
+    let s = shared.clone();
+    on(doc.unchecked_ref(), "mousedown", move |ev| {
+        let doc = s.borrow().doc.clone();
+        let Some(pop) = doc.get_element_by_id("bg-settings") else {
+            return;
+        };
+        if !pop.class_name().contains("open") {
+            return;
+        }
+        let target = ev.target().and_then(|t| t.dyn_into::<web_sys::Node>().ok());
+        let in_pop = target
+            .as_ref()
+            .map(|n| pop.contains(Some(n)))
+            .unwrap_or(false);
+        let in_gear = doc
+            .get_element_by_id("bg-gear")
+            .zip(target.as_ref())
+            .map(|(g, n)| g.contains(Some(n)))
+            .unwrap_or(false);
+        if !in_pop && !in_gear {
+            close_popover(&s);
         }
     });
 }
@@ -562,12 +755,12 @@ pub(crate) fn sync_chrome(shared: &Shared) {
     set_text(
         &doc,
         "bg-count-nodes",
-        &format!("{} nodes", a.proj.nodes.len()),
+        &plural(a.proj.nodes.len() as u64, "node"),
     );
     set_text(
         &doc,
         "bg-count-edges",
-        &format!("{} edges", a.proj.edges.len()),
+        &plural(a.proj.edges.len() as u64, "edge"),
     );
 
     // provenance legend (percentages over the visible projection)
@@ -575,32 +768,8 @@ pub(crate) fn sync_chrome(shared: &Shared) {
     for n in &a.proj.nodes {
         b.merge(&n.prov);
     }
-    // (count, label, dot color class) — colors live in CSS so no inline style
-    // is needed (the page CSP blocks inline styles).
-    let rows = [
-        (b.search_origin, "Search", "dot-search"),
-        (b.link, "Link", "dot-link"),
-        (b.typed_url, "Typed URL", "dot-typed"),
-        (b.bookmark, "Bookmark", "dot-bookmark"),
-        (b.form, "Form", "dot-form"),
-        (b.other + b.start + b.reload, "Other", "dot-other"),
-    ];
-    let total: u32 = rows.iter().map(|(c, _, _)| *c).sum();
-    let mut html = String::new();
-    for (count, label, dot) in rows {
-        let pct = if total > 0 {
-            (count as f64 * 100.0 / total as f64).round() as u32
-        } else {
-            0
-        };
-        html.push_str(&format!(
-            "<div class=\"legend-row\"><span class=\"dot {dot}\"></span>\
-             <span class=\"legend-label\">{label}</span>\
-             <span class=\"legend-pct\">{pct}%</span></div>"
-        ));
-    }
     if let Some(rows_el) = doc.get_element_by_id("bg-legend-rows") {
-        rows_el.set_inner_html(&html);
+        rows_el.set_inner_html(&legend_html(&b, a.legend_filter));
     }
 
     // chips: reflect the active granularity on the segmented slide-select
@@ -618,6 +787,14 @@ pub(crate) fn sync_chrome(shared: &Shared) {
     // REC indicator
     if let Some(rec) = doc.get_element_by_id("bg-rec") {
         rec.set_class_name(if a.paused { "rec paused" } else { "rec" });
+        let _ = rec.set_attribute(
+            "aria-label",
+            if a.paused {
+                "Resume recording"
+            } else {
+                "Pause recording"
+            },
+        );
     }
     set_text(
         &doc,
@@ -633,6 +810,17 @@ pub(crate) fn sync_chrome(shared: &Shared) {
             "iconbtn"
         });
         lock.set_inner_html(&icon(if a.locked { "lock" } else { "unlock" }));
+    }
+
+    // drill-down focus chip — only meaningful on the graph, and only while focused
+    if let Some(chip) = doc.get_element_by_id("bg-focuschip") {
+        match (a.view, a.focus.as_deref()) {
+            (View::Graph, Some(host)) => {
+                chip.set_class_name("panel focuschip at-fc show");
+                set_text(&doc, "bg-focus-label", &format!("Focused: {host}"));
+            }
+            _ => chip.set_class_name("panel focuschip at-fc"),
+        }
     }
 }
 
@@ -692,6 +880,36 @@ fn populate_min_visits(doc: &Document, a: &super::App) {
         let _ = sel.set_attribute("data-ths", &sig);
     }
     sel.set_value(&cur.to_string());
+}
+
+/// Integer percentages that sum to exactly 100 (largest-remainder apportionment),
+/// so the provenance legend never reads as 99% or 101% from independent rounding.
+fn percentages(counts: &[u32]) -> Vec<u32> {
+    let total: u64 = counts.iter().map(|&c| c as u64).sum();
+    if total == 0 {
+        return vec![0; counts.len()];
+    }
+    let mut pct: Vec<u32> = counts
+        .iter()
+        .map(|&c| (c as u64 * 100 / total) as u32)
+        .collect();
+    let assigned: u32 = pct.iter().sum();
+    let mut remaining = 100u32.saturating_sub(assigned);
+    // Hand the leftover units to the largest fractional remainders (ties by index).
+    let mut order: Vec<usize> = (0..counts.len()).collect();
+    order.sort_by(|&a, &b| {
+        let ra = (counts[a] as u64 * 100) % total;
+        let rb = (counts[b] as u64 * 100) % total;
+        rb.cmp(&ra).then(a.cmp(&b))
+    });
+    for &i in &order {
+        if remaining == 0 {
+            break;
+        }
+        pct[i] += 1;
+        remaining -= 1;
+    }
+    pct
 }
 
 fn set_text(doc: &Document, id: &str, text: &str) {

@@ -7,24 +7,29 @@
 //! ribbons but can't blow the column count up.
 
 use crate::interpret::{classify, node_key};
-use crate::model::{Event, Granularity};
+use crate::model::{EdgeKind, Event, Granularity, KindBreakdown, ProvBreakdown, Provenance, Shape};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 /// A host in the flow, assigned to a column (`layer`) and sized by `throughput`
-/// (the larger of its total inbound / outbound transition weight).
+/// (the larger of its total inbound / outbound transition weight). `prov` is the
+/// host's dominant (display-folded) provenance — how it tended to be reached —
+/// and colors/glyphs its bar; it is `Other` for the non-session builders.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FlowNode {
     pub key: String,
     pub layer: usize,
     pub throughput: u32,
+    pub prov: Provenance,
 }
 
-/// A weighted transition `from → to` (indices into [`FlowGraph::nodes`]).
+/// A weighted transition `from → to` (indices into [`FlowGraph::nodes`]). `kind`
+/// is the dominant edge kind of the hop (colors the ribbon); `Link` by default.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FlowLink {
     pub from: usize,
     pub to: usize,
     pub weight: u32,
+    pub kind: EdgeKind,
 }
 
 /// A laid-out flow graph: nodes (in column order) + links + the column count.
@@ -183,6 +188,7 @@ fn build_flow(
             key,
             layer: layer[i],
             throughput: in_sum[i].max(out_sum[i]).max(1),
+            prov: Provenance::Other,
         })
         .collect();
     // Standalone entry points (e.g. a bookmark to a mid-chain host): one extra
@@ -197,11 +203,17 @@ fn build_flow(
             key: key.to_string(),
             layer: 0,
             throughput: count.max(1),
+            prov: Provenance::Other,
         });
     }
     let mut links: Vec<FlowLink> = link_w
         .into_iter()
-        .map(|((from, to), weight)| FlowLink { from, to, weight })
+        .map(|((from, to), weight)| FlowLink {
+            from,
+            to,
+            weight,
+            kind: EdgeKind::Link,
+        })
         .collect();
     links.sort_by_key(|l| (l.from, l.to));
 
@@ -229,9 +241,15 @@ fn build_flow(
 /// This is the cross-tab-aware, provenance-aware entry point used by the Sankey.
 pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
     let mut current: HashMap<i64, String> = HashMap::new(); // tab → current host
+    let mut current_prov: HashMap<i64, Provenance> = HashMap::new(); // tab → its prov
     let mut pending: HashMap<i64, String> = HashMap::new(); // new tab → spawn origin
+    let mut pending_prov: HashMap<i64, Provenance> = HashMap::new(); // new tab → origin prov
     let mut transitions: Vec<(String, String)> = Vec::new();
     let mut starts: Vec<String> = Vec::new();
+    // Display provenance per host (how it was reached) and dominant edge kind per
+    // hop — attached to the built graph so bars/ribbons can be colored.
+    let mut host_prov: HashMap<String, ProvBreakdown> = HashMap::new();
+    let mut trans_kind: HashMap<(String, String), KindBreakdown> = HashMap::new();
     for ev in events {
         match ev {
             Event::Link {
@@ -239,8 +257,12 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
                 source_tab_id,
                 ..
             } => {
-                if let Some(src) = current.get(&(*source_tab_id as i64)) {
+                let src_tab = *source_tab_id as i64;
+                if let Some(src) = current.get(&src_tab) {
                     pending.insert(*new_tab_id as i64, src.clone());
+                    if let Some(&pp) = current_prov.get(&src_tab) {
+                        pending_prov.insert(*new_tab_id as i64, pp);
+                    }
                 }
             }
             Event::Nav {
@@ -260,12 +282,32 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
                 if current.get(&t) == Some(&host) {
                     continue; // collapse consecutive duplicates
                 }
+                host_prov.entry(host.clone()).or_default().add(prov);
                 if prov.is_edge() {
                     // Natural traversal: chain from the tab's current page, or the
                     // source page when the link opened this tab.
                     let origin = pending.remove(&t).or_else(|| current.get(&t).cloned());
+                    let origin_prov = pending_prov
+                        .remove(&t)
+                        .or_else(|| current_prov.get(&t).copied());
                     match origin {
-                        Some(o) if o != host => transitions.push((o, host.clone())),
+                        Some(o) if o != host => {
+                            // Edge kind mirrors derive::finalize: a hop *out of* a
+                            // search-results page is a SearchLink; a form submit is
+                            // a Form; everything else a plain Link.
+                            let kind = if origin_prov == Some(Provenance::SearchOrigin) {
+                                EdgeKind::SearchLink
+                            } else if prov == Provenance::Form {
+                                EdgeKind::Form
+                            } else {
+                                EdgeKind::Link
+                            };
+                            trans_kind
+                                .entry((o.clone(), host.clone()))
+                                .or_default()
+                                .add(kind);
+                            transitions.push((o, host.clone()));
+                        }
                         _ => starts.push(host.clone()),
                     }
                 } else {
@@ -273,9 +315,11 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
                     // not an edge from the previous page. Any cross-tab spawn
                     // origin is irrelevant here — you didn't follow that link.
                     pending.remove(&t);
+                    pending_prov.remove(&t);
                     starts.push(host.clone());
                 }
-                current.insert(t, host);
+                current.insert(t, host.clone());
+                current_prov.insert(t, prov);
             }
             _ => {}
         }
@@ -288,7 +332,21 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
     let (detached, pinned): (Vec<String>, Vec<String>) = starts
         .into_iter()
         .partition(|h| targets.contains(h.as_str()));
-    build_flow(&transitions, &pinned, &detached)
+    let mut fg = build_flow(&transitions, &pinned, &detached);
+
+    // Attach the display provenance to each bar and the dominant kind to each hop.
+    for node in &mut fg.nodes {
+        if let Some(b) = host_prov.get(&node.key) {
+            node.prov = b.dominant().display();
+        }
+    }
+    let keys: Vec<String> = fg.nodes.iter().map(|n| n.key.clone()).collect();
+    for link in &mut fg.links {
+        if let Some(b) = trans_kind.get(&(keys[link.from].clone(), keys[link.to].clone())) {
+            link.kind = b.dominant();
+        }
+    }
+    fg
 }
 
 /// Lay out a flow graph and emit an inline SVG Sankey: hosts are column bars,
@@ -401,9 +459,8 @@ pub fn render_svg(fg: &FlowGraph, vw: f64) -> String {
         }
     }
 
-    // Emit SVG: ribbons first (behind), then node bars + labels.
-    let stops = [264.0, 288.0, 312.0, 340.0, 8.0, 30.0];
-    let mut s = String::with_capacity(256 + nlinks * 200 + n * 120);
+    // Emit SVG: ribbons first (behind), then node bars + glyph + labels.
+    let mut s = String::with_capacity(256 + nlinks * 200 + n * 160);
     s.push_str(&format!(
         "<svg class=\"sankey\" width=\"{vw:.0}\" height=\"{svg_h:.0}\" viewBox=\"0 0 {vw:.0} {svg_h:.0}\">"
     ));
@@ -413,27 +470,52 @@ pub fn render_svg(fg: &FlowGraph, vw: f64) -> String {
         let (sy0, sy1) = (s_y0[li], s_y0[li] + thick[li]);
         let (ty0, ty1) = (t_y0[li], t_y0[li] + thick[li]);
         let cx = (x0 + x1) / 2.0;
-        let hue = stops[l.from % stops.len()];
+        // Ribbon color = the hop's edge kind, matching the graph's edge palette.
+        let hue = match l.kind {
+            EdgeKind::SearchLink => 264.0,
+            EdgeKind::Link => 288.0,
+            EdgeKind::Form => 8.0,
+        };
         s.push_str(&format!(
             "<path d=\"M{x0:.1} {sy0:.1} C{cx:.1} {sy0:.1} {cx:.1} {ty0:.1} {x1:.1} {ty0:.1} \
              L{x1:.1} {ty1:.1} C{cx:.1} {ty1:.1} {cx:.1} {sy1:.1} {x0:.1} {sy1:.1} Z\" \
-             fill=\"oklch(0.64 0.17 {hue} / 0.34)\"/>"
+             fill=\"oklch(0.6 0.14 {hue} / 0.4)\"/>"
         ));
     }
     for (i, nd) in fg.nodes.iter().enumerate() {
+        // Bar = provenance color; a provenance glyph + label sit to its right.
+        let prov = nd.prov;
         s.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{node_w:.1}\" height=\"{:.1}\" rx=\"2\" fill=\"#9a9aa0\"/>",
-            nx[i], ny[i], nh[i]
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{node_w:.1}\" height=\"{:.1}\" rx=\"2\" fill=\"{}\"/>",
+            nx[i], ny[i], nh[i], prov.color()
         ));
+        let gx = nx[i] + node_w + 9.0;
+        let gy = ny[i] + nh[i] / 2.0;
+        s.push_str(&marker_svg(prov.shape(), gx, gy, 4.5, prov.color()));
         s.push_str(&format!(
             "<text class=\"sankey-label\" x=\"{:.1}\" y=\"{:.1}\">{}</text>",
-            nx[i] + node_w + 6.0,
-            ny[i] + nh[i] / 2.0,
-            esc_svg(&clip(&nd.key, 26))
+            gx + 9.0,
+            gy,
+            esc_svg(&clip(&nd.key, 24))
         ));
     }
     s.push_str("</svg>");
     s
+}
+
+/// A small provenance marker as inline SVG (`<circle>` or `<polygon>`) so node
+/// bars carry the CVD-safe shape channel beside their color.
+fn marker_svg(shape: Shape, cx: f64, cy: f64, r: f64, fill: &str) -> String {
+    match shape.points(cx, cy, r) {
+        None => format!("<circle cx=\"{cx:.1}\" cy=\"{cy:.1}\" r=\"{r:.1}\" fill=\"{fill}\"/>"),
+        Some(pts) => {
+            let mut p = String::with_capacity(pts.len() * 12);
+            for (x, y) in pts {
+                p.push_str(&format!("{x:.1},{y:.1} "));
+            }
+            format!("<polygon points=\"{}\" fill=\"{fill}\"/>", p.trim_end())
+        }
+    }
 }
 
 fn clip(s: &str, max: usize) -> String {

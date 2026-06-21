@@ -115,13 +115,137 @@ impl Provenance {
     pub fn color(self) -> &'static str {
         match self {
             Provenance::SearchOrigin => "oklch(0.64 0.205 264)",
-            Provenance::Start => "oklch(0.64 0.205 248)",
+            // "External" (start_page). A colder cyan-blue that stands clear of
+            // Search's periwinkle (264), extending the cold end of the ramp.
+            Provenance::Start => "oklch(0.64 0.205 210)",
             Provenance::Link => "oklch(0.64 0.205 288)",
             Provenance::TypedUrl => "oklch(0.64 0.205 312)",
             Provenance::Bookmark => "oklch(0.64 0.205 340)",
             Provenance::Reload => "oklch(0.64 0.205 350)",
             Provenance::Form => "oklch(0.64 0.205 8)",
             Provenance::Other => "oklch(0.64 0.205 30)",
+        }
+    }
+
+    /// Fold the one category we don't surface separately (`Reload`) into `Other`
+    /// for *display* — color, glyph, legend, callout. The data model still records
+    /// the precise provenance; this only changes what the user sees.
+    ///
+    /// `Start` is **not** folded: in practice Chrome reports `start_page` for tabs
+    /// opened from another application (the genuine browser-start page is
+    /// `chrome://newtab/`, which we drop as non-http), so it surfaces as its own
+    /// "External" category.
+    pub fn display(self) -> Provenance {
+        match self {
+            Provenance::Reload => Provenance::Other,
+            p => p,
+        }
+    }
+
+    /// Marker shape encoding provenance *without* relying on color (CVD-safe
+    /// redundant channel). Folds through [`Self::display`], so only the seven
+    /// surfaced categories map to a shape.
+    pub fn shape(self) -> Shape {
+        match self.display() {
+            Provenance::Link => Shape::Circle,
+            Provenance::SearchOrigin => Shape::Triangle,
+            Provenance::TypedUrl => Shape::Square,
+            Provenance::Bookmark => Shape::Diamond,
+            Provenance::Form => Shape::Hexagon,
+            Provenance::Start => Shape::Star, // "External" — opened from another app
+            _ => Shape::Cross,                // Other (and folded Reload)
+        }
+    }
+}
+
+/// A node-marker shape. Provenance is drawn as one of these so the encoding
+/// survives color-vision deficiency (shape is redundant with hue). Pure geometry
+/// so both the canvas and the SVG Sankey can share it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    Circle,
+    Square,
+    Triangle,
+    Diamond,
+    Hexagon,
+    Cross,
+    Star,
+}
+
+impl Shape {
+    /// Polygon vertices for this marker centered at `(cx, cy)` with "radius" `r`.
+    /// `None` means a circle (the caller draws it with an arc / `<circle>`).
+    pub fn points(self, cx: f64, cy: f64, r: f64) -> Option<Vec<(f64, f64)>> {
+        let pts = match self {
+            Shape::Circle => return None,
+            Shape::Square => {
+                let s = r * 0.86;
+                vec![
+                    (cx - s, cy - s),
+                    (cx + s, cy - s),
+                    (cx + s, cy + s),
+                    (cx - s, cy + s),
+                ]
+            }
+            Shape::Triangle => vec![
+                (cx, cy - r),
+                (cx + r * 0.87, cy + r * 0.55),
+                (cx - r * 0.87, cy + r * 0.55),
+            ],
+            Shape::Diamond => vec![(cx, cy - r), (cx + r, cy), (cx, cy + r), (cx - r, cy)],
+            Shape::Hexagon => vec![
+                (cx - r * 0.5, cy - r * 0.87),
+                (cx + r * 0.5, cy - r * 0.87),
+                (cx + r, cy),
+                (cx + r * 0.5, cy + r * 0.87),
+                (cx - r * 0.5, cy + r * 0.87),
+                (cx - r, cy),
+            ],
+            Shape::Cross => {
+                let a = r * 0.4;
+                vec![
+                    (cx - a, cy - r),
+                    (cx + a, cy - r),
+                    (cx + a, cy - a),
+                    (cx + r, cy - a),
+                    (cx + r, cy + a),
+                    (cx + a, cy + a),
+                    (cx + a, cy + r),
+                    (cx - a, cy + r),
+                    (cx - a, cy + a),
+                    (cx - r, cy + a),
+                    (cx - r, cy - a),
+                    (cx - a, cy - a),
+                ]
+            }
+            Shape::Star => {
+                // 5-point star: alternate outer (r) / inner (0.5r) vertices,
+                // starting at the top point.
+                let inner = r * 0.5;
+                (0..10)
+                    .map(|i| {
+                        let ang =
+                            -std::f64::consts::FRAC_PI_2 + (i as f64) * std::f64::consts::PI / 5.0;
+                        let rad = if i % 2 == 0 { r } else { inner };
+                        (cx + rad * ang.cos(), cy + rad * ang.sin())
+                    })
+                    .collect()
+            }
+        };
+        Some(pts)
+    }
+
+    /// CSS class used to clip a legend/key swatch into this shape (see
+    /// `dashboard.css`). The canvas/SVG draw the polygon directly instead.
+    pub fn css(self) -> &'static str {
+        match self {
+            Shape::Circle => "glyph-circle",
+            Shape::Square => "glyph-square",
+            Shape::Triangle => "glyph-triangle",
+            Shape::Diamond => "glyph-diamond",
+            Shape::Hexagon => "glyph-hexagon",
+            Shape::Cross => "glyph-cross",
+            Shape::Star => "glyph-star",
         }
     }
 }

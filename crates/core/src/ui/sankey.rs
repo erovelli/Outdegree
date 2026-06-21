@@ -7,6 +7,46 @@ use super::Shared;
 use crate::flow;
 use wasm_bindgen::JsValue;
 
+/// The two color keys shown on the Sankey page: bar provenance + ribbon edge kind
+/// (the floating graph legend is hidden on this view, so the flow is self-keyed).
+fn keys_html() -> String {
+    use crate::model::Provenance as P;
+    let prov = [
+        ("Search", "dot-search", P::SearchOrigin),
+        ("Link", "dot-link", P::Link),
+        ("Typed URL", "dot-typed", P::TypedUrl),
+        ("Bookmark", "dot-bookmark", P::Bookmark),
+        ("Form", "dot-form", P::Form),
+        ("External", "dot-external", P::Start),
+        ("Other", "dot-other", P::Other),
+    ];
+    let mut h = String::from(
+        "<div class=\"sankey-keys\"><div class=\"sankey-key\">\
+         <span class=\"sankey-key-title\">Bars · provenance</span>",
+    );
+    for (label, dot, p) in prov {
+        h.push_str(&format!(
+            "<span class=\"key-item\"><span class=\"dot {dot} {glyph}\"></span>{label}</span>",
+            glyph = p.shape().css()
+        ));
+    }
+    h.push_str(
+        "</div><div class=\"sankey-key\">\
+         <span class=\"sankey-key-title\">Ribbons · link type</span>",
+    );
+    for (label, dot) in [
+        ("Link", "dot-edge-link"),
+        ("Form", "dot-edge-form"),
+        ("Search-link", "dot-edge-search"),
+    ] {
+        h.push_str(&format!(
+            "<span class=\"key-item\"><span class=\"dot {dot}\"></span>{label}</span>"
+        ));
+    }
+    h.push_str("</div></div>");
+    h
+}
+
 pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let doc = shared.borrow().doc.clone();
     let Some(flow_el) = doc.get_element_by_id("bg-flow") else {
@@ -61,10 +101,12 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         };
         let vw = (flow_el.client_width() as f64 - 8.0).max(640.0);
         let mut html = format!(
-            "<h3>Session flow · {} navs · window {}</h3>\
+            "<h3>Session flow · {} · window {}</h3>\
              <p class=\"muted\">Hosts are columns; ribbon width ∝ how often that hop was taken.</p>",
-            sess.nav_count, sess.window_id
+            super::plural(sess.nav_count as u64, "nav"),
+            sess.window_id
         );
+        html.push_str(&keys_html());
         html.push_str(&flow::render_svg(&fg, vw));
 
         // Same data → same picture: skip the DOM swap when the markup is identical
