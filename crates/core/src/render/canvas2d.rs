@@ -432,7 +432,8 @@ fn draw_callout(
     let _ = ctx.fill_text(&clip(&node.key, 22), bx + 28.0, by + 22.0);
     set_fill(ctx, LABEL);
     ctx.set_font(&format!("11px {MONO}"));
-    let sub = format!("{} visits · {}", node.visits, prov_label(prov));
+    let noun = if node.visits == 1 { "visit" } else { "visits" };
+    let sub = format!("{} {noun} · {}", node.visits, prov_label(prov));
     let _ = ctx.fill_text(&sub, bx + 16.0, by + 41.0);
     ctx.set_text_baseline("alphabetic");
 }
