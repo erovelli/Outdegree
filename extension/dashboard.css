@@ -57,9 +57,16 @@ body {
 .view-sankey .panel.search,
 .view-sankey .panel.readout,
 .view-tables .panel.toolbar,
-.view-raw .panel.toolbar {
+.view-tables .panel.legend,
+.view-tables .panel.search,
+.view-raw .panel.toolbar,
+.view-raw .panel.legend,
+.view-raw .panel.search {
   display: none;
 }
+/* Tables/Raw have no size encoding → drop the spectrum (visits) key, keep counts. */
+.view-tables .spectrum-wrap,
+.view-raw .spectrum-wrap { display: none; }
 
 /* The view body: the graph canvas (full-bleed) or the data tables. */
 .bg-body { position: fixed; inset: 0; }
@@ -215,6 +222,7 @@ body {
 /* 7. readout + spectrum */
 .panel.readout { gap: 12px; padding: 8px 14px; }
 .panel.readout .vrule { height: 14px; }
+.spectrum-wrap { display: flex; align-items: center; gap: 12px; }
 .metric { font: 11px var(--mono); color: var(--text-secondary); }
 .spectrum {
   width: 120px; height: 7px; border-radius: 4px;
@@ -261,6 +269,9 @@ a { color: var(--text-primary); }
 }
 .sp-row { display: flex; gap: 16px; height: 100%; }
 .sp-list { flex: 0 0 320px; overflow: auto; }
+.sp-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sp-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sp-toolbar .muted { font-size: 12px; }
 .sp-flow { flex: 1; overflow: auto; }
 .sp-tab { margin: 8px 0; }
 .sp-item {

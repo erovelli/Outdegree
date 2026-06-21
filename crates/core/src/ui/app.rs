@@ -338,17 +338,22 @@ fn readout_panel(doc: &Document) -> Element {
     let _ = edges.set_attribute("id", "bg-count-edges");
     let rule1 = el(doc, "div");
     let _ = rule1.set_attribute("class", "vrule");
+    // The spectrum (the visits size-key) is grouped so views without a size
+    // encoding (Tables) can drop it while keeping the node/edge counts.
+    let wrap = el(doc, "div");
+    let _ = wrap.set_attribute("class", "spectrum-wrap");
     let rule2 = el(doc, "div");
     let _ = rule2.set_attribute("class", "vrule");
     let spectrum = el(doc, "div");
     let _ = spectrum.set_attribute("class", "spectrum");
     let slabel = span(doc, "spectrum-label", "visits");
+    let _ = wrap.append_child(&rule2);
+    let _ = wrap.append_child(&spectrum);
+    let _ = wrap.append_child(&slabel);
     let _ = p.append_child(&nodes);
     let _ = p.append_child(&rule1);
     let _ = p.append_child(&edges);
-    let _ = p.append_child(&rule2);
-    let _ = p.append_child(&spectrum);
-    let _ = p.append_child(&slabel);
+    let _ = p.append_child(&wrap);
     p
 }
 

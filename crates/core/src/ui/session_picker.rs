@@ -1,7 +1,10 @@
 //! Session picker (§7.7): lists closed + provisional-open sessions; selecting one
 //! renders its per-tab flow (§4.4, sankey.rs).
 
-use super::{body_container, el, esc, on, Shared};
+use super::{
+    body_container, el, esc, on, persist_positions, recompute_projection, rerender, Shared,
+};
+use crate::model::Granularity;
 use wasm_bindgen::JsValue;
 
 pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
@@ -19,10 +22,6 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let heading = el(&doc, "h3");
     heading.set_text_content(Some("Sessions"));
     let _ = list.append_child(&heading);
-
-    let flow = el(&doc, "div");
-    let _ = flow.set_attribute("id", "bg-flow");
-    let _ = flow.set_attribute("class", "sp-flow");
 
     let mut sessions = shared.borrow().sessions.clone();
     sessions.sort_by(|a, b| {
@@ -62,8 +61,53 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         let _ = list.append_child(&item);
     }
 
+    // Right pane: a Hostname/Domain grouping toggle above the flow. Granularity
+    // controls how the Sankey buckets hosts (the bottom-left filter panel is
+    // hidden on this view), so it gets its own toggle here.
+    let right = el(&doc, "div");
+    let _ = right.set_attribute("class", "sp-right");
+
+    let bar = el(&doc, "div");
+    let _ = bar.set_attribute("class", "sp-toolbar");
+    let lbl = el(&doc, "span");
+    let _ = lbl.set_attribute("class", "muted");
+    lbl.set_text_content(Some("Group by"));
+    let gran_btn = el(&doc, "button");
+    let _ = gran_btn.set_attribute("class", "chip");
+    let _ = gran_btn.set_attribute("title", "Toggle hostname / registrable-domain grouping");
+    gran_btn.set_text_content(Some(if shared.borrow().gran == Granularity::Registrable {
+        "Domain ⌄"
+    } else {
+        "Hostname ⌄"
+    }));
+    {
+        let s = shared.clone();
+        on(&gran_btn, "click", move |_| {
+            {
+                let mut a = s.borrow_mut();
+                a.gran = if a.gran == Granularity::Hostname {
+                    Granularity::Registrable
+                } else {
+                    Granularity::Hostname
+                };
+            }
+            recompute_projection(&s);
+            persist_positions(&s);
+            let _ = rerender(&s);
+        });
+    }
+    let _ = bar.append_child(&lbl);
+    let _ = bar.append_child(&gran_btn);
+
+    let flow = el(&doc, "div");
+    let _ = flow.set_attribute("id", "bg-flow");
+    let _ = flow.set_attribute("class", "sp-flow");
+
+    let _ = right.append_child(&bar);
+    let _ = right.append_child(&flow);
+
     let _ = container.append_child(&list);
-    let _ = container.append_child(&flow);
+    let _ = container.append_child(&right);
     let _ = body.append_child(&container);
 
     super::sankey::render(shared)
