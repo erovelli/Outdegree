@@ -286,6 +286,28 @@ pub fn component(p: &GraphProjection, focus: &str) -> GraphProjection {
     GraphProjection { nodes, edges }
 }
 
+/// A stable fingerprint of a projection's *layout-relevant shape*: its node set
+/// and edge topology, independent of order or per-node visit counts. The same
+/// graph shape always hashes the same, so the UI can recognise an idempotent
+/// re-projection (e.g. re-picking a range that resolves to the same data) and keep
+/// the existing layout instead of re-running the force simulation. Visit counts
+/// drive node size/colour, not position, so they're deliberately excluded.
+pub fn layout_signature(p: &GraphProjection) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut nodes: Vec<&str> = p.nodes.iter().map(|n| n.key.as_str()).collect();
+    nodes.sort_unstable();
+    let mut edges: Vec<(&str, &str)> = p
+        .edges
+        .iter()
+        .map(|e| (e.from.as_str(), e.to.as_str()))
+        .collect();
+    edges.sort_unstable();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    nodes.hash(&mut h);
+    edges.hash(&mut h);
+    h.finish()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -465,6 +487,43 @@ mod tests {
         let g = project(&[b], Granularity::Hostname, &filters);
         assert_eq!(g.nodes.len(), 1);
         assert_eq!(g.nodes[0].key, "wiki.org");
+    }
+
+    #[test]
+    fn layout_signature_is_shape_only_and_order_independent() {
+        use crate::model::{EdgeAgg, NodeAgg};
+        let n = |k: &str, v: u32| NodeAgg {
+            key: k.into(),
+            visits: v,
+            prov: ProvBreakdown::default(),
+        };
+        let e = |f: &str, t: &str| EdgeAgg {
+            from: f.into(),
+            to: t.into(),
+            weight: 1,
+            kinds: KindBreakdown::default(),
+        };
+        let a = GraphProjection {
+            nodes: vec![n("a", 5), n("b", 3), n("c", 1)],
+            edges: vec![e("a", "b"), e("b", "c")],
+        };
+        // Same shape, shuffled order + different visit counts → same signature.
+        let b = GraphProjection {
+            nodes: vec![n("c", 99), n("a", 1), n("b", 2)],
+            edges: vec![e("b", "c"), e("a", "b")],
+        };
+        assert_eq!(layout_signature(&a), layout_signature(&b));
+        // A different edge, or a different node set, must change the signature.
+        let diff_edge = GraphProjection {
+            nodes: vec![n("a", 5), n("b", 3), n("c", 1)],
+            edges: vec![e("a", "b"), e("a", "c")],
+        };
+        let diff_nodes = GraphProjection {
+            nodes: vec![n("a", 5), n("b", 3)],
+            edges: vec![e("a", "b")],
+        };
+        assert_ne!(layout_signature(&a), layout_signature(&diff_edge));
+        assert_ne!(layout_signature(&a), layout_signature(&diff_nodes));
     }
 
     #[test]
