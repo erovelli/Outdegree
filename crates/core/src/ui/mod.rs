@@ -54,6 +54,11 @@ pub(crate) struct App {
     pub root: Element,
     pub proj: GraphProjection,
     pub layout_pos: HashMap<String, Pos>,
+    /// Exact node positions per graph *shape* (see [`project::layout_signature`]),
+    /// so revisiting the same graph this session restores an identical picture
+    /// instead of re-running the force layout. New shapes warm-start from
+    /// `positions` (cross-session spatial memory); only this session is cached.
+    pub layouts: HashMap<u64, HashMap<String, (f32, f32)>>,
     pub hover: Option<String>,
     pub dragging: bool,
     pub did_drag: bool,
@@ -134,6 +139,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         root,
         proj: GraphProjection::default(),
         layout_pos: HashMap::new(),
+        layouts: HashMap::new(),
         hover: None,
         dragging: false,
         did_drag: false,
@@ -300,19 +306,49 @@ fn recompute_projection_inner(shared: &Shared, relayout: bool) {
         .filter_map(|e| Some((*index.get(e.from.as_str())?, *index.get(e.to.as_str())?)))
         .collect();
 
-    let seed = a.positions.clone();
-    // 0 iterations keeps existing positions (focus transition / locked), only
-    // placing brand-new nodes; otherwise run the force layout.
-    let iters = if !relayout || a.locked { 0 } else { 320 };
+    // The same graph shape must produce the same picture, so an idempotent
+    // interaction (re-picking a range/granularity, or a window that resolves to
+    // the same data) never nudges the layout. If we've laid this shape out this
+    // session, restore those exact positions (0 iterations); only a *new* shape
+    // runs the force layout, warm-started from cross-session spatial memory.
+    let sig = project::layout_signature(&proj);
+    let known = a.layouts.contains_key(&sig);
+    let iters = if a.locked || known || !relayout {
+        0
+    } else {
+        320
+    };
+    let seed = if known {
+        a.layouts[&sig].clone()
+    } else {
+        a.positions.clone()
+    };
     let placed = layout::fruchterman_reingold(&keys, &edges, iters, &seed);
 
     let mut layout_pos = HashMap::new();
+    let mut snapshot = HashMap::new();
     for (k, p) in keys.iter().zip(placed.iter()) {
         layout_pos.insert(k.clone(), *p);
         a.positions.insert(k.clone(), (p.x, p.y));
+        snapshot.insert(k.clone(), (p.x, p.y));
     }
+    a.layouts.insert(sig, snapshot);
     a.proj = proj;
     a.layout_pos = layout_pos;
+}
+
+/// Re-snapshot the current on-screen layout under its shape signature, so a manual
+/// rearrangement (a node drag) becomes the layout this shape restores to — instead
+/// of being reverted by the next idempotent re-projection.
+pub(crate) fn sync_layout_cache(shared: &Shared) {
+    let mut a = shared.borrow_mut();
+    let sig = project::layout_signature(&a.proj);
+    let snap: HashMap<String, (f32, f32)> = a
+        .layout_pos
+        .iter()
+        .map(|(k, p)| (k.clone(), (p.x, p.y)))
+        .collect();
+    a.layouts.insert(sig, snap);
 }
 
 /// Set the drill-down focus and animate the camera from the current view to frame

@@ -347,6 +347,7 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
             c.set_class_name("");
             if moved {
                 super::persist_positions(&s);
+                super::sync_layout_cache(&s); // keep the drag from being reverted
             }
         });
     }
