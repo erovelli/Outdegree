@@ -34,28 +34,55 @@ pub struct FlowGraph {
 }
 
 /// Build a layered flow graph from per-tab host chains (consecutive duplicates
-/// already collapsed by the caller). Transitions are aggregated within a chain.
+/// already collapsed). Each chain's first host is a session start; consecutive
+/// hosts are transitions. For session flow that spans tabs (links opened in new
+/// tabs), use [`build_transitions`] with explicit cross-tab bridges instead.
 pub fn build(chains: &[Vec<String>]) -> FlowGraph {
-    // Index hosts by first appearance; aggregate consecutive transitions.
+    let mut transitions: Vec<(String, String)> = Vec::new();
+    let mut starts: Vec<String> = Vec::new();
+    for chain in chains {
+        if let Some(first) = chain.first() {
+            starts.push(first.clone());
+        }
+        for w in chain.windows(2) {
+            transitions.push((w[0].clone(), w[1].clone()));
+        }
+    }
+    build_transitions(&transitions, &starts)
+}
+
+fn intern(h: &str, index: &mut HashMap<String, usize>, keys: &mut Vec<String>) -> usize {
+    if let Some(&i) = index.get(h) {
+        return i;
+    }
+    let i = keys.len();
+    keys.push(h.to_string());
+    index.insert(h.to_string(), i);
+    i
+}
+
+/// Build a layered flow graph from explicit directed transitions plus the set of
+/// session-start hosts (pinned to the leftmost column). `starts` hosts with no
+/// transitions still appear as nodes. This is the cross-tab-aware entry point:
+/// a link opened in a new tab is just a transition `source-host → new-tab-host`.
+pub fn build_transitions(transitions: &[(String, String)], starts: &[String]) -> FlowGraph {
     let mut index: HashMap<String, usize> = HashMap::new();
     let mut keys: Vec<String> = Vec::new();
     let mut link_w: HashMap<(usize, usize), u32> = HashMap::new();
-
-    for chain in chains {
-        let mut prev: Option<usize> = None;
-        for host in chain {
-            let i = *index.entry(host.clone()).or_insert_with(|| {
-                keys.push(host.clone());
-                keys.len() - 1
-            });
-            if let Some(p) = prev {
-                if p != i {
-                    *link_w.entry((p, i)).or_insert(0) += 1;
-                }
-            }
-            prev = Some(i);
+    for (from, to) in transitions {
+        let fi = intern(from, &mut index, &mut keys);
+        let ti = intern(to, &mut index, &mut keys);
+        if fi != ti {
+            *link_w.entry((fi, ti)).or_insert(0) += 1;
         }
     }
+    // Session entry hosts are pinned to the leftmost column so the diagram reads
+    // as "where the session started → where it went". Intern them so isolated
+    // starts (a tab with a single nav) still appear.
+    let start_set: HashSet<usize> = starts
+        .iter()
+        .map(|h| intern(h, &mut index, &mut keys))
+        .collect();
 
     let n = keys.len();
     if n == 0 {
@@ -105,22 +132,13 @@ pub fn build(chains: &[Vec<String>]) -> FlowGraph {
         }
     }
 
-    // Session entry hosts (the first host of each tab chain) are pinned to the
-    // leftmost column so the diagram reads as "where the session started → where
-    // it went". Their incoming edges still draw (as ribbons curving back), they
-    // just don't push the start host rightward.
-    let starts: HashSet<usize> = chains
-        .iter()
-        .filter_map(|c| c.first())
-        .filter_map(|h| index.get(h).copied())
-        .collect();
-
     // Longest-path layering on the forward DAG (Kahn topological order). Edges
-    // into a start host are excluded from layering so starts stay at column 0.
+    // into a start host are excluded from layering so starts stay at column 0
+    // (their incoming ribbons still draw, just curving back).
     let mut fwd: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut indeg = vec![0usize; n];
     for &(u, v) in link_w.keys() {
-        if back.contains(&(u, v)) || starts.contains(&v) {
+        if back.contains(&(u, v)) || start_set.contains(&v) {
             continue;
         }
         fwd[u].push(v);
@@ -385,6 +403,35 @@ mod tests {
         assert_eq!(layer_of(&g, "c"), 1);
         // the revisit b→hub is still recorded as a link
         assert_eq!(weight(&g, "b", "hub"), Some(1));
+    }
+
+    #[test]
+    fn build_transitions_bridges_new_tab_links() {
+        // linkedin (session start) opens two job boards in new tabs; one job
+        // board navigates onward. The bridges make the boards non-isolated.
+        let tr: Vec<(String, String)> = [
+            ("linkedin.com", "jobs1.com"),
+            ("linkedin.com", "jobs2.com"),
+            ("jobs1.com", "apply.com"),
+        ]
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+        let g = build_transitions(&tr, &["linkedin.com".to_string()]);
+        assert_eq!(layer_of(&g, "linkedin.com"), 0);
+        assert_eq!(layer_of(&g, "jobs1.com"), 1);
+        assert_eq!(layer_of(&g, "jobs2.com"), 1);
+        assert_eq!(layer_of(&g, "apply.com"), 2);
+        assert_eq!(g.links.len(), 3);
+        // jobs2 has an inbound bridge → throughput 1, not an isolated node
+        assert_eq!(
+            g.nodes
+                .iter()
+                .find(|n| n.key == "jobs2.com")
+                .unwrap()
+                .throughput,
+            1
+        );
     }
 
     #[test]

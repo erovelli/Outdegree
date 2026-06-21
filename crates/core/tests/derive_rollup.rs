@@ -114,20 +114,21 @@ fn node_visits(map: &Roll, key: &str) -> u32 {
 fn new_tab_origin_is_source_then_current_page() {
     let events = vec![
         nav(1, 100.0, 1, 1, "https://a.com/", "typed", &[]),
-        nav(2, 200.0, 1, 1, "https://m.com/", "link", &[]), // finalizes a.com; last_url=a.com
-        link(3, 250.0, 2, 1),                               // snapshot tab1.last_url == a.com
-        nav(4, 300.0, 1, 1, "https://b.com/", "link", &[]), // source navigates on
+        nav(2, 200.0, 1, 1, "https://m.com/", "link", &[]), // m.com is now the visible page (buffered)
+        link(3, 250.0, 2, 1),                               // snapshot tab1's current page == m.com
+        nav(4, 300.0, 1, 1, "https://b.com/", "link", &[]), // source navigates on, after the link
         nav(5, 400.0, 2, 1, "https://c.com/", "link", &[]), // child's first nav
         close(6, 500.0, 2),
         close(7, 600.0, 1),
     ];
     let (map, _, _) = run_all(&events);
-    // child edge originates from the snapshot (a.com), not m.com / b.com.
+    // The child originates from the page the link was clicked from (m.com), not
+    // the page before it (a.com) nor one loaded later (b.com).
     assert!(
-        has_edge(&map, "a.com", "c.com"),
-        "snapshot origin a.com->c.com"
+        has_edge(&map, "m.com", "c.com"),
+        "snapshot origin = source's current page m.com->c.com"
     );
-    assert!(!has_edge(&map, "m.com", "c.com"));
+    assert!(!has_edge(&map, "a.com", "c.com"));
     assert!(!has_edge(&map, "b.com", "c.com"));
     // sanity: within-tab chain edges
     assert!(has_edge(&map, "a.com", "m.com"));
