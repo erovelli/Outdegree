@@ -43,6 +43,24 @@ body {
 }
 #app { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
 
+/*
+ * Per-view chrome: only show the panels that apply to the active screen.
+ * - Sankey shows one selected session's flow (its own list + header), so the
+ *   graph chrome — range, provenance legend, zoom, host filters, node/edge
+ *   readout — doesn't apply.
+ * - Tables/Raw are data views built from the same projection (range/legend/
+ *   filters/readout stay relevant) but have no canvas, so zoom is hidden.
+ */
+.view-sankey .panel.seg-panel,
+.view-sankey .panel.legend,
+.view-sankey .panel.toolbar,
+.view-sankey .panel.search,
+.view-sankey .panel.readout,
+.view-tables .panel.toolbar,
+.view-raw .panel.toolbar {
+  display: none;
+}
+
 /* The view body: the graph canvas (full-bleed) or the data tables. */
 .bg-body { position: fixed; inset: 0; }
 .bg-body.mode-graph { pointer-events: none; z-index: 0; }

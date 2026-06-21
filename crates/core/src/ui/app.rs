@@ -497,6 +497,17 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         });
     }
 
+    // Per-view class on the root drives which supporting panels are shown (some
+    // chrome only makes sense for the graph canvas — see dashboard.css).
+    if let Some(app) = doc.get_element_by_id("app") {
+        app.set_class_name(match a.view {
+            View::Graph => "view-graph",
+            View::Sankey => "view-sankey",
+            View::Tables => "view-tables",
+            View::Raw => "view-raw",
+        });
+    }
+
     // active segments
     let vv = match a.view {
         View::Graph => "graph",
