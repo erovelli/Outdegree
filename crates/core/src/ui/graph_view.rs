@@ -26,12 +26,14 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
 
     // The canvas *is* the app: full-bleed under the floating chrome. Its
     // position/size live in CSS (`#bg-canvas`) — not an inline style — so it
-    // survives the page CSP (`default-src 'self'`, no inline styles). Only the
-    // bitmap resolution is set here (width/height attributes, not CSS).
+    // survives the page CSP. The backing store is scaled by devicePixelRatio so
+    // text/edges stay crisp on HiDPI displays; drawing happens in CSS pixels (the
+    // draw transform is set to `dpr` in `draw_now`).
     let w = win_dim(&win, true).max(320.0);
     let h = win_dim(&win, false).max(320.0);
-    canvas.set_width(w as u32);
-    canvas.set_height(h as u32);
+    let d = dpr();
+    canvas.set_width((w * d) as u32);
+    canvas.set_height((h * d) as u32);
     let _ = body.append_child(&canvas);
 
     // Frame the laid-out nodes so the graph is visible even when sparse/edgeless.
@@ -46,6 +48,20 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     attach_interactions(shared, &canvas);
     install_resize_hook(shared);
     Ok(())
+}
+
+/// Device pixel ratio, clamped so a 4× display can't blow up the backing store.
+fn dpr() -> f64 {
+    web_sys::window()
+        .map(|w| w.device_pixel_ratio())
+        .unwrap_or(1.0)
+        .clamp(1.0, 3.0)
+}
+
+/// The canvas size in CSS pixels (the backing store is `dpr×` larger).
+fn logical_dims(canvas: &HtmlCanvasElement) -> (f64, f64) {
+    let d = dpr();
+    (canvas.width() as f64 / d, canvas.height() as f64 / d)
 }
 
 /// Inner viewport `width` (or height) in CSS pixels.
@@ -107,7 +123,7 @@ pub(crate) fn zoom(shared: &Shared, factor: f64) {
 /// Re-frame all nodes to fit the canvas and redraw (the "fit-to-screen" button).
 pub(crate) fn fit_view(shared: &Shared) {
     if let Some(c) = canvas_el(shared) {
-        let (w, h) = (c.width() as f64, c.height() as f64);
+        let (w, h) = logical_dims(&c);
         let cam = {
             let a = shared.borrow();
             canvas2d::fit(&a.proj, &a.layout_pos, w, h)
@@ -120,8 +136,10 @@ pub(crate) fn fit_view(shared: &Shared) {
 fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
     let Some(ctx) = ctx_of(canvas) else { return };
     let a = shared.borrow();
-    let w = canvas.width() as f64;
-    let h = canvas.height() as f64;
+    // Draw in CSS pixels onto the dpr-scaled backing store (crisp on HiDPI).
+    let d = dpr();
+    let _ = ctx.set_transform(d, 0.0, 0.0, d, 0.0, 0.0);
+    let (w, h) = (canvas.width() as f64 / d, canvas.height() as f64 / d);
     canvas2d::draw(
         &ctx,
         w,
@@ -185,8 +203,7 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                     a.last_mouse = (mx, my);
                     redraw = true;
                 } else {
-                    let w = c.width() as f64;
-                    let h = c.height() as f64;
+                    let (w, h) = logical_dims(&c);
                     let hov = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
                     if hov != a.hover {
                         a.hover = hov;
@@ -221,15 +238,8 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                     return;
                 }
                 let (mx, my) = (me.offset_x() as f64, me.offset_y() as f64);
-                canvas2d::hit_test(
-                    mx,
-                    my,
-                    c.width() as f64,
-                    c.height() as f64,
-                    &a.proj,
-                    &a.layout_pos,
-                    &a.camera,
-                )
+                let (w, h) = logical_dims(&c);
+                canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera)
             };
             {
                 let mut a = s.borrow_mut();

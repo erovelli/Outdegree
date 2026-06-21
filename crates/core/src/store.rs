@@ -269,7 +269,7 @@ impl Db {
     pub async fn forget_domain(&self, domain: &str) -> Result<(), JsValue> {
         self.delete_events_where(|e| event_matches_host(e, domain))
             .await?;
-        self.invalidate_rollups().await
+        self.reset_derivation().await
     }
 
     /// Delete every event/spa record whose `ts` falls in `[from_ts, to_ts]`, then
@@ -280,7 +280,7 @@ impl Db {
             ts >= from_ts && ts <= to_ts
         })
         .await?;
-        self.invalidate_rollups().await
+        self.reset_derivation().await
     }
 
     async fn delete_events_where<F: Fn(&Event) -> bool>(&self, pred: F) -> Result<(), JsValue> {
@@ -304,8 +304,9 @@ impl Db {
     }
 
     /// Clear `rollup_days` + `sessions` and reset the derive cursor so the next
-    /// open rebuilds from scratch (destructive-edit invalidation, §4.3).
-    async fn invalidate_rollups(&self) -> Result<(), JsValue> {
+    /// open rebuilds the whole graph from the raw `events` (destructive-edit
+    /// invalidation, §4.3; also the manual "Rebuild from raw events" recovery).
+    pub async fn reset_derivation(&self) -> Result<(), JsValue> {
         let tx = self
             .rexie
             .transaction(&["rollup_days", "sessions"], TransactionMode::ReadWrite)
