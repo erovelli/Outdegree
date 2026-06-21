@@ -59,6 +59,9 @@ pub(crate) struct App {
     pub did_drag: bool,
     /// The node currently being dragged to reposition it (else canvas pan).
     pub drag_node: Option<String>,
+    /// Generation counter for the camera tween; bumped to cancel an in-flight
+    /// animation when a new one starts or the user takes manual control.
+    pub anim_gen: u64,
     pub last_mouse: (f64, f64),
     pub selected_session: Option<f64>,
     /// Opt-in "in-app navigations" view: fold `events` + `spa` from scratch (§4.2).
@@ -135,6 +138,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         dragging: false,
         did_drag: false,
         drag_node: None,
+        anim_gen: 0,
         last_mouse: (0.0, 0.0),
         selected_session: None,
         spa_mode: false,
@@ -264,6 +268,16 @@ fn install_live_refresh(shared: &Shared) {
 /// Re-project the in-memory buckets at the current granularity/filters and warm-
 /// start a fresh layout, preserving spatial memory for surviving nodes (§7.6).
 pub(crate) fn recompute_projection(shared: &Shared) {
+    recompute_projection_inner(shared, true);
+}
+
+/// Re-project keeping existing node positions (no fresh force iterations). Used
+/// for focus transitions so the camera can animate over a stable layout.
+pub(crate) fn recompute_projection_keep(shared: &Shared) {
+    recompute_projection_inner(shared, false);
+}
+
+fn recompute_projection_inner(shared: &Shared, relayout: bool) {
     let mut a = shared.borrow_mut();
     // Restrict to the selected time window (design "Range" control), then project.
     let window = project::select_window(&a.buckets, a.time_range);
@@ -287,8 +301,9 @@ pub(crate) fn recompute_projection(shared: &Shared) {
         .collect();
 
     let seed = a.positions.clone();
-    // Locked → 0 iterations: keep existing positions, only place brand-new nodes.
-    let iters = if a.locked { 0 } else { 320 };
+    // 0 iterations keeps existing positions (focus transition / locked), only
+    // placing brand-new nodes; otherwise run the force layout.
+    let iters = if !relayout || a.locked { 0 } else { 320 };
     let placed = layout::fruchterman_reingold(&keys, &edges, iters, &seed);
 
     let mut layout_pos = HashMap::new();
@@ -298,6 +313,24 @@ pub(crate) fn recompute_projection(shared: &Shared) {
     }
     a.proj = proj;
     a.layout_pos = layout_pos;
+}
+
+/// Set the drill-down focus and animate the camera from the current view to frame
+/// the focused component (a smooth pan/zoom). Falls back to a full re-render when
+/// the graph canvas isn't mounted (e.g. selecting from another tab).
+pub(crate) fn focus_and_animate(shared: &Shared, new_focus: Option<String>) {
+    shared.borrow_mut().focus = new_focus;
+    recompute_projection_keep(shared); // keep positions so only the camera moves
+    let ready = {
+        let a = shared.borrow();
+        a.view == View::Graph && a.doc.get_element_by_id("bg-canvas").is_some()
+    };
+    if ready {
+        app::sync_chrome(shared);
+        graph_view::animate_to_fit(shared);
+    } else {
+        let _ = rerender(shared);
+    }
 }
 
 /// Persist layout positions to the DB (spatial memory across opens, §7.6).

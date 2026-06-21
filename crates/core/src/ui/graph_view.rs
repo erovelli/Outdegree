@@ -1,7 +1,10 @@
 //! Graph view: canvas setup, draw, and pan/zoom/hover interactions (§7.7, M3).
 
 use super::{body_container, el, on, Shared};
-use crate::render::canvas2d;
+use crate::render::canvas2d::{self, Camera};
+use std::cell::RefCell;
+use std::rc::Rc;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent, WheelEvent};
 
@@ -133,6 +136,86 @@ pub(crate) fn fit_view(shared: &Shared) {
     }
 }
 
+/// Animate the camera to frame the current projection, tweening from the current
+/// view — the smooth pan/zoom into a selected node's component.
+pub(crate) fn animate_to_fit(shared: &Shared) {
+    let Some(c) = canvas_el(shared) else { return };
+    let (w, h) = logical_dims(&c);
+    let target = {
+        let a = shared.borrow();
+        canvas2d::fit(&a.proj, &a.layout_pos, w, h)
+    };
+    animate_to(shared, target);
+}
+
+fn lerp(a: f64, b: f64, t: f64) -> f64 {
+    a + (b - a) * t
+}
+fn cam_close(a: &Camera, b: &Camera) -> bool {
+    (a.x - b.x).abs() < 0.5 && (a.y - b.y).abs() < 0.5 && (a.scale - b.scale).abs() < 1e-3
+}
+fn request_frame(cb: &Closure<dyn FnMut()>) {
+    if let Some(win) = web_sys::window() {
+        let _ = win.request_animation_frame(cb.as_ref().unchecked_ref());
+    }
+}
+
+/// Self-referencing handle for the rAF loop (so the closure can re-request and
+/// drop itself).
+type RafHandle = Rc<RefCell<Option<Closure<dyn FnMut()>>>>;
+
+/// Tween the camera to `target` (ease-out, ~380ms), redrawing each frame.
+/// Cancellable via `App::anim_gen` (a new tween or a manual pan/zoom supersedes).
+fn animate_to(shared: &Shared, target: Camera) {
+    let start = {
+        let mut a = shared.borrow_mut();
+        a.anim_gen = a.anim_gen.wrapping_add(1);
+        a.camera
+    };
+    let gen = shared.borrow().anim_gen;
+    if cam_close(&start, &target) {
+        shared.borrow_mut().camera = target;
+        redraw(shared);
+        return;
+    }
+
+    let dur = 380.0_f64;
+    let t0 = js_sys::Date::now();
+    let f: RafHandle = Rc::new(RefCell::new(None));
+    let g = f.clone();
+    let s = shared.clone();
+    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+        if s.borrow().anim_gen != gen {
+            let _ = f.borrow_mut().take(); // superseded → stop
+            return;
+        }
+        let t = ((js_sys::Date::now() - t0) / dur).clamp(0.0, 1.0);
+        let e = 1.0 - (1.0 - t).powi(3); // ease-out cubic
+        {
+            let mut a = s.borrow_mut();
+            a.camera = Camera {
+                x: lerp(start.x, target.x, e),
+                y: lerp(start.y, target.y, e),
+                scale: lerp(start.scale, target.scale, e),
+            };
+        }
+        redraw(&s);
+        if t < 1.0 {
+            if let Some(cb) = f.borrow().as_ref() {
+                request_frame(cb);
+            }
+        } else {
+            let _ = f.borrow_mut().take();
+        }
+    }) as Box<dyn FnMut()>));
+    {
+        let b = g.borrow();
+        if let Some(cb) = b.as_ref() {
+            request_frame(cb);
+        }
+    }
+}
+
 fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
     let Some(ctx) = ctx_of(canvas) else { return };
     let a = shared.borrow();
@@ -163,6 +246,7 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                 let factor = if we.delta_y() < 0.0 { 1.1 } else { 1.0 / 1.1 };
                 {
                     let mut a = s.borrow_mut();
+                    a.anim_gen = a.anim_gen.wrapping_add(1); // cancel any camera tween
                     a.camera.scale = (a.camera.scale * factor).clamp(0.1, 8.0);
                 }
                 draw_now(&s, &c);
@@ -177,6 +261,7 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
             if let Ok(me) = ev.dyn_into::<MouseEvent>() {
                 let (mx, my) = (me.offset_x() as f64, me.offset_y() as f64);
                 let mut a = s.borrow_mut();
+                a.anim_gen = a.anim_gen.wrapping_add(1); // cancel any camera tween
                 let (w, h) = logical_dims(&c);
                 let hit = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
                 a.did_drag = false;
@@ -265,8 +350,8 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
             }
         });
     }
-    // click-to-drill: a click that wasn't a drag focuses the clicked node's ego
-    // network (§M3); clicking empty space clears the focus.
+    // click-to-drill: a click that wasn't a drag focuses the clicked node's
+    // connected component and pans/zooms to it (§M3); empty space clears focus.
     {
         let s = shared.clone();
         let c = canvas.clone();
@@ -274,26 +359,22 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
             let Ok(me) = ev.dyn_into::<MouseEvent>() else {
                 return;
             };
-            let hit = {
+            let new_focus = {
                 let a = s.borrow();
                 if a.did_drag {
                     return;
                 }
                 let (mx, my) = (me.offset_x() as f64, me.offset_y() as f64);
                 let (w, h) = logical_dims(&c);
-                canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera)
-            };
-            {
-                let mut a = s.borrow_mut();
+                let hit = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
                 // toggle: clicking the focused node again clears focus
-                a.focus = match (hit, a.focus.clone()) {
+                match (hit, a.focus.clone()) {
                     (Some(k), Some(f)) if k == f => None,
                     (Some(k), _) => Some(k),
                     (None, _) => None,
-                };
-            }
-            super::recompute_projection(&s);
-            let _ = super::rerender(&s);
+                }
+            };
+            super::focus_and_animate(&s, new_focus);
         });
     }
 }
