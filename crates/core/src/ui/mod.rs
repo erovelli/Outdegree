@@ -97,7 +97,11 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         db.write_cursor(state.watermark, &state).await?;
     }
 
-    let buckets = db.read_all_rollups().await?;
+    let buckets = {
+        let mut b = db.read_all_rollups().await?;
+        b.extend(crate::derive::provisional_buckets(&state));
+        b
+    };
     let mut sessions = db.read_sessions().await?;
     // provisional open sessions so a just-finished session appears (§4.4, §7.7)
     for os in state.open_sessions.values() {
@@ -181,7 +185,11 @@ pub(crate) fn live_refresh(shared: &Shared) {
         let _ = db.write_sessions(&sessions_new).await;
         let _ = db.write_cursor(state.watermark, &state).await;
 
-        let buckets = db.read_all_rollups().await.unwrap_or_default();
+        let buckets = {
+            let mut b = db.read_all_rollups().await.unwrap_or_default();
+            b.extend(crate::derive::provisional_buckets(&state));
+            b
+        };
         let mut sessions = db.read_sessions().await.unwrap_or_default();
         for os in state.open_sessions.values() {
             sessions.push(os.provisional_record());
@@ -305,9 +313,15 @@ pub(crate) fn reload_buckets(shared: &Shared) {
             let spa = db.read_spa().await.unwrap_or_default();
             let merged = crate::rollup::merge_streams(&events, &spa);
             let mut st = crate::rollup::DeriveState::default();
-            crate::rollup::fold(&mut st, &merged).0
+            let mut b = crate::rollup::fold(&mut st, &merged).0;
+            b.extend(crate::derive::provisional_buckets(&st));
+            b
         } else {
-            db.read_all_rollups().await.unwrap_or_default()
+            let mut b = db.read_all_rollups().await.unwrap_or_default();
+            if let Ok((_, state)) = db.read_cursor().await {
+                b.extend(crate::derive::provisional_buckets(&state));
+            }
+            b
         };
         s.borrow_mut().buckets = buckets;
         recompute_projection(&s);
@@ -345,7 +359,11 @@ pub(crate) fn reload_and_rerender(shared: &Shared) {
                 let _ = db.write_cursor(state.watermark, &state).await;
             }
         }
-        let buckets = db.read_all_rollups().await.unwrap_or_default();
+        let buckets = {
+            let mut b = db.read_all_rollups().await.unwrap_or_default();
+            b.extend(crate::derive::provisional_buckets(&state));
+            b
+        };
         let mut sessions = db.read_sessions().await.unwrap_or_default();
         for os in state.open_sessions.values() {
             sessions.push(os.provisional_record());

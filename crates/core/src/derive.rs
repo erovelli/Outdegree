@@ -229,6 +229,26 @@ fn finalize(acc: &mut Acc, b: &Buffered) {
     }
 }
 
+/// Flush every tab's pending buffer (the page currently open in that tab, not yet
+/// confirmed by a following event) into provisional node/edge deltas.
+///
+/// These are **display-only** — never persisted, because a buffered nav can still
+/// collapse as a redirect — so the graph/tables show the page you are on *now*,
+/// not just the page you last navigated away from. Mirrors [`finalize`]; the
+/// caller appends these to the read buckets before projecting (the projection
+/// sums buckets by date, so duplicates merge harmlessly).
+pub fn provisional_buckets(state: &DeriveState) -> Vec<crate::rollup::DayBucketDelta> {
+    let mut acc = Acc::default();
+    let mut tabs: Vec<i64> = state.tabs.keys().copied().collect();
+    tabs.sort_unstable(); // deterministic
+    for t in tabs {
+        if let Some(b) = state.tabs.get(&t).and_then(|ts| ts.buffer.as_ref()) {
+            finalize(&mut acc, b);
+        }
+    }
+    acc.days.into_values().collect()
+}
+
 /// Per-window session tracking (§7.3 step 1). `clamp0` maps a backward clock jump
 /// to 0 so it never spuriously splits a session.
 fn update_session(
