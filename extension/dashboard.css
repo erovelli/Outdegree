@@ -177,7 +177,20 @@ body {
   background: oklch(1 0 0 / 0.04); border: 1px solid var(--toolbar-divider);
   transition: background 0.15s ease, color 0.15s ease;
 }
-.chip:hover { background: oklch(1 0 0 / 0.08); }
+.chip:hover { background-color: oklch(1 0 0 / 0.08); }
+/* the min-visits chip is a native <select> styled to match the chips */
+.chip-select {
+  appearance: none; -webkit-appearance: none;
+  font: inherit; font-size: 11.5px; line-height: 1.2;
+  padding-right: 22px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: right 11px top 14px, right 7px top 14px;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+.chip-select option { background: #15151a; color: var(--text-secondary); }
 #chip-hubs { color: var(--text-muted); }
 #chip-hubs.active { color: var(--text-primary); background: oklch(1 0 0 / 0.1); }
 

@@ -105,11 +105,22 @@ pub fn build(chains: &[Vec<String>]) -> FlowGraph {
         }
     }
 
-    // Longest-path layering on the forward DAG (Kahn topological order).
+    // Session entry hosts (the first host of each tab chain) are pinned to the
+    // leftmost column so the diagram reads as "where the session started → where
+    // it went". Their incoming edges still draw (as ribbons curving back), they
+    // just don't push the start host rightward.
+    let starts: HashSet<usize> = chains
+        .iter()
+        .filter_map(|c| c.first())
+        .filter_map(|h| index.get(h).copied())
+        .collect();
+
+    // Longest-path layering on the forward DAG (Kahn topological order). Edges
+    // into a start host are excluded from layering so starts stay at column 0.
     let mut fwd: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut indeg = vec![0usize; n];
     for &(u, v) in link_w.keys() {
-        if back.contains(&(u, v)) {
+        if back.contains(&(u, v)) || starts.contains(&v) {
             continue;
         }
         fwd[u].push(v);
@@ -361,6 +372,19 @@ mod tests {
         assert_eq!(g.links.len(), 2);
         assert_eq!(weight(&g, "a", "b"), Some(2));
         assert_eq!(weight(&g, "b", "a"), Some(1));
+    }
+
+    #[test]
+    fn session_start_hosts_are_pinned_to_the_left() {
+        // `hub` starts tab 0, but in tab 1 it's navigated to from `b`. It must
+        // still sit in column 0 (a session entry point), not get pushed right.
+        let g = build(&[chain(&["hub", "a"]), chain(&["b", "hub", "c"])]);
+        assert_eq!(layer_of(&g, "hub"), 0);
+        assert_eq!(layer_of(&g, "b"), 0);
+        assert_eq!(layer_of(&g, "a"), 1);
+        assert_eq!(layer_of(&g, "c"), 1);
+        // the revisit b→hub is still recorded as a link
+        assert_eq!(weight(&g, "b", "hub"), Some(1));
     }
 
     #[test]

@@ -13,7 +13,7 @@ use super::{
 use crate::model::{Granularity, ProvBreakdown};
 use crate::project::TimeRange;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Document, Element, HtmlElement, HtmlInputElement, KeyboardEvent};
+use web_sys::{Document, Element, HtmlElement, HtmlInputElement, HtmlSelectElement, KeyboardEvent};
 
 /// Build the body layer (canvas/tables mount point) + all floating chrome.
 pub(crate) fn build_shell(shared: &Shared) -> Result<(), JsValue> {
@@ -267,10 +267,18 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
     let chips = el(doc, "div");
     let _ = chips.set_attribute("class", "chips");
     let gran = chip(doc, "chip-gran", "Hostname ⌄");
-    let mv = chip(doc, "chip-minvisits", "min visits ≥ 0");
+    let mv = el(doc, "select");
+    let _ = mv.set_attribute("class", "chip chip-select");
+    let _ = mv.set_attribute("id", "chip-minvisits");
+    let _ = mv.set_attribute("title", "Minimum visit count to show a node");
+    for n in [0u32, 5, 10, 25, 50] {
+        let opt = el(doc, "option");
+        let _ = opt.set_attribute("value", &n.to_string());
+        opt.set_text_content(Some(&format!("min visits ≥ {n}")));
+        let _ = mv.append_child(&opt);
+    }
     let hubs = chip(doc, "chip-hubs", "hide search hubs");
     let _ = hubs.set_attribute("title", "Collapse search-engine origin nodes");
-    let _ = mv.set_attribute("title", "Click to cycle the minimum visit threshold");
     let _ = gran.set_attribute("title", "Toggle hostname / registrable-domain grouping");
     let _ = chips.append_child(&gran);
     let _ = chips.append_child(&mv);
@@ -293,16 +301,13 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
     }
     {
         let s = shared.clone();
-        on(&mv, "click", move |_| {
-            {
-                let mut a = s.borrow_mut();
-                a.filters.min_visits = match a.filters.min_visits {
-                    0 => 5,
-                    5 => 10,
-                    10 => 25,
-                    _ => 0,
-                };
-            }
+        on(&mv, "change", move |ev| {
+            let v = ev
+                .target()
+                .and_then(|t| t.dyn_into::<HtmlSelectElement>().ok())
+                .map(|sel| sel.value())
+                .unwrap_or_default();
+            s.borrow_mut().filters.min_visits = v.parse().unwrap_or(0);
             recompute_projection(&s);
             let _ = rerender(&s);
         });
@@ -567,11 +572,6 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         } else {
             "Hostname ⌄"
         },
-    );
-    set_text(
-        &doc,
-        "chip-minvisits",
-        &format!("min visits ≥ {}", a.filters.min_visits),
     );
     toggle_active(&doc, "chip-hubs", a.filters.hide_search_hubs);
 
