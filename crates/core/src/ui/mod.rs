@@ -502,3 +502,34 @@ pub(crate) fn plural(n: u64, noun: &str) -> String {
         format!("{n} {noun}s")
     }
 }
+
+/// Human, local-time label for a session: `"6/21 · 11:23 AM – 4:22 PM"` (and
+/// `"6/21 11:50 PM – 6/22 12:30 AM"` when it crosses midnight). Replaces the
+/// opaque Chrome window id in the picker list + Sankey header. Reads in the user's
+/// own timezone via the browser's local `Date`.
+pub(crate) fn session_when(start_ts: f64, end_ts: f64) -> String {
+    fn clock(d: &js_sys::Date) -> String {
+        let h = d.get_hours(); // u32, 0–23, local
+        let m = d.get_minutes();
+        let (h12, ap) = match h {
+            0 => (12, "AM"),
+            12 => (12, "PM"),
+            1..=11 => (h, "AM"),
+            _ => (h - 12, "PM"),
+        };
+        format!("{h12}:{m:02} {ap}")
+    }
+    fn md(d: &js_sys::Date) -> String {
+        format!("{}/{}", d.get_month() + 1, d.get_date())
+    }
+    let a = js_sys::Date::new(&JsValue::from_f64(start_ts));
+    let b = js_sys::Date::new(&JsValue::from_f64(end_ts));
+    let same_day = a.get_full_year() == b.get_full_year()
+        && a.get_month() == b.get_month()
+        && a.get_date() == b.get_date();
+    if same_day {
+        format!("{} · {} – {}", md(&a), clock(&a), clock(&b))
+    } else {
+        format!("{} {} – {} {}", md(&a), clock(&a), md(&b), clock(&b))
+    }
+}

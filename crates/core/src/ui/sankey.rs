@@ -127,10 +127,11 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         };
         let vw = (flow_el.client_width() as f64 - 8.0).max(640.0);
         let mut html = format!(
-            "<h3>Session flow · {} · window {}</h3>\
-             <p class=\"muted\">Hosts are columns; ribbon width ∝ how often that hop was taken.</p>",
-            super::plural(sess.nav_count as u64, "nav"),
-            sess.window_id
+            "<h3>{}</h3>\
+             <p class=\"muted\">{}. Each column is a site you visited; a thicker ribbon means \
+             you took that step more often.</p>",
+            super::session_when(sess.start_ts, sess.end_ts),
+            super::plural(sess.nav_count as u64, "visit"),
         );
         html.push_str(&keys_html(&fg));
         html.push_str(&flow::render_svg(&fg, vw));
