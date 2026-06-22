@@ -199,6 +199,17 @@ fn build_flow(
         *detached.entry(h.as_str()).or_insert(0) += 1;
     }
     for (key, count) in detached {
+        // A detached host is always a link target, so it already has a chain node.
+        // Only keep a *separate* column-0 entry bar when that chain node is
+        // mid-chain (layer ≥ 1); if it already sits at column 0 (e.g. it lies on a
+        // cycle, whose inbound back-edge is excluded from layering), a second bar
+        // is pure duplication — fold the entry count into the chain node instead.
+        if let Some(&idx) = index.get(key) {
+            if layer[idx] == 0 {
+                nodes[idx].throughput = nodes[idx].throughput.max(count);
+                continue;
+            }
+        }
         nodes.push(FlowNode {
             key: key.to_string(),
             layer: 0,
@@ -644,6 +655,29 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(standalone.len(), 1, "re-entries collapse to one start node");
         assert_eq!(standalone[0].throughput, 2, "sized by entry count");
+    }
+
+    #[test]
+    fn directly_entered_host_on_a_cycle_is_not_duplicated_at_column_0() {
+        // Open gh.com directly (start_page = External), then gh.com → site → gh.com.
+        // gh.com is both a session entry *and* a link target, but its chain node
+        // sits at column 0 (the inbound edge is a cycle back-edge, excluded from
+        // layering), so it must render as a single bar — not a duplicate column-0
+        // entry beside it (the regression from the detached-start heuristic).
+        let events = vec![
+            nav(1, 1, "https://gh.com/", "start_page"),
+            nav(1, 1, "https://site.com/", "link"),
+            nav(1, 1, "https://gh.com/", "link"),
+        ];
+        let g = from_session_events(&events, Granularity::Hostname);
+        let gh_count = g.nodes.iter().filter(|n| n.key == "gh.com").count();
+        assert_eq!(
+            gh_count, 1,
+            "a directly-entered cyclic host must not duplicate"
+        );
+        assert_eq!(layer_of(&g, "gh.com"), 0);
+        assert!(has(&g, "gh.com", "site.com"));
+        assert!(has(&g, "site.com", "gh.com"));
     }
 
     #[test]

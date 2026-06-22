@@ -251,6 +251,9 @@ select:focus-visible {
   color: var(--text-primary); font: 13px var(--mono);
 }
 .search-input::placeholder { color: var(--text-muted); }
+/* transient "no host matches" notice under the search box (hidden when empty) */
+.search-hint { font: 10px var(--mono); color: oklch(0.72 0.13 40); padding: 0 2px; }
+.search-hint:empty { display: none; }
 .kbd {
   font: 10px var(--mono); color: var(--text-faint);
   border: 1px solid var(--divider); border-radius: 4px; padding: 1px 5px;
