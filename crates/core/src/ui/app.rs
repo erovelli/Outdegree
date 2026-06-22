@@ -5,7 +5,7 @@
 //! pinned to an edge or corner. Chrome is strictly monochrome — the only color
 //! belongs to the data spectrum drawn on the canvas.
 
-use super::filters::{chip, icon, icon_btn, menu_btn, menu_toggle, panel, seg, LOGO};
+use super::filters::{chip, icon, icon_btn, menu_btn, menu_toggle, panel, seg};
 use super::{
     el, graph_view, on, persist_positions, plural, recompute_projection, reload_and_rerender,
     reload_buckets, rerender, Shared, View,
@@ -74,9 +74,6 @@ fn span(doc: &Document, class: &str, text: &str) -> Element {
 // ── 1. brand + REC (top-left) ────────────────────────────────────────────────
 fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     let p = panel(doc, "brand at-tl");
-    let logo = el(doc, "div");
-    let _ = logo.set_attribute("class", "logo");
-    logo.set_inner_html(LOGO);
     let name = span(doc, "wordmark", "Outdegree");
     let rule = el(doc, "div");
     let _ = rule.set_attribute("class", "vrule");
@@ -108,7 +105,6 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
         });
     }
 
-    let _ = p.append_child(&logo);
     let _ = p.append_child(&name);
     let _ = p.append_child(&rule);
     let _ = p.append_child(&rec);
@@ -185,9 +181,9 @@ fn view_panel(doc: &Document, shared: &Shared) -> Element {
             if let Some(pop) = doc.get_element_by_id("bg-settings") {
                 let now_open = !pop.class_name().contains("open");
                 pop.set_class_name(if now_open {
-                    "panel popover open"
+                    "panel popover at-pop open"
                 } else {
-                    "panel popover"
+                    "panel popover at-pop"
                 });
                 if let Some(g) = doc.get_element_by_id("bg-gear") {
                     let _ =
@@ -201,9 +197,9 @@ fn view_panel(doc: &Document, shared: &Shared) -> Element {
     p
 }
 
-// ── 4. provenance legend (right) ─────────────────────────────────────────────
+// ── 4. provenance legend (top-left) ──────────────────────────────────────────
 fn legend_panel(doc: &Document, shared: &Shared) -> Element {
-    let p = panel(doc, "legend at-rt");
+    let p = panel(doc, "legend at-lt");
     let title = span(doc, "legend-title", "PROVENANCE");
     let rows = el(doc, "div");
     let _ = rows.set_attribute("id", "bg-legend-rows");
@@ -733,7 +729,7 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
 fn close_popover(shared: &Shared) {
     let doc = shared.borrow().doc.clone();
     if let Some(pop) = doc.get_element_by_id("bg-settings") {
-        pop.set_class_name("panel popover");
+        pop.set_class_name("panel popover at-pop");
     }
     if let Some(g) = doc.get_element_by_id("bg-gear") {
         let _ = g.set_attribute("aria-expanded", "false");

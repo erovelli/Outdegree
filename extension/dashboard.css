@@ -98,16 +98,15 @@ body {
 .at-tl { top: 22px; left: 22px; }
 .at-tc { top: 22px; left: 50%; transform: translateX(-50%); }
 .at-tr { top: 22px; right: 22px; }
-.at-rt { top: 84px; right: 22px; }
+.at-lt { top: 76px; left: 22px; }
 .at-br { bottom: 22px; right: 22px; }
 .at-bl { bottom: 22px; left: 22px; }
 .at-bc { bottom: 22px; left: 50%; transform: translateX(-50%); }
-.at-pop { top: 70px; right: 22px; }
+.at-pop { top: 72px; right: 22px; min-width: 210px; }
 .at-fc { top: 70px; left: 50%; transform: translateX(-50%); }
 
 /* 1. brand + REC */
 .panel.brand { gap: 11px; padding: 8px 14px; }
-.logo { width: 20px; height: 20px; display: block; }
 .wordmark {
   font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
   color: var(--text-primary);

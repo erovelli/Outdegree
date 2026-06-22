@@ -82,16 +82,6 @@ pub(crate) fn menu_toggle(doc: &Document, label: &str, checked: bool) -> (Elemen
 
 // ── inline SVG glyphs (1.6px stroke line icons, currentColor) ─────────────────
 
-/// The 2×2-square brand mark (two full white, two at 55%).
-pub(crate) const LOGO: &str = concat!(
-    "<svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" aria-hidden=\"true\">",
-    "<rect x=\"0\" y=\"0\" width=\"9\" height=\"9\" rx=\"2\" fill=\"#f4f4f5\"/>",
-    "<rect x=\"11\" y=\"0\" width=\"9\" height=\"9\" rx=\"2\" fill=\"#f4f4f5\" opacity=\"0.55\"/>",
-    "<rect x=\"0\" y=\"11\" width=\"9\" height=\"9\" rx=\"2\" fill=\"#f4f4f5\" opacity=\"0.55\"/>",
-    "<rect x=\"11\" y=\"11\" width=\"9\" height=\"9\" rx=\"2\" fill=\"#f4f4f5\"/>",
-    "</svg>",
-);
-
 const ICON_OPEN: &str = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" \
      stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\">";
 
