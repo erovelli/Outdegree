@@ -9,9 +9,15 @@ use wasm_bindgen::JsValue;
 
 /// The two color keys shown on the Sankey page: bar provenance + ribbon edge kind
 /// (the floating graph legend is hidden on this view, so the flow is self-keyed).
-fn keys_html() -> String {
-    use crate::model::Provenance as P;
-    let prov = [
+/// Only the categories actually present in this flow are listed; an empty key
+/// block (e.g. a single-host session with no ribbons) is omitted entirely.
+fn keys_html(fg: &flow::FlowGraph) -> String {
+    use crate::model::{EdgeKind, Provenance as P};
+    use std::collections::HashSet;
+
+    let provs: HashSet<P> = fg.nodes.iter().map(|n| n.prov).collect();
+    let kinds: HashSet<EdgeKind> = fg.links.iter().map(|l| l.kind).collect();
+    let prov_rows = [
         ("Search", "dot-search", P::SearchOrigin),
         ("Link", "dot-link", P::Link),
         ("Typed URL", "dot-typed", P::TypedUrl),
@@ -20,30 +26,50 @@ fn keys_html() -> String {
         ("External", "dot-external", P::Start),
         ("Other", "dot-other", P::Other),
     ];
-    let mut h = String::from(
-        "<div class=\"sankey-keys\"><div class=\"sankey-key\">\
-         <span class=\"sankey-key-title\">Bars · provenance</span>",
-    );
-    for (label, dot, p) in prov {
-        h.push_str(&format!(
-            "<span class=\"key-item\"><span class=\"dot {dot} {glyph}\"></span>{label}</span>",
-            glyph = p.shape().css()
-        ));
+    let kind_rows = [
+        ("Link", "dot-edge-link", EdgeKind::Link),
+        ("Form", "dot-edge-form", EdgeKind::Form),
+        ("Search-link", "dot-edge-search", EdgeKind::SearchLink),
+    ];
+    let has_prov = prov_rows.iter().any(|(_, _, p)| provs.contains(p));
+    let has_kind = kind_rows.iter().any(|(_, _, k)| kinds.contains(k));
+    if !has_prov && !has_kind {
+        return String::new();
     }
-    h.push_str(
-        "</div><div class=\"sankey-key\">\
-         <span class=\"sankey-key-title\">Ribbons · link type</span>",
-    );
-    for (label, dot) in [
-        ("Link", "dot-edge-link"),
-        ("Form", "dot-edge-form"),
-        ("Search-link", "dot-edge-search"),
-    ] {
-        h.push_str(&format!(
-            "<span class=\"key-item\"><span class=\"dot {dot}\"></span>{label}</span>"
-        ));
+
+    let mut h = String::from("<div class=\"sankey-keys\">");
+    if has_prov {
+        h.push_str(
+            "<div class=\"sankey-key\">\
+             <span class=\"sankey-key-title\">Bars · provenance</span>",
+        );
+        for (label, dot, p) in prov_rows {
+            if !provs.contains(&p) {
+                continue;
+            }
+            h.push_str(&format!(
+                "<span class=\"key-item\"><span class=\"dot {dot} {glyph}\"></span>{label}</span>",
+                glyph = p.shape().css()
+            ));
+        }
+        h.push_str("</div>");
     }
-    h.push_str("</div></div>");
+    if has_kind {
+        h.push_str(
+            "<div class=\"sankey-key\">\
+             <span class=\"sankey-key-title\">Ribbons · link type</span>",
+        );
+        for (label, dot, k) in kind_rows {
+            if !kinds.contains(&k) {
+                continue;
+            }
+            h.push_str(&format!(
+                "<span class=\"key-item\"><span class=\"dot {dot}\"></span>{label}</span>"
+            ));
+        }
+        h.push_str("</div>");
+    }
+    h.push_str("</div>");
     h
 }
 
@@ -106,7 +132,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
             super::plural(sess.nav_count as u64, "nav"),
             sess.window_id
         );
-        html.push_str(&keys_html());
+        html.push_str(&keys_html(&fg));
         html.push_str(&flow::render_svg(&fg, vw));
 
         // Same data → same picture: skip the DOM swap when the markup is identical
