@@ -2,11 +2,11 @@
 title: Privacy Policy
 ---
 
-# Browsing Graph — Privacy Policy
+# Outdegree — Privacy Policy
 
 _Last updated: 2026-06-20_
 
-Browsing Graph records the web pages you navigate to and stores them **only on
+Outdegree records the web pages you navigate to and stores them **only on
 your own device**, in your browser's local IndexedDB storage.
 
 The extension makes **no network requests**. Your browsing data is never

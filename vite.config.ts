@@ -49,7 +49,7 @@ function wasmInlineBytes(): Plugin {
           )
           .replace(
             /module_or_path\s*=\s*fetch\(\s*module_or_path\s*\);/g,
-            "throw new Error('Browsing Graph: wasm must be instantiated from bytes');"
+            "throw new Error('Outdegree: wasm must be instantiated from bytes');"
           );
         return { code: out, map: null };
       }

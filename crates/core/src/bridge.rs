@@ -38,7 +38,7 @@ pub fn mount(root_id: &str) {
     let root = root_id.to_string();
     wasm_bindgen_futures::spawn_local(async move {
         if let Err(e) = crate::ui::run(&root).await {
-            web_sys::console::error_1(&format!("Browsing Graph: {e:?}").into());
+            web_sys::console::error_1(&format!("Outdegree: {e:?}").into());
         }
     });
 }

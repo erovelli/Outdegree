@@ -77,7 +77,7 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     let logo = el(doc, "div");
     let _ = logo.set_attribute("class", "logo");
     logo.set_inner_html(LOGO);
-    let name = span(doc, "wordmark", "Browsing Graph");
+    let name = span(doc, "wordmark", "Outdegree");
     let rule = el(doc, "div");
     let _ = rule.set_attribute("class", "vrule");
 
@@ -558,7 +558,7 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
             let db = s.borrow().db.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match db.export_json().await {
-                    Ok(json) => crate::bridge::download_json("browsing-graph-export.json", &json),
+                    Ok(json) => crate::bridge::download_json("outdegree-export.json", &json),
                     Err(e) => super::log_err(&e),
                 }
             });
