@@ -292,9 +292,19 @@ fn recompute_projection_inner(shared: &Shared, relayout: bool) {
     let window = project::select_window(&a.buckets, a.time_range);
     let mut proj = project::project(&window, a.gran, &a.filters);
     // Drill-down: reduce to the focused node's full connected component, then the
-    // graph view fits it on screen (§M3).
+    // graph view fits it on screen (§M3). The focus key is granularity-specific
+    // (a hostname vs an eTLD+1) and also depends on the active range/filters, so a
+    // key captured under one projection may not exist under another — toggling
+    // hostname↔domain rekeys every node, and narrowing the range/filters can drop
+    // the focused node entirely. When the focused key no longer resolves, clear
+    // the focus and show the full graph instead of collapsing to an empty
+    // component ("No navigations recorded").
     if let Some(focus) = a.focus.clone() {
-        proj = project::component(&proj, &focus);
+        if proj.nodes.iter().any(|n| n.key == focus) {
+            proj = project::component(&proj, &focus);
+        } else {
+            a.focus = None;
+        }
     }
 
     let keys: Vec<String> = proj.nodes.iter().map(|n| n.key.clone()).collect();
