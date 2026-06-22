@@ -1,9 +1,10 @@
 //! canvas2d renderer (§7.7) in the Palantir-AIP visual language from the design
-//! handoff: pure-black canvas with a panning dot grid, a center vignette, a glow
-//! halo on the busiest hub, monochrome chrome, and the single blue→red OKLCH
-//! data spectrum used *only* to encode nodes/edges.
+//! handoff: pure-black canvas with a panning dot grid, a center vignette,
+//! monochrome chrome, and the single blue→red OKLCH data spectrum used *only* to
+//! encode nodes/edges.
 //!
 //! Node radius ∝ √visits (boundary-source nodes stay visible via the `8` floor),
+//! so the busiest node simply reads as the largest disc — no extra hub emphasis.
 //! fill = dominant provenance, edges colored by dominant kind (search links
 //! dashed), each node ringed by a 2px black "moat". Pan/zoom via the [`Camera`].
 
@@ -20,8 +21,6 @@ const DOT_GRID: &str = "#161619";
 const GRID: f64 = 26.0;
 const LABEL: &str = "#8a8a90";
 const VIGNETTE: &str = "oklch(0.22 0.03 290 / 0.28)";
-/// Fixed blue stop of the spectrum, used for the busiest-hub glow + orbit ring.
-const HUB_GLOW: &str = "oklch(0.64 0.205 264)";
 const RETICLE: &str = "#e8e8ea";
 const CONNECTOR: &str = "#3a3a40";
 const CALLOUT_FILL: &str = "oklch(0.12 0.004 285 / 0.92)";
@@ -173,43 +172,6 @@ fn draw_backdrop(ctx: &CanvasRenderingContext2d, w: f64, h: f64, cam: &Camera) {
     }
 }
 
-/// Glow halo + dashed orbit ring on the busiest node (max visits).
-fn draw_hub(
-    ctx: &CanvasRenderingContext2d,
-    w: f64,
-    h: f64,
-    proj: &GraphProjection,
-    pos: &HashMap<String, Pos>,
-    cam: &Camera,
-) {
-    let Some(hub) = proj.nodes.iter().max_by_key(|n| n.visits) else {
-        return;
-    };
-    let Some(p) = pos.get(&hub.key) else { return };
-    let (x, y) = cam.project(p, w, h);
-    let r = radius(hub.visits, cam.scale);
-    let glow = (r * 5.0).clamp(48.0, 280.0);
-    if let Ok(g) = ctx.create_radial_gradient(x, y, 0.0, x, y, glow) {
-        let _ = g.add_color_stop(0.0, "oklch(0.64 0.205 264 / 0.35)");
-        let _ = g.add_color_stop(1.0, "transparent");
-        ctx.set_fill_style_canvas_gradient(&g);
-        ctx.begin_path();
-        let _ = ctx.arc(x, y, glow, 0.0, PI * 2.0);
-        ctx.fill();
-    }
-    // thin dashed orbit ring
-    let ring = (r * 2.4).clamp(26.0, 140.0);
-    set_stroke(ctx, HUB_GLOW);
-    ctx.set_global_alpha(0.35);
-    ctx.set_line_width(1.0);
-    set_dash(ctx, &[2.0, 7.0]);
-    ctx.begin_path();
-    let _ = ctx.arc(x, y, ring, 0.0, PI * 2.0);
-    ctx.stroke();
-    set_dash(ctx, &[]);
-    ctx.set_global_alpha(1.0);
-}
-
 /// Draw the full graph. `hover` labels + spotlights a node; `selected` (the
 /// drilled-down focus) wears the reticle bracket; `filter` (a clicked legend key)
 /// keeps only nodes of that provenance bright and dims the rest + all edges.
@@ -225,7 +187,6 @@ pub fn draw(
     filter: Option<Provenance>,
 ) {
     draw_backdrop(ctx, w, h, cam);
-    draw_hub(ctx, w, h, proj, pos, cam);
 
     // When a node is hovered, light it + its neighbors and dim the rest — the
     // Obsidian/Palantir "spotlight" behavior.

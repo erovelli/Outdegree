@@ -1,4 +1,4 @@
-//! Browsing Graph core — pure read-time derivation + projection + graph analysis,
+//! Outdegree core — pure read-time derivation + projection + graph analysis,
 //! plus a thin WASM shell (store / render / ui / bridge) for the dashboard page.
 //!
 //! Architecture: WASM never runs in the service worker; all Rust lives on the

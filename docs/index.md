@@ -1,8 +1,8 @@
 ---
-title: Browsing Graph
+title: Outdegree
 ---
 
-# Browsing Graph
+# Outdegree
 
 A Chrome extension that records your web navigations as a directed graph you can
 explore over time. **100% local · no network · open source.**

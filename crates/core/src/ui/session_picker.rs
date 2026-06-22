@@ -1,7 +1,10 @@
 //! Session picker (§7.7): lists closed + provisional-open sessions; selecting one
 //! renders its per-tab flow (§4.4, sankey.rs).
 
-use super::{body_container, el, esc, on, persist_positions, plural, recompute_projection, Shared};
+use super::{
+    body_container, el, esc, on, persist_positions, plural, recompute_projection, session_when,
+    Shared,
+};
 use crate::model::Granularity;
 use wasm_bindgen::JsValue;
 
@@ -39,17 +42,24 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         let item = el(&doc, "button");
         let _ = item.set_attribute("type", "button");
         let _ = item.set_attribute("class", "sp-item");
+        // Lead with a human time window; subline = visit count + the top 3 sites.
         let top = sess
             .top_hosts
             .iter()
+            .take(3)
             .map(|(h, _)| h.clone())
             .collect::<Vec<_>>()
             .join(", ");
+        let visits = plural(sess.nav_count as u64, "visit");
+        let meta = if top.is_empty() {
+            visits
+        } else {
+            format!("{visits} · {}", esc(&top))
+        };
         item.set_inner_html(&format!(
-            "<b>{}</b> · window {}<br><span class=\"muted\">{}</span>",
-            plural(sess.nav_count as u64, "nav"),
-            sess.window_id,
-            esc(&top)
+            "<b>{}</b><br><span class=\"muted\">{}</span>",
+            session_when(sess.start_ts, sess.end_ts),
+            meta
         ));
         let sid = sess.id;
         let s = shared.clone();

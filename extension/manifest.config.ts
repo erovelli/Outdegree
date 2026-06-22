@@ -7,7 +7,7 @@ import { defineManifest } from "@crxjs/vite-plugin";
 // 'wasm-unsafe-eval' is required to instantiate the dashboard WASM module.
 export default defineManifest({
   manifest_version: 3,
-  name: "Browsing Graph",
+  name: "Outdegree",
   version: "0.1.0",
   description:
     "Records your navigations as a directed graph you can explore over time.",
@@ -15,7 +15,7 @@ export default defineManifest({
   host_permissions: [],
   incognito: "not_allowed",
   background: { service_worker: "src/service-worker.ts", type: "module" },
-  action: { default_title: "Open Browsing Graph" },
+  action: { default_title: "Open Outdegree" },
   content_security_policy: {
     extension_pages:
       "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'none'; object-src 'self'",

@@ -71,13 +71,13 @@ jobs:
       - name: Package dist/ → zip
         run: |
           set -euo pipefail
-          ZIP="browsing-graph-${{ github.ref_name }}.zip"
+          ZIP="outdegree-${{ github.ref_name }}.zip"
           (cd dist && zip -r "../$ZIP" .)
           echo "Built $ZIP ($(wc -c < "$ZIP") bytes)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: browsing-graph-${{ github.ref_name }}.zip
+          files: outdegree-${{ github.ref_name }}.zip
           generate_release_notes: true
           fail_on_unmatched_files: true

@@ -10,7 +10,7 @@ use super::{
     el, graph_view, on, persist_positions, plural, recompute_projection, reload_and_rerender,
     reload_buckets, rerender, Shared, View,
 };
-use crate::model::{Granularity, ProvBreakdown, Provenance};
+use crate::model::{Granularity, KindBreakdown, ProvBreakdown, Provenance};
 use crate::project::TimeRange;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element, HtmlElement, HtmlInputElement, HtmlSelectElement, KeyboardEvent};
@@ -77,7 +77,7 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     let logo = el(doc, "div");
     let _ = logo.set_attribute("class", "logo");
     logo.set_inner_html(LOGO);
-    let name = span(doc, "wordmark", "Browsing Graph");
+    let name = span(doc, "wordmark", "Outdegree");
     let rule = el(doc, "div");
     let _ = rule.set_attribute("class", "vrule");
 
@@ -235,7 +235,51 @@ fn legend_panel(doc: &Document, shared: &Shared) -> Element {
     }
     let _ = p.append_child(&title);
     let _ = p.append_child(&rows);
+
+    // Edge-type key (non-interactive): explains the colored solid/dashed lines on
+    // the canvas. Edges have no single provenance to filter on, so these rows are a
+    // plain key. Populated by `sync_chrome`; the whole section hides when the
+    // projection has no edges.
+    let edge_sec = el(doc, "div");
+    let _ = edge_sec.set_attribute("id", "bg-edge-legend");
+    let _ = edge_sec.set_attribute("class", "legend-section is-hidden");
+    let edge_title = span(doc, "legend-title legend-title-edge", "EDGE TYPE");
+    let edge_rows = el(doc, "div");
+    let _ = edge_rows.set_attribute("id", "bg-edge-legend-rows");
+    let _ = edge_rows.set_attribute("class", "legend-rows");
+    let _ = edge_sec.append_child(&edge_title);
+    let _ = edge_sec.append_child(&edge_rows);
+    let _ = p.append_child(&edge_sec);
     p
+}
+
+/// The edge-type key rows (a line swatch — solid, or dashed for search-links —
+/// plus label and share). Mirrors what `canvas2d` draws: `Link`/`Form` are solid,
+/// `SearchLink` is dashed; color tracks `EdgeKind::color`. Non-interactive, and
+/// only kinds actually present in the projection are listed. Pure, like
+/// `legend_html`, so `sync_chrome` is the sole renderer.
+fn edge_legend_html(k: &KindBreakdown) -> String {
+    // (count, label, swatch class). Order mirrors the Sankey ribbon key.
+    let rows: Vec<(u32, &str, &str)> = [
+        (k.link, "Link", "edge-link"),
+        (k.form, "Form", "edge-form"),
+        (k.search_link, "Search-link", "edge-search"),
+    ]
+    .into_iter()
+    .filter(|(c, ..)| *c > 0)
+    .collect();
+    let counts: Vec<u32> = rows.iter().map(|(c, ..)| *c).collect();
+    let pcts = percentages(&counts);
+    let mut html = String::new();
+    for ((_, label, swatch), pct) in rows.iter().zip(pcts) {
+        html.push_str(&format!(
+            "<div class=\"legend-row is-key\">\
+             <span class=\"edge-swatch {swatch}\"></span>\
+             <span class=\"legend-label\">{label}</span>\
+             <span class=\"legend-pct\">{pct}%</span></div>",
+        ));
+    }
+    html
 }
 
 /// Map a legend row's `data-prov` key to its provenance (External = `start_page`).
@@ -558,7 +602,7 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
             let db = s.borrow().db.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match db.export_json().await {
-                    Ok(json) => crate::bridge::download_json("browsing-graph-export.json", &json),
+                    Ok(json) => crate::bridge::download_json("outdegree-export.json", &json),
                     Err(e) => super::log_err(&e),
                 }
             });
@@ -828,6 +872,24 @@ pub(crate) fn sync_chrome(shared: &Shared) {
     }
     if let Some(rows_el) = doc.get_element_by_id("bg-legend-rows") {
         rows_el.set_inner_html(&legend_html(&b, a.legend_filter));
+    }
+
+    // edge-type key (line swatches; only kinds present in the projection). Hide the
+    // whole section when there are no edges so it never shows an empty title.
+    let mut k = KindBreakdown::default();
+    for e in &a.proj.edges {
+        k.merge(&e.kinds);
+    }
+    let edge_html = edge_legend_html(&k);
+    if let Some(rows_el) = doc.get_element_by_id("bg-edge-legend-rows") {
+        rows_el.set_inner_html(&edge_html);
+    }
+    if let Some(sec) = doc.get_element_by_id("bg-edge-legend") {
+        sec.set_class_name(if edge_html.is_empty() {
+            "legend-section is-hidden"
+        } else {
+            "legend-section"
+        });
     }
 
     // chips: reflect the active granularity on the segmented slide-select

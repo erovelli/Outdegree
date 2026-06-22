@@ -3,7 +3,7 @@ name = "browsing-graph-core"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Pure read-time derivation core for the Browsing Graph extension (Rust -> WASM)."
+description = "Pure read-time derivation core for the Outdegree extension (Rust -> WASM)."
 repository = "https://github.com/erovelli/outdegree"
 publish = false
 

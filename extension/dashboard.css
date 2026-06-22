@@ -212,6 +212,21 @@ select:focus-visible {
 .dot-edge-link { background: oklch(0.6 0.14 288); }
 .dot-edge-form { background: oklch(0.6 0.14 8); }
 .dot-edge-search { background: oklch(0.6 0.14 264); }
+/* edge-type key on the graph legend: a line swatch that mirrors what the canvas
+   draws — solid for Link/Form, dashed for Search-link (the 5/5 dash matches
+   render/canvas2d). These rows are a key, not a filter. */
+.legend-section { display: flex; flex-direction: column; align-items: stretch; }
+.legend-section.is-hidden { display: none; }
+.legend-title-edge { margin-top: 14px; }
+.legend-row.is-key { cursor: default; }
+.legend-row.is-key:hover { background: transparent; }
+.edge-swatch { width: 18px; height: 2px; flex: none; border-radius: 1px; }
+.edge-swatch.edge-link { background: oklch(0.6 0.14 288); }
+.edge-swatch.edge-form { background: oklch(0.6 0.14 8); }
+.edge-swatch.edge-search {
+  background: repeating-linear-gradient(
+    to right, oklch(0.6 0.14 264) 0 5px, transparent 5px 10px);
+}
 /* provenance glyph shapes — the CVD-safe redundant channel: clip a square dot
    into each marker (circle is the default border-radius). Matches Shape::css. */
 .glyph-square { border-radius: 1px; }

@@ -1,4 +1,4 @@
-# Outdegree — Browsing Graph
+# Outdegree
 
 **100% local · no network · open source.**
 
@@ -8,9 +8,6 @@ a tiny append-only TypeScript service worker; all the interesting work —
 deriving origins, collapsing redirects, rolling up days, detecting communities,
 laying out the graph — runs as a **Rust → WebAssembly** core on the dashboard
 page.
-
-> *Outdegree* is the repository / codename; the extension's Web Store display
-> title is **Browsing Graph**. (They need not match — §12.5 of the spec.)
 
 ---
 

@@ -1,16 +1,17 @@
 # Chrome Web Store submission material (§12)
 
 Everything an agent/maintainer needs to fill the Web Store listing for the
-**Browsing Graph** extension. The architecture makes the privacy story
+**Outdegree** extension. The architecture makes the privacy story
 *verifiable*, which de-risks the (stricter-than-usual) review that any
 browsing-data extension receives.
 
 ## Naming (§12.5)
 
-- **Repo / codename:** `Outdegree` (unique, brandable).
-- **Store display title:** **Browsing Graph — a local-only map of how you
-  browse.** (Must not contain "Chrome" or imply Google endorsement; the store
-  does not enforce title uniqueness.)
+- **Name:** **Outdegree** — used everywhere (repo, manifest, and Store display
+  title). Unique and brandable.
+- **Store display title:** **Outdegree — a local-only map of how you browse.**
+  (Must not contain "Chrome" or imply Google endorsement; the store does not
+  enforce title uniqueness.)
 
 ## Single purpose (§12.4)
 
@@ -21,7 +22,7 @@ browsing-data extension receives.
 
 Lead both with **"100% local · no network · open source."**
 
-> **Browsing Graph** turns your browsing history into an interactive directed
+> **Outdegree** turns your browsing history into an interactive directed
 > graph you can explore over time — by session, day, week, month, or year. See
 > which sites you move between, which are hubs, and how you got there (link,
 > search, typed, form), or follow a single session as a left-to-right flow.
