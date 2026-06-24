@@ -47,7 +47,11 @@ fn node_stat(prov: Provenance, visits: u32) -> NodeStat {
     for _ in 0..visits {
         p.add(prov);
     }
-    NodeStat { visits, prov: p }
+    NodeStat {
+        visits,
+        prov: p,
+        ..Default::default()
+    }
 }
 
 #[test]
@@ -105,6 +109,7 @@ fn node(key: &str) -> NodeAgg {
         key: key.into(),
         visits: 1,
         prov: ProvBreakdown::default(),
+        ..Default::default()
     }
 }
 fn edge(f: &str, t: &str, w: u32) -> EdgeAgg {

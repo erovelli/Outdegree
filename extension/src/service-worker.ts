@@ -111,6 +111,25 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((d) => {
   );
 });
 
+// Hash-route (#/...) SPA navigations — same opt-in `spa` store as pushState, so
+// hash-routed apps (older SPAs, docs sites) aren't invisible to the in-app view.
+chrome.webNavigation.onReferenceFragmentUpdated.addListener((d) => {
+  if (d.frameId !== 0 || paused) return;
+  if (d.url.startsWith(OWN_URL_PREFIX)) return;
+  const ts = d.timeStamp ?? Date.now();
+  return enqueue(async () =>
+    idbAdd("spa", {
+      kind: "nav",
+      ts,
+      tabId: d.tabId,
+      windowId: await resolveWindowId(d.tabId),
+      toUrl: d.url,
+      transitionType: d.transitionType,
+      qualifiers: d.transitionQualifiers,
+    })
+  );
+});
+
 // Open-link-in-new-tab: the link's source becomes the child's origin (§7.3).
 chrome.webNavigation.onCreatedNavigationTarget.addListener((d) => {
   if (paused) return;

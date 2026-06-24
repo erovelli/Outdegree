@@ -13,9 +13,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     body.set_inner_html("");
 
     if shared.borrow().proj.nodes.is_empty() {
-        body.set_inner_html(
-            "<div class=\"bg-empty\">No navigations recorded yet. Browse a bit, then reopen this dashboard.</div>",
-        );
+        body.set_inner_html(&super::empty_body_html(&shared.borrow()));
         return Ok(());
     }
 
@@ -26,6 +24,20 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         .dyn_into()
         .map_err(|_| JsValue::from_str("canvas cast"))?;
     let _ = canvas.set_attribute("id", "bg-canvas");
+    // The canvas can't be read by assistive tech; describe the graph and point at
+    // the Tables view, which is the keyboard/screen-reader-navigable equivalent of
+    // the same projection (hubs, journeys, communities, edges).
+    let _ = canvas.set_attribute("role", "img");
+    {
+        let a = shared.borrow();
+        let label = format!(
+            "Browsing graph: {}, {}. Use the Tables view (top-right) for a \
+             screen-reader-accessible breakdown of the same data.",
+            super::plural(a.proj.nodes.len() as u64, "site"),
+            super::plural(a.proj.edges.len() as u64, "link"),
+        );
+        let _ = canvas.set_attribute("aria-label", &label);
+    }
 
     // The canvas *is* the app: full-bleed under the floating chrome. Its
     // position/size live in CSS (`#bg-canvas`) — not an inline style — so it
@@ -255,6 +267,7 @@ fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
         a.hover.as_deref(),
         a.focus.as_deref(),
         a.legend_filter,
+        &a.communities,
     );
 }
 

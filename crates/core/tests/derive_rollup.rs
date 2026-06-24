@@ -105,6 +105,9 @@ fn edge_dominant_kind(map: &Roll, from: &str, to: &str) -> Option<EdgeKind> {
 fn node_visits(map: &Roll, key: &str) -> u32 {
     flat(map).nodes.get(key).map(|n| n.visits).unwrap_or(0)
 }
+fn node_dwell(map: &Roll, key: &str) -> u64 {
+    flat(map).nodes.get(key).map(|n| n.dwell_ms).unwrap_or(0)
+}
 
 // ───────────────────────── global-order correctness ─────────────────────────
 
@@ -490,6 +493,42 @@ fn incremental_equals_recompute_at_every_split() {
             "checkpoint state mismatch at split {at}"
         );
     }
+}
+
+/// Dwell is the gap from a page's arrival to the event that finalizes it (the
+/// next nav, or a close/restart), clamped at 0 and capped at the 30-min idle gap.
+#[test]
+fn dwell_is_derived_from_inter_event_gaps() {
+    let events = vec![
+        nav(1, 1_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        // 5s on a.com, then link to b.com
+        nav(2, 6_000.0, 1, 1, "https://b.com/", "link", &[]),
+        // 10s on b.com, then close the tab
+        close(3, 16_000.0, 1),
+    ];
+    let (map, _, _) = run_all(&events);
+    assert_eq!(node_dwell(&map, "a.com"), 5_000, "arrival→next-nav gap");
+    assert_eq!(node_dwell(&map, "b.com"), 10_000, "arrival→close gap");
+}
+
+/// An overnight-idle tab can't claim hours of attention: dwell caps at the idle
+/// gap, and a backward clock jump clamps to 0 instead of going negative.
+#[test]
+fn dwell_caps_at_idle_gap_and_clamps_backward() {
+    let day = 86_400_000.0;
+    let events = vec![
+        nav(1, 1_000.0, 1, 1, "https://slow.com/", "typed", &[]),
+        nav(2, 1_000.0 + day, 1, 1, "https://next.com/", "link", &[]), // a full day later
+        nav(3, 500.0, 1, 1, "https://back.com/", "link", &[]),         // clock jumped backward
+        close(4, 600.0, 1),
+    ];
+    let (map, _, _) = run_all(&events);
+    assert_eq!(
+        node_dwell(&map, "slow.com"),
+        1_800_000,
+        "capped at the 30-min idle gap"
+    );
+    assert_eq!(node_dwell(&map, "next.com"), 0, "backward jump clamps to 0");
 }
 
 /// Destructive-edit invalidation rebuilds identically: clearing the rollup +

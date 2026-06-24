@@ -73,6 +73,47 @@ fn keys_html(fg: &flow::FlowGraph) -> String {
     h
 }
 
+/// The "Direct visits" list: orphan hosts (reached by typing/bookmark/search and
+/// linking nowhere) as provenance-glyph chips, so they're acknowledged without
+/// cluttering the flow diagram with lone column-0 bars.
+fn direct_visits_html(orphans: &[(String, u32)], fg: &flow::FlowGraph) -> String {
+    use std::collections::HashMap;
+    if orphans.is_empty() {
+        return String::new();
+    }
+    let prov_of: HashMap<&str, crate::model::Provenance> =
+        fg.nodes.iter().map(|n| (n.key.as_str(), n.prov)).collect();
+    let mut h =
+        String::from("<div class=\"direct-visits\"><h4>Direct visits</h4><div class=\"dv-chips\">");
+    for (host, count) in orphans {
+        let prov = prov_of
+            .get(host.as_str())
+            .copied()
+            .unwrap_or(crate::model::Provenance::Other);
+        let dot = match prov {
+            crate::model::Provenance::SearchOrigin => "dot-search",
+            crate::model::Provenance::Link => "dot-link",
+            crate::model::Provenance::TypedUrl => "dot-typed",
+            crate::model::Provenance::Bookmark => "dot-bookmark",
+            crate::model::Provenance::Form => "dot-form",
+            crate::model::Provenance::Start => "dot-external",
+            _ => "dot-other",
+        };
+        let suffix = if *count > 1 {
+            format!(" ×{count}")
+        } else {
+            String::new()
+        };
+        h.push_str(&format!(
+            "<span class=\"dv-chip\"><span class=\"dot {dot} {glyph}\"></span>{}{suffix}</span>",
+            super::esc(host),
+            glyph = prov.shape().css()
+        ));
+    }
+    h.push_str("</div></div>");
+    h
+}
+
 pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let doc = shared.borrow().doc.clone();
     let Some(flow_el) = doc.get_element_by_id("bg-flow") else {
@@ -120,12 +161,16 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
 
         // Reconstruct the session flow, honoring how each page was reached:
         // link/form chains; typed/bookmark/search starts a fresh flow (§7.2).
-        let fg = flow::from_session_events(&events, gran);
+        let fg_full = flow::from_session_events(&events, gran);
+        // Split the hosts you actually linked between from the direct visits
+        // (typed/bookmark/search landings that flow nowhere), so the diagram isn't
+        // mostly empty column-0 bars — the direct visits become a side list.
+        let (fg, orphans) = flow::split_orphans(&fg_full);
 
         let Some(flow_el) = s.borrow().doc.get_element_by_id("bg-flow") else {
             return;
         };
-        let vw = (flow_el.client_width() as f64 - 8.0).max(640.0);
+        let vw = (flow_el.client_width() as f64 - 8.0).max(560.0);
         let mut html = format!(
             "<h3>{}</h3>\
              <p class=\"muted\">{}. Each column is a site you visited; a thicker ribbon means \
@@ -133,8 +178,16 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
             super::session_when(sess.start_ts, sess.end_ts),
             super::plural(sess.nav_count as u64, "visit"),
         );
-        html.push_str(&keys_html(&fg));
-        html.push_str(&flow::render_svg(&fg, vw));
+        html.push_str(&keys_html(&fg_full));
+        if fg.nodes.is_empty() {
+            html.push_str(
+                "<p class=\"muted\">No links were followed — every visit this session was direct \
+                 (typed, bookmark, or search).</p>",
+            );
+        } else {
+            html.push_str(&flow::render_svg(&fg, vw));
+        }
+        html.push_str(&direct_visits_html(&orphans, &fg_full));
 
         // Same data → same picture: skip the DOM swap when the markup is identical
         // (e.g. a Hostname/Domain toggle that leaves the flow unchanged), so there

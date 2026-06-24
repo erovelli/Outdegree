@@ -39,6 +39,12 @@ pub(crate) enum View {
 pub(crate) struct App {
     pub db: Rc<Db>,
     pub buckets: Vec<DayBucket>,
+    /// Buckets scoped to the most recent *session* (folded from that session's
+    /// id-range), so the "Session" range is a real session — not just the latest
+    /// UTC day, which a day-bucket window can't distinguish from "Day". The
+    /// session id they were built for is cached so we only reload when it changes.
+    pub session_buckets: Vec<DayBucket>,
+    pub session_for: Option<f64>,
     pub sessions: Vec<SessionRec>,
     pub positions: HashMap<String, (f32, f32)>,
     pub gran: Granularity,
@@ -53,6 +59,10 @@ pub(crate) struct App {
     pub doc: Document,
     pub root: Element,
     pub proj: GraphProjection,
+    /// Louvain community id per node key for the current projection (drives the
+    /// layout's cohesion force and the faint background hulls). Recomputed with
+    /// the projection; achromatic in the render so it never adds a second hue.
+    pub communities: HashMap<String, usize>,
     pub layout_pos: HashMap<String, Pos>,
     /// Exact node positions per graph *shape* (see [`project::layout_signature`]),
     /// so revisiting the same graph this session restores an identical picture
@@ -69,6 +79,10 @@ pub(crate) struct App {
     pub anim_gen: u64,
     pub last_mouse: (f64, f64),
     pub selected_session: Option<f64>,
+    /// Session-picker filters: a host substring query and whether to hide trivial
+    /// single-visit sessions (which are usually just a stray tab open).
+    pub session_query: String,
+    pub hide_trivial_sessions: bool,
     /// Opt-in "in-app navigations" view: fold `events` + `spa` from scratch (§4.2).
     pub spa_mode: bool,
     /// Drill-down focus: when set, the graph shows this node's ego network (§M3).
@@ -128,6 +142,8 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
     let app = App {
         db,
         buckets,
+        session_buckets: Vec::new(),
+        session_for: None,
         sessions,
         positions,
         gran: Granularity::Hostname,
@@ -140,6 +156,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         doc,
         root,
         proj: GraphProjection::default(),
+        communities: HashMap::new(),
         layout_pos: HashMap::new(),
         layouts: HashMap::new(),
         hover: None,
@@ -149,6 +166,8 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         anim_gen: 0,
         last_mouse: (0.0, 0.0),
         selected_session: None,
+        session_query: String::new(),
+        hide_trivial_sessions: false,
         spa_mode: false,
         focus: None,
         legend_filter: None,
@@ -163,6 +182,8 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
     persist_positions(&shared);
     rerender(&shared)?;
     install_live_refresh(&shared);
+    // Warm the Session-range buckets so switching to "Session" is instant.
+    refresh_session_buckets(&shared);
     Ok(())
 }
 
@@ -229,6 +250,10 @@ pub(crate) fn live_refresh(shared: &Shared, refit: bool) {
             let _ = rerender(&s);
         }
         s.borrow_mut().refreshing = false;
+        // If a newer session arrived while viewing the Session range, rescope.
+        if s.borrow().time_range == TimeRange::Session {
+            refresh_session_buckets(&s);
+        }
     });
 }
 
@@ -289,7 +314,13 @@ pub(crate) fn recompute_projection_keep(shared: &Shared) {
 fn recompute_projection_inner(shared: &Shared, relayout: bool) {
     let mut a = shared.borrow_mut();
     // Restrict to the selected time window (design "Range" control), then project.
-    let window = project::select_window(&a.buckets, a.time_range);
+    // The "Session" range uses buckets scoped to the latest session's events; if
+    // those aren't loaded yet it falls back to the latest day until they arrive.
+    let window = if a.time_range == TimeRange::Session && !a.session_buckets.is_empty() {
+        a.session_buckets.clone()
+    } else {
+        project::select_window(&a.buckets, a.time_range)
+    };
     let mut proj = project::project(&window, a.gran, &a.filters);
     // Drill-down: reduce to the focused node's full connected component, then the
     // graph view fits it on screen (§M3). The focus key is granularity-specific
@@ -319,6 +350,20 @@ fn recompute_projection_inner(shared: &Shared, relayout: bool) {
         .filter_map(|e| Some((*index.get(e.from.as_str())?, *index.get(e.to.as_str())?)))
         .collect();
 
+    // Community detection (Louvain) drives both the layout's cohesion force and
+    // the faint background hulls. Singletons (the disconnected typed/bookmark
+    // nodes) each fall into their own community, so only genuine clusters group.
+    let g = crate::graph::build(&proj);
+    let comm_by_ix = crate::graph::louvain(&g);
+    let mut key_comm: HashMap<String, usize> = HashMap::new();
+    for (ix, c) in &comm_by_ix {
+        key_comm.insert(g[*ix].key.clone(), *c);
+    }
+    let communities: Vec<usize> = keys
+        .iter()
+        .map(|k| key_comm.get(k).copied().unwrap_or(0))
+        .collect();
+
     // The same graph shape must produce the same picture, so an idempotent
     // interaction (re-picking a range/granularity, or a window that resolves to
     // the same data) never nudges the layout. If we've laid this shape out this
@@ -336,7 +381,7 @@ fn recompute_projection_inner(shared: &Shared, relayout: bool) {
     } else {
         a.positions.clone()
     };
-    let placed = layout::fruchterman_reingold(&keys, &edges, iters, &seed);
+    let placed = layout::fruchterman_reingold(&keys, &edges, iters, &seed, &communities);
 
     let mut layout_pos = HashMap::new();
     let mut snapshot = HashMap::new();
@@ -347,6 +392,7 @@ fn recompute_projection_inner(shared: &Shared, relayout: bool) {
     }
     a.layouts.insert(sig, snapshot);
     a.proj = proj;
+    a.communities = key_comm;
     a.layout_pos = layout_pos;
 }
 
@@ -380,6 +426,56 @@ pub(crate) fn focus_and_animate(shared: &Shared, new_focus: Option<String>) {
     } else {
         let _ = rerender(shared);
     }
+}
+
+/// Load buckets scoped to the most-recent session (folding that session's
+/// id-range of raw events), store them, then recompute + re-render. Lets the
+/// "Session" range show a genuine session rather than the latest UTC day. No-op
+/// when there are no sessions, or when the latest session is already loaded.
+pub(crate) fn refresh_session_buckets(shared: &Shared) {
+    let (db, latest, already) = {
+        let a = shared.borrow();
+        let latest =
+            a.sessions
+                .iter()
+                .cloned()
+                .fold(None, |acc: Option<SessionRec>, s| match acc {
+                    Some(b) if b.start_ts >= s.start_ts => Some(b),
+                    _ => Some(s),
+                });
+        let already = match (&latest, a.session_for) {
+            (Some(l), Some(id)) => l.id == id,
+            _ => false,
+        };
+        (a.db.clone(), latest, already)
+    };
+    let Some(latest) = latest else {
+        return; // no sessions: Session range falls back to the latest day
+    };
+    if already {
+        return; // already loaded for this session
+    }
+    let s = shared.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        let events = db
+            .read_events_id_range(latest.start_id, latest.end_id)
+            .await
+            .unwrap_or_default();
+        // Fold this session's events from scratch into day buckets, plus the
+        // still-open page (provisional) so the current page is included.
+        let mut st = crate::rollup::DeriveState::default();
+        let mut buckets = crate::rollup::fold(&mut st, &events).0;
+        buckets.extend(crate::derive::provisional_buckets(&st));
+        {
+            let mut a = s.borrow_mut();
+            a.session_buckets = buckets;
+            a.session_for = Some(latest.id);
+        }
+        if s.borrow().time_range == TimeRange::Session {
+            recompute_projection(&s);
+            let _ = rerender(&s);
+        }
+    });
 }
 
 /// Persist layout positions to the DB (spatial memory across opens, §7.6).
@@ -463,10 +559,35 @@ pub(crate) fn reload_and_rerender(shared: &Shared) {
             let mut a = s.borrow_mut();
             a.buckets = buckets;
             a.sessions = sessions;
+            // A destructive edit re-derives everything; invalidate the cached
+            // session scope so it reloads against the new id-ranges.
+            a.session_for = None;
+            a.session_buckets.clear();
         }
         recompute_projection(&s);
         let _ = rerender(&s);
+        if s.borrow().time_range == TimeRange::Session {
+            refresh_session_buckets(&s);
+        }
     });
+}
+
+/// Cause-specific empty-state copy, so a blank view explains *why* it's blank and
+/// what to do — instead of the one-size "browse a bit" message that misleads when
+/// recording is paused or a filter is simply too tight.
+pub(crate) fn empty_body_html(a: &App) -> String {
+    let any_data = a.buckets.iter().any(|b| !b.nodes.is_empty());
+    let msg = if !any_data {
+        if a.paused {
+            "Recording is paused. Press REC (top-left) to resume, then browse a little and reopen."
+        } else {
+            "No navigations recorded yet. Browse a few sites, then reopen this dashboard."
+        }
+    } else {
+        "No sites match the current range and filters. Widen the range, or clear the min-visits / \
+         hide-singletons / hide-search-hubs filters."
+    };
+    format!("<div class=\"bg-empty\">{msg}</div>")
 }
 
 // ── small DOM helpers (shared by the view modules) ──────────────────────────────
@@ -503,6 +624,20 @@ pub(crate) fn esc(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+/// Compact human duration (`45s`, `12m`, `1h 20m`, `2d 3h`) for dwell columns.
+pub(crate) fn fmt_dwell(ms: u64) -> String {
+    let s = ms / 1000;
+    if s < 60 {
+        format!("{s}s")
+    } else if s < 3600 {
+        format!("{}m", s / 60)
+    } else if s < 86_400 {
+        format!("{}h {}m", s / 3600, (s % 3600) / 60)
+    } else {
+        format!("{}d {}h", s / 86_400, (s % 86_400) / 3600)
+    }
+}
+
 /// Pluralize a regular count noun: `1 nav`, `2 navs`, `0 nodes`. Keeps the
 /// readouts and counts grammatical instead of always appending `s`.
 pub(crate) fn plural(n: u64, noun: &str) -> String {
@@ -510,6 +645,37 @@ pub(crate) fn plural(n: u64, noun: &str) -> String {
         format!("1 {noun}")
     } else {
         format!("{n} {noun}s")
+    }
+}
+
+/// A relative day prefix for a session date — `Today`, `Yesterday`, the weekday
+/// (within the last week), else the `M/D` date. Uses the browser's local clock.
+pub(crate) fn session_day_label(start_ts: f64) -> String {
+    let now = js_sys::Date::new_0();
+    let d = js_sys::Date::new(&JsValue::from_f64(start_ts));
+    // Local-calendar day index = (UTC epoch − timezone offset) floored to days.
+    let day_of = |x: &js_sys::Date| -> i64 {
+        let off_ms = x.get_timezone_offset() * 60_000.0; // minutes → ms (UTC − local)
+        ((x.get_time() - off_ms) / 86_400_000.0).floor() as i64
+    };
+    let diff = day_of(&now) - day_of(&d);
+    match diff {
+        0 => "Today".to_string(),
+        1 => "Yesterday".to_string(),
+        2..=6 => [
+            "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+        ]
+        .get(d.get_day() as usize)
+        .copied()
+        .unwrap_or("")
+        .to_string(),
+        _ => format!("{}/{}", d.get_month() + 1, d.get_date()),
     }
 }
 

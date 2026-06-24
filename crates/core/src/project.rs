@@ -11,6 +11,10 @@ use std::collections::{HashMap, HashSet};
 pub struct Filters {
     pub min_visits: u32,
     pub hide_search_hubs: bool,
+    /// Drop degree-0 nodes (the typed/bookmark/search singletons that link to
+    /// nothing), so the connected structure fills the frame instead of being
+    /// zoomed out to fit a halo of isolated dots.
+    pub hide_isolated: bool,
     pub provenance_in: Option<Vec<Provenance>>,
 }
 
@@ -85,6 +89,7 @@ pub fn project(buckets: &[DayBucket], gran: Granularity, filters: &Filters) -> G
         for (k, n) in &b.nodes {
             let e = nodes.entry(k.clone()).or_default();
             e.visits += n.visits;
+            e.dwell_ms += n.dwell_ms;
             e.prov.merge(&n.prov);
         }
         for (k, ed) in &b.edges {
@@ -102,6 +107,7 @@ pub fn project(buckets: &[DayBucket], gran: Granularity, filters: &Filters) -> G
         for (k, n) in nodes {
             let e = rn.entry(registrable(&k)).or_default();
             e.visits += n.visits;
+            e.dwell_ms += n.dwell_ms;
             e.prov.merge(&n.prov);
         }
         nodes = rn;
@@ -146,6 +152,7 @@ pub fn project(buckets: &[DayBucket], gran: Granularity, filters: &Filters) -> G
             key: k.clone(),
             visits: n.visits,
             prov: n.prov,
+            dwell_ms: n.dwell_ms,
         })
         .collect();
     node_vec.sort_by(|a, b| b.visits.cmp(&a.visits).then_with(|| a.key.cmp(&b.key)));
@@ -166,6 +173,16 @@ pub fn project(buckets: &[DayBucket], gran: Granularity, filters: &Filters) -> G
             .then_with(|| a.from.cmp(&b.from))
             .then_with(|| a.to.cmp(&b.to))
     });
+
+    // Optionally drop isolated (degree-0) nodes once edges are known. Edges only
+    // connect surviving nodes, so they're unaffected.
+    if filters.hide_isolated {
+        let connected: HashSet<&str> = edge_vec
+            .iter()
+            .flat_map(|e| [e.from.as_str(), e.to.as_str()])
+            .collect();
+        node_vec.retain(|n| connected.contains(n.key.as_str()));
+    }
 
     GraphProjection {
         nodes: node_vec,
@@ -199,6 +216,68 @@ pub fn visit_thresholds(max_visits: u32) -> Vec<u32> {
         out.extend(tail);
     }
     out
+}
+
+/// Headline activity stats for the selected range, derived from the same bucket
+/// history the projection uses (no raw-event read). `new_hosts` counts sites whose
+/// *first-ever* appearance (across all history) falls inside the window — "sites
+/// you discovered this period". `revisit_rate` is the share of in-window visits
+/// that were repeat loads of a host already seen in the window.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RangeStats {
+    pub window_hosts: u32,
+    pub new_hosts: u32,
+    pub window_visits: u64,
+    pub revisit_rate: f32,
+}
+
+pub fn range_stats(buckets: &[DayBucket], range: TimeRange) -> RangeStats {
+    let Some(latest) = buckets.iter().filter_map(|b| day_number(&b.date)).max() else {
+        return RangeStats::default();
+    };
+    let cutoff = latest - (range.days() - 1);
+
+    // First-seen day per host across *all* history (so "new" means new ever, not
+    // just new in this set of buckets).
+    let mut first_seen: HashMap<&str, i64> = HashMap::new();
+    for b in buckets {
+        if let Some(d) = day_number(&b.date) {
+            for k in b.nodes.keys() {
+                let e = first_seen.entry(k.as_str()).or_insert(d);
+                *e = (*e).min(d);
+            }
+        }
+    }
+
+    // Aggregate visits within the window.
+    let mut visits_in: HashMap<&str, u64> = HashMap::new();
+    for b in buckets {
+        let in_win = day_number(&b.date).map(|d| d >= cutoff).unwrap_or(true);
+        if !in_win {
+            continue;
+        }
+        for (k, n) in &b.nodes {
+            *visits_in.entry(k.as_str()).or_insert(0) += n.visits as u64;
+        }
+    }
+
+    let window_hosts = visits_in.len() as u32;
+    let window_visits: u64 = visits_in.values().sum();
+    let new_hosts = visits_in
+        .keys()
+        .filter(|k| first_seen.get(**k).map(|d| *d >= cutoff).unwrap_or(false))
+        .count() as u32;
+    let revisit_rate = if window_visits > 0 {
+        (window_visits - window_hosts as u64) as f32 / window_visits as f32
+    } else {
+        0.0
+    };
+    RangeStats {
+        window_hosts,
+        new_hosts,
+        window_visits,
+        revisit_rate,
+    }
 }
 
 /// Total provenance breakdown across a range — the "origination" view (§M2).
@@ -332,6 +411,7 @@ mod tests {
                     link: 2,
                     ..Default::default()
                 },
+                ..Default::default()
             },
         );
         // every edge endpoint also has a node visit (as real rollups produce).
@@ -361,6 +441,7 @@ mod tests {
                     link: 3,
                     ..Default::default()
                 },
+                ..Default::default()
             },
         );
         b2.edges.insert(
@@ -458,6 +539,36 @@ mod tests {
     }
 
     #[test]
+    fn hide_isolated_drops_degree_zero_nodes() {
+        let mut b = bucket("2021-01-01");
+        for h in ["hub.com", "leaf.com", "lonely.com"] {
+            b.nodes.insert(
+                h.into(),
+                NodeStat {
+                    visits: 3,
+                    ..Default::default()
+                },
+            );
+        }
+        b.edges.insert(
+            edge_key("hub.com", "leaf.com"),
+            EdgeStat {
+                weight: 2,
+                ..Default::default()
+            },
+        );
+        let filters = Filters {
+            hide_isolated: true,
+            ..Default::default()
+        };
+        let g = project(&[b], Granularity::Hostname, &filters);
+        let keys: std::collections::HashSet<&str> =
+            g.nodes.iter().map(|n| n.key.as_str()).collect();
+        assert_eq!(keys, ["hub.com", "leaf.com"].into_iter().collect());
+        assert!(!keys.contains("lonely.com"), "degree-0 node dropped");
+    }
+
+    #[test]
     fn hide_search_hubs_removes_search_dominant_nodes() {
         let mut b = bucket("2021-01-01");
         b.nodes.insert(
@@ -468,6 +579,7 @@ mod tests {
                     search_origin: 9,
                     ..Default::default()
                 },
+                ..Default::default()
             },
         );
         b.nodes.insert(
@@ -478,6 +590,7 @@ mod tests {
                     link: 4,
                     ..Default::default()
                 },
+                ..Default::default()
             },
         );
         let filters = Filters {
@@ -496,6 +609,7 @@ mod tests {
             key: k.into(),
             visits: v,
             prov: ProvBreakdown::default(),
+            ..Default::default()
         };
         let e = |f: &str, t: &str| EdgeAgg {
             from: f.into(),
@@ -544,6 +658,41 @@ mod tests {
     }
 
     #[test]
+    fn range_stats_counts_new_hosts_and_revisits() {
+        let mut older = bucket("2021-01-01");
+        older.nodes.insert(
+            "old.com".into(),
+            NodeStat {
+                visits: 1,
+                ..Default::default()
+            },
+        );
+        // Window day: old.com (seen before → returning) gets 3 visits, new.com
+        // (first ever in-window) gets 1 visit. 4 visits over 2 distinct hosts.
+        let mut today = bucket("2021-01-11");
+        today.nodes.insert(
+            "old.com".into(),
+            NodeStat {
+                visits: 3,
+                ..Default::default()
+            },
+        );
+        today.nodes.insert(
+            "new.com".into(),
+            NodeStat {
+                visits: 1,
+                ..Default::default()
+            },
+        );
+        let s = range_stats(&[older, today], TimeRange::Day);
+        assert_eq!(s.window_hosts, 2);
+        assert_eq!(s.window_visits, 4);
+        assert_eq!(s.new_hosts, 1, "only new.com is first-seen in-window");
+        // 4 visits, 2 distinct → 2 of the loads were revisits → 0.5.
+        assert!((s.revisit_rate - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
     fn day_number_matches_known_epochs() {
         assert_eq!(day_number("1970-01-01"), Some(0));
         assert_eq!(day_number("1970-01-02"), Some(1));
@@ -586,6 +735,7 @@ mod tests {
             key: k.into(),
             visits: 1,
             prov: ProvBreakdown::default(),
+            ..Default::default()
         };
         let e = |f: &str, t: &str| EdgeAgg {
             from: f.into(),
@@ -613,6 +763,7 @@ mod tests {
             key: k.into(),
             visits: 1,
             prov: ProvBreakdown::default(),
+            ..Default::default()
         };
         let e = |f: &str, t: &str| EdgeAgg {
             from: f.into(),

@@ -294,8 +294,9 @@ select:focus-visible {
   background-repeat: no-repeat;
 }
 .chip-select option { background: #15151a; color: var(--text-secondary); }
-#chip-hubs { color: var(--text-muted); }
-#chip-hubs.active { color: var(--text-primary); background: oklch(1 0 0 / 0.1); }
+#chip-hubs, #chip-isolated { color: var(--text-muted); }
+#chip-hubs.active,
+#chip-isolated.active { color: var(--text-primary); background: oklch(1 0 0 / 0.1); }
 
 /* 7. readout (node / edge counts) */
 .panel.readout { gap: 12px; padding: 8px 14px; }
@@ -351,6 +352,27 @@ td.mono { font-family: var(--mono); color: var(--text-tertiary); white-space: no
 a { color: var(--text-primary); }
 .muted { color: var(--text-tertiary); }
 
+/* Tables view: range title, stat cards, paired columns, sub-captions. */
+.mode-data h2.range-title {
+  font-size: 19px; font-weight: 600; margin: 4px 0 14px; letter-spacing: -0.01em;
+}
+.mode-data h3 { font-size: 14px; font-weight: 600; margin: 26px 0 4px; }
+.stat-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 4px; }
+.stat-card {
+  min-width: 132px; padding: 12px 16px; border-radius: 10px;
+  background: oklch(1 0 0 / 0.03); border: 1px solid var(--toolbar-divider);
+}
+.stat-value {
+  font: 22px var(--mono); font-variant-numeric: tabular-nums;
+  color: var(--text-primary); line-height: 1.1;
+}
+.stat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.tbl-sub { font-size: 11px; margin: 0 0 6px; }
+/* Launch pads / Destinations sit side by side on wide screens, stack when narrow. */
+.tbl-pair { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+.tbl-col { flex: 1 1 260px; min-width: 240px; }
+.tbl-col table.tbl { max-width: none; }
+
 /* session picker (two-pane) + sankey */
 .sp-flow h3, .sp-list h3 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
 /* Sankey color keys (bars = provenance, ribbons = edge kind) — shown inline on
@@ -368,6 +390,26 @@ a { color: var(--text-primary); }
 .sankey { display: block; max-width: 100%; margin-top: 8px; }
 .sankey-label {
   font: 12px var(--mono); fill: var(--text-secondary); dominant-baseline: middle;
+}
+/* Pure-CSS hover affordance: brighten the hovered ribbon/bar (the <title> child
+ * supplies a native from→to tooltip; no JS needed). */
+.sankey-ribbon { transition: fill-opacity 0.12s ease; }
+.sankey:hover .sankey-ribbon { fill-opacity: 0.5; }
+.sankey-ribbon:hover { fill-opacity: 1; }
+.sankey-bar { cursor: default; }
+.sankey-bar:hover { stroke: var(--text-primary); stroke-width: 1.5; }
+/* "Direct visits" side list under the diagram (orphan typed/bookmark/search hosts) */
+.direct-visits { margin-top: 18px; }
+.direct-visits h4 {
+  font: 10px var(--mono); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted); margin: 0 0 8px;
+}
+.dv-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.dv-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--text-secondary);
+  padding: 4px 10px; border-radius: 8px;
+  background: oklch(1 0 0 / 0.03); border: 1px solid var(--toolbar-divider);
 }
 .sp-row { display: flex; gap: 16px; height: 100%; }
 .sp-list { flex: 0 0 320px; overflow: auto; }
@@ -388,6 +430,61 @@ a { color: var(--text-primary); }
   border-radius: 8px; margin-bottom: 6px; cursor: pointer;
 }
 .sp-item:hover { background: oklch(1 0 0 / 0.05); }
+.sp-item.is-selected {
+  background: oklch(1 0 0 / 0.08); border-color: oklch(1 0 0 / 0.16);
+}
+/* session-picker filter controls */
+.sp-filter {
+  display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; flex-wrap: wrap;
+}
+.sp-search {
+  flex: 1 1 150px; min-width: 0; background: oklch(1 0 0 / 0.04);
+  border: 1px solid var(--toolbar-divider); border-radius: 8px;
+  padding: 7px 10px; color: var(--text-primary); font: 12px var(--mono); outline: 0;
+}
+.sp-search::placeholder { color: var(--text-muted); }
+.sp-toggle {
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  font: 11.5px var(--grotesque); color: var(--text-tertiary);
+  padding: 0; cursor: pointer;
+}
+.sp-toggle input { accent-color: var(--text-secondary); }
+
+/* validating confirmation modal (replaces window.prompt) */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; place-items: center;
+  background: oklch(0 0 0 / 0.55);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.panel.modal {
+  position: static; flex-direction: column; align-items: stretch; gap: 10px;
+  width: 360px; max-width: calc(100vw - 32px); padding: 20px;
+}
+.modal-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.modal-msg { font-size: 12.5px; color: var(--text-tertiary); line-height: 1.45; }
+.modal-input {
+  background: oklch(1 0 0 / 0.04); border: 1px solid var(--toolbar-divider);
+  border-radius: 8px; padding: 9px 11px; color: var(--text-primary);
+  font: 13px var(--mono); outline: 0;
+}
+.modal-input:focus { border-color: oklch(0.64 0.205 264); }
+.modal-error { font: 11px var(--mono); color: oklch(0.7 0.18 25); }
+.modal-error:empty { display: none; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.modal-btn {
+  appearance: none; cursor: pointer; font: 12.5px var(--grotesque);
+  padding: 8px 16px; border-radius: 8px; color: var(--text-secondary);
+  background: oklch(1 0 0 / 0.05); border: 1px solid var(--toolbar-divider);
+}
+.modal-btn:hover { background: oklch(1 0 0 / 0.09); color: var(--text-primary); }
+.modal-confirm {
+  background: var(--text-primary); color: #0a0a0a;
+  border-color: transparent; font-weight: 600;
+}
+.modal-confirm:hover { background: #fff; }
+.modal-confirm.danger { background: oklch(0.58 0.19 18); color: #fff; }
+.modal-confirm.danger:hover { background: oklch(0.64 0.21 18); }
 
 /* empty / loading states */
 .bg-empty {
