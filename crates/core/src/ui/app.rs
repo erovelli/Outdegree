@@ -140,6 +140,11 @@ fn range_panel(doc: &Document, shared: &Shared) -> Element {
             recompute_projection(&s);
             persist_positions(&s);
             let _ = rerender(&s);
+            // The Session range needs buckets scoped to the latest session's
+            // events; load them (async) so it isn't just the latest UTC day.
+            if range == TimeRange::Session {
+                super::refresh_session_buckets(&s);
+            }
         });
     }
     let _ = p.append_child(&wrap);
@@ -510,9 +515,15 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
     }
     let hubs = chip(doc, "chip-hubs", "Hide search hubs");
     let _ = hubs.set_attribute("title", "Collapse search-engine origin nodes");
+    let iso = chip(doc, "chip-isolated", "Hide singletons");
+    let _ = iso.set_attribute(
+        "title",
+        "Hide sites that link to nothing (typed/bookmark/search singletons)",
+    );
     let _ = chips.append_child(&gran_seg);
     let _ = chips.append_child(&mv);
     let _ = chips.append_child(&hubs);
+    let _ = chips.append_child(&iso);
     {
         let s = shared.clone();
         on(&mv, "change", move |ev| {
@@ -532,6 +543,17 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
             {
                 let mut a = s.borrow_mut();
                 a.filters.hide_search_hubs ^= true;
+            }
+            recompute_projection(&s);
+            let _ = rerender(&s);
+        });
+    }
+    {
+        let s = shared.clone();
+        on(&iso, "click", move |_| {
+            {
+                let mut a = s.borrow_mut();
+                a.filters.hide_isolated ^= true;
             }
             recompute_projection(&s);
             let _ = rerender(&s);
@@ -652,23 +674,36 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
         let s = shared.clone();
         on(&forget, "click", move |_| {
             close_popover(&s);
-            let win = web_sys::window().expect("window");
-            if let Ok(Some(domain)) =
-                win.prompt_with_message("Forget which domain? (host or eTLD+1)")
-            {
-                let domain = domain.trim().to_string();
-                if domain.is_empty() {
-                    return;
-                }
-                let db = s.borrow().db.clone();
-                let s2 = s.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    if let Err(e) = db.forget_domain(&domain).await {
-                        return super::log_err(&e);
+            let s2 = s.clone();
+            confirm_dialog(
+                &s,
+                "Forget a domain",
+                "Permanently remove every stored record for this host or domain, then rebuild. \
+                 This can't be undone.",
+                Some("host or domain, e.g. example.com"),
+                "Forget",
+                true,
+                move |val| {
+                    let domain = val.unwrap_or_default().trim().to_string();
+                    if domain.is_empty() {
+                        set_text(
+                            &s2.borrow().doc,
+                            "bg-modal-error",
+                            "Enter a host or domain.",
+                        );
+                        return false;
                     }
-                    reload_and_rerender(&s2);
-                });
-            }
+                    let db = s2.borrow().db.clone();
+                    let s3 = s2.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Err(e) = db.forget_domain(&domain).await {
+                            return super::log_err(&e);
+                        }
+                        reload_and_rerender(&s3);
+                    });
+                    true
+                },
+            );
         });
     }
 
@@ -677,21 +712,43 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
         let s = shared.clone();
         on(&delete, "click", move |_| {
             close_popover(&s);
-            let win = web_sys::window().expect("window");
-            if let Ok(Some(days)) = win.prompt_with_message("Delete the last how many days?") {
-                if let Ok(n) = days.trim().parse::<f64>() {
-                    let now = js_sys::Date::now();
-                    let from = now - n * 86_400_000.0;
-                    let db = s.borrow().db.clone();
-                    let s2 = s.clone();
-                    wasm_bindgen_futures::spawn_local(async move {
-                        if let Err(e) = db.delete_range(from, now).await {
-                            return super::log_err(&e);
+            let s2 = s.clone();
+            confirm_dialog(
+                &s,
+                "Delete recent history",
+                "Permanently remove all records from the last N days, then rebuild. \
+                 This can't be undone.",
+                Some("number of days, e.g. 7"),
+                "Delete",
+                true,
+                move |val| {
+                    // Validate: a whole number of days in a sane range — so a stray
+                    // "99999" can't silently wipe everything and "-3" can't no-op.
+                    match val.unwrap_or_default().trim().parse::<u32>() {
+                        Ok(days) if (1..=3650).contains(&days) => {
+                            let now = js_sys::Date::now();
+                            let from = now - days as f64 * 86_400_000.0;
+                            let db = s2.borrow().db.clone();
+                            let s3 = s2.clone();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                if let Err(e) = db.delete_range(from, now).await {
+                                    return super::log_err(&e);
+                                }
+                                reload_and_rerender(&s3);
+                            });
+                            true
                         }
-                        reload_and_rerender(&s2);
-                    });
-                }
-            }
+                        _ => {
+                            set_text(
+                                &s2.borrow().doc,
+                                "bg-modal-error",
+                                "Enter a whole number of days between 1 and 3650.",
+                            );
+                            false
+                        }
+                    }
+                },
+            );
         });
     }
 
@@ -746,6 +803,11 @@ fn install_palette_shortcut(shared: &Shared) {
             return;
         };
         if ke.key() == "Escape" {
+            // A modal takes priority: dismiss it and stop (don't also clear focus).
+            if let Some(m) = s.borrow().doc.get_element_by_id("bg-modal") {
+                m.remove();
+                return;
+            }
             close_popover(&s);
             let cleared = {
                 let mut a = s.borrow_mut();
@@ -798,6 +860,140 @@ fn install_popover_dismiss(shared: &Shared) {
             close_popover(&s);
         }
     });
+}
+
+/// A styled, validating confirmation modal — the in-app replacement for the
+/// browser's `window.prompt`, which offered no validation and (for "delete N
+/// days") let an unbounded number silently wipe everything. `on_confirm` receives
+/// the input value (when there is an input) and returns whether to close: it can
+/// reject bad input by writing to `#bg-modal-error` and returning `false`.
+pub(crate) fn confirm_dialog(
+    shared: &Shared,
+    title: &str,
+    message: &str,
+    placeholder: Option<&str>,
+    confirm_label: &str,
+    danger: bool,
+    on_confirm: impl FnMut(Option<String>) -> bool + 'static,
+) {
+    let (doc, root) = {
+        let a = shared.borrow();
+        (a.doc.clone(), a.root.clone())
+    };
+    if let Some(old) = doc.get_element_by_id("bg-modal") {
+        old.remove();
+    }
+
+    let overlay = el(&doc, "div");
+    let _ = overlay.set_attribute("class", "modal-overlay");
+    let _ = overlay.set_attribute("id", "bg-modal");
+    let modal = panel(&doc, "modal");
+    let _ = modal.set_attribute("role", "dialog");
+    let _ = modal.set_attribute("aria-modal", "true");
+
+    let _ = modal.append_child(&span(&doc, "modal-title", title));
+    let _ = modal.append_child(&span(&doc, "modal-msg", message));
+
+    let input_opt = placeholder.map(|ph| {
+        let inp = el(&doc, "input");
+        let _ = inp.set_attribute("type", "text");
+        let _ = inp.set_attribute("class", "modal-input");
+        let _ = inp.set_attribute("id", "bg-modal-input");
+        let _ = inp.set_attribute("placeholder", ph);
+        let _ = modal.append_child(&inp);
+        inp
+    });
+
+    let err = span(&doc, "modal-error", "");
+    let _ = err.set_attribute("id", "bg-modal-error");
+    let _ = modal.append_child(&err);
+
+    let actions = el(&doc, "div");
+    let _ = actions.set_attribute("class", "modal-actions");
+    let cancel = el(&doc, "button");
+    let _ = cancel.set_attribute("type", "button");
+    let _ = cancel.set_attribute("class", "modal-btn");
+    cancel.set_text_content(Some("Cancel"));
+    let confirm = el(&doc, "button");
+    let _ = confirm.set_attribute("type", "button");
+    let _ = confirm.set_attribute(
+        "class",
+        if danger {
+            "modal-btn modal-confirm danger"
+        } else {
+            "modal-btn modal-confirm"
+        },
+    );
+    confirm.set_text_content(Some(confirm_label));
+    let _ = actions.append_child(&cancel);
+    let _ = actions.append_child(&confirm);
+    let _ = modal.append_child(&actions);
+    let _ = overlay.append_child(&modal);
+    let _ = root.append_child(&overlay);
+
+    if let Some(inp) = &input_opt {
+        if let Ok(h) = inp.clone().dyn_into::<HtmlElement>() {
+            let _ = h.focus();
+        }
+    }
+
+    let cb = std::rc::Rc::new(std::cell::RefCell::new(on_confirm));
+    let do_confirm = {
+        let cb = cb.clone();
+        let inp = input_opt.clone();
+        let doc = doc.clone();
+        move || {
+            let val = inp
+                .as_ref()
+                .and_then(|i| i.clone().dyn_into::<HtmlInputElement>().ok())
+                .map(|i| i.value());
+            if (cb.borrow_mut())(val) {
+                if let Some(o) = doc.get_element_by_id("bg-modal") {
+                    o.remove();
+                }
+            }
+        }
+    };
+    {
+        let f = do_confirm.clone();
+        on(&confirm, "click", move |_| f());
+    }
+    {
+        let doc = doc.clone();
+        on(&cancel, "click", move |_| {
+            if let Some(o) = doc.get_element_by_id("bg-modal") {
+                o.remove();
+            }
+        });
+    }
+    {
+        // Click the backdrop (not the dialog) to dismiss.
+        let doc = doc.clone();
+        on(overlay.as_ref(), "mousedown", move |ev| {
+            let on_backdrop = ev
+                .target()
+                .and_then(|t| t.dyn_into::<Element>().ok())
+                .map(|e| e.id() == "bg-modal")
+                .unwrap_or(false);
+            if on_backdrop {
+                if let Some(o) = doc.get_element_by_id("bg-modal") {
+                    o.remove();
+                }
+            }
+        });
+    }
+    if let Some(inp) = &input_opt {
+        let confirm = confirm.clone();
+        on(inp.as_ref(), "keydown", move |ev| {
+            if let Ok(ke) = ev.dyn_into::<KeyboardEvent>() {
+                if ke.key() == "Enter" {
+                    if let Ok(h) = confirm.clone().dyn_into::<HtmlElement>() {
+                        h.click();
+                    }
+                }
+            }
+        });
+    }
 }
 
 // ── dynamic chrome refresh ────────────────────────────────────────────────────
@@ -898,6 +1094,7 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         }
     }
     toggle_active(&doc, "chip-hubs", a.filters.hide_search_hubs);
+    toggle_active(&doc, "chip-isolated", a.filters.hide_isolated);
     populate_min_visits(&doc, &a);
 
     // REC indicator
@@ -959,6 +1156,7 @@ fn populate_min_visits(doc: &Document, a: &super::App) {
     let probe = crate::project::Filters {
         min_visits: 0,
         hide_search_hubs: a.filters.hide_search_hubs,
+        hide_isolated: a.filters.hide_isolated,
         provenance_in: a.filters.provenance_in.clone(),
     };
     let max = crate::project::project(&window, a.gran, &probe)
@@ -1034,7 +1232,9 @@ fn set_text(doc: &Document, id: &str, text: &str) {
     }
 }
 
-/// Add/remove the `active` class token while preserving any base classes.
+/// Add/remove the `active` class token while preserving any base classes, and
+/// mirror the state into `aria-pressed` so assistive tech announces which range /
+/// view / filter is currently selected.
 fn toggle_active(doc: &Document, id: &str, on: bool) {
     if let Some(e) = doc.get_element_by_id(id) {
         let mut classes: Vec<String> = e
@@ -1047,5 +1247,6 @@ fn toggle_active(doc: &Document, id: &str, on: bool) {
             classes.push("active".into());
         }
         e.set_class_name(&classes.join(" "));
+        let _ = e.set_attribute("aria-pressed", if on { "true" } else { "false" });
     }
 }

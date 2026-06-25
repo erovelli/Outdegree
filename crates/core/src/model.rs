@@ -378,11 +378,16 @@ impl KindBreakdown {
 }
 
 /// A node in a projected graph view (§7.1).
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct NodeAgg {
     pub key: String,
     pub visits: u32,
     pub prov: ProvBreakdown,
+    /// Total time the page was the active page across all visits, in milliseconds
+    /// (derived from inter-event timestamp gaps, capped per visit at the idle gap).
+    /// Carried alongside `visits` so the UI can rank/size by attention, not just hits.
+    #[serde(default)]
+    pub dwell_ms: u64,
 }
 
 /// An edge in a projected graph view (§7.1).

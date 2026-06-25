@@ -48,7 +48,9 @@ impl Default for TabState {
     }
 }
 
-/// A Nav held for one event of redirect lookahead (§7.3).
+/// A Nav held for one event of redirect lookahead (§7.3). `ts` is the page's
+/// arrival time, used both to gate the redirect window and to derive dwell (the
+/// gap to the event that finalizes this buffer).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Buffered {
     pub origin_url: Option<String>,
@@ -56,7 +58,6 @@ pub struct Buffered {
     pub to_url: String,
     pub prov: Provenance,
     pub ts: f64,
-    pub had_client_redirect: bool,
 }
 
 /// Snapshot of a source tab's current page at child-spawn time (§7.3).
@@ -134,6 +135,10 @@ impl OpenSession {
 pub struct NodeStat {
     pub visits: u32,
     pub prov: ProvBreakdown,
+    /// Total active-page time across the visits in this bucket, in milliseconds.
+    /// `#[serde(default)]` so rollups written before dwell tracking still load.
+    #[serde(default)]
+    pub dwell_ms: u64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -177,6 +182,7 @@ pub fn merge_bucket(into: &mut DayBucket, delta: &DayBucket) {
     for (k, n) in &delta.nodes {
         let e = into.nodes.entry(k.clone()).or_default();
         e.visits += n.visits;
+        e.dwell_ms += n.dwell_ms;
         e.prov.merge(&n.prov);
     }
     for (k, ed) in &delta.edges {
@@ -221,10 +227,11 @@ impl Acc {
         b
     }
 
-    pub fn node(&mut self, date: &str, key: &str, prov: Provenance) {
+    pub fn node(&mut self, date: &str, key: &str, prov: Provenance, dwell_ms: u64) {
         let b = self.bucket(date);
         let n = b.nodes.entry(key.to_string()).or_default();
         n.visits += 1;
+        n.dwell_ms += dwell_ms;
         n.prov.add(prov);
     }
 
@@ -263,27 +270,32 @@ pub fn fold(
 /// Merge the unified `events` stream with the separate `spa` (history-state)
 /// stream for the opt-in "in-app navigations" view (§4.2).
 ///
-/// Ordered by `(ts, id)` so that within each tab the records are in ts order. ts
-/// ordering is acceptable for this opt-in path; the default path never depends on
-/// it. The result is folded from scratch (not via the incremental cursor, whose
-/// watermark only tracks the `events` id sequence).
+/// A **stable two-pointer merge** by `ts`: each input is already in its own id
+/// order, and we interleave the two by timestamp while *never reordering two
+/// records from the same stream*. So a backward clock jump inside `events`
+/// (a later id with an earlier ts) keeps its id order — unlike a flat `(ts, id)`
+/// sort, which would swap them. ts ties resolve to `events` first. The result is
+/// folded from scratch (the watermark cursor only tracks the `events` sequence).
 pub fn merge_streams(
     events: &[crate::model::Event],
     spa: &[crate::model::Event],
 ) -> Vec<crate::model::Event> {
-    let mut all: Vec<crate::model::Event> =
-        events.iter().cloned().chain(spa.iter().cloned()).collect();
-    all.sort_by(|a, b| {
-        a.ts()
-            .partial_cmp(&b.ts())
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then(
-                a.id()
-                    .partial_cmp(&b.id())
-                    .unwrap_or(std::cmp::Ordering::Equal),
-            )
-    });
-    all
+    let mut out: Vec<crate::model::Event> = Vec::with_capacity(events.len() + spa.len());
+    let (mut i, mut j) = (0, 0);
+    while i < events.len() && j < spa.len() {
+        // Take from `spa` only when it is strictly earlier; on a tie or when
+        // `events` is earlier, take `events` (keeping the unified stream's order).
+        if spa[j].ts() < events[i].ts() {
+            out.push(spa[j].clone());
+            j += 1;
+        } else {
+            out.push(events[i].clone());
+            i += 1;
+        }
+    }
+    out.extend(events[i..].iter().cloned());
+    out.extend(spa[j..].iter().cloned());
+    out
 }
 
 /// UTC `YYYY-MM-DD` for a millisecond epoch timestamp (decision #11).
@@ -331,6 +343,34 @@ mod tests {
         let merged = merge_streams(&events, &spa);
         let ts: Vec<f64> = merged.iter().map(|e| e.ts()).collect();
         assert_eq!(ts, vec![100.0, 200.0, 300.0]);
+    }
+
+    #[test]
+    fn merge_streams_keeps_each_streams_internal_order() {
+        // A backward clock jump *within* events (id 2 has an earlier ts than id 1)
+        // must NOT reorder the two events — a flat (ts,id) sort would swap them.
+        let nav = |id: f64, ts: f64| Event::Nav {
+            id,
+            ts,
+            tab_id: 1.0,
+            window_id: 1.0,
+            to_url: "https://a.com/".into(),
+            transition_type: "link".into(),
+            qualifiers: vec![],
+        };
+        let events = vec![nav(1.0, 500.0), nav(2.0, 100.0)]; // id order, ts goes backward
+        let spa = vec![nav(7.0, 300.0)];
+        let merged = merge_streams(&events, &spa);
+        let ts: Vec<f64> = merged.iter().map(|e| e.ts()).collect();
+        // events keep their input (id) order: the ts-500 record precedes the ts-100
+        // record even though that's "out of ts order" — a flat (ts,id) sort would
+        // have swapped them. spa (ts 300) merely interleaves between streams.
+        let p_first = ts.iter().position(|&t| t == 500.0).unwrap();
+        let p_second = ts.iter().position(|&t| t == 100.0).unwrap();
+        assert!(
+            p_first < p_second,
+            "events must keep id order across a backward ts jump, got {ts:?}"
+        );
     }
 
     #[test]

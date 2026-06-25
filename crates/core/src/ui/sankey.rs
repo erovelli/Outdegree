@@ -73,6 +73,47 @@ fn keys_html(fg: &flow::FlowGraph) -> String {
     h
 }
 
+/// The "Direct visits" list: orphan hosts (reached by typing/bookmark/search and
+/// linking nowhere) as provenance-glyph chips, so they're acknowledged without
+/// cluttering the flow diagram with lone column-0 bars.
+fn direct_visits_html(orphans: &[(String, u32)], fg: &flow::FlowGraph) -> String {
+    use std::collections::HashMap;
+    if orphans.is_empty() {
+        return String::new();
+    }
+    let prov_of: HashMap<&str, crate::model::Provenance> =
+        fg.nodes.iter().map(|n| (n.key.as_str(), n.prov)).collect();
+    let mut h =
+        String::from("<div class=\"direct-visits\"><h4>Direct visits</h4><div class=\"dv-chips\">");
+    for (host, count) in orphans {
+        let prov = prov_of
+            .get(host.as_str())
+            .copied()
+            .unwrap_or(crate::model::Provenance::Other);
+        let dot = match prov {
+            crate::model::Provenance::SearchOrigin => "dot-search",
+            crate::model::Provenance::Link => "dot-link",
+            crate::model::Provenance::TypedUrl => "dot-typed",
+            crate::model::Provenance::Bookmark => "dot-bookmark",
+            crate::model::Provenance::Form => "dot-form",
+            crate::model::Provenance::Start => "dot-external",
+            _ => "dot-other",
+        };
+        let suffix = if *count > 1 {
+            format!(" ×{count}")
+        } else {
+            String::new()
+        };
+        h.push_str(&format!(
+            "<span class=\"dv-chip\"><span class=\"dot {dot} {glyph}\"></span>{}{suffix}</span>",
+            super::esc(host),
+            glyph = prov.shape().css()
+        ));
+    }
+    h.push_str("</div></div>");
+    h
+}
+
 pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let doc = shared.borrow().doc.clone();
     let Some(flow_el) = doc.get_element_by_id("bg-flow") else {
@@ -120,21 +161,52 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
 
         // Reconstruct the session flow, honoring how each page was reached:
         // link/form chains; typed/bookmark/search starts a fresh flow (§7.2).
-        let fg = flow::from_session_events(&events, gran);
+        let fg_full = flow::from_session_events(&events, gran);
+        // Split the hosts you actually linked between from the direct visits
+        // (typed/bookmark/search landings that flow nowhere), so the diagram isn't
+        // mostly empty column-0 bars — the direct visits become a side list.
+        let (fg, orphans) = flow::split_orphans(&fg_full);
 
         let Some(flow_el) = s.borrow().doc.get_element_by_id("bg-flow") else {
             return;
         };
-        let vw = (flow_el.client_width() as f64 - 8.0).max(640.0);
+        let vw = (flow_el.client_width() as f64 - 8.0).max(560.0);
+        let has_flow = !fg.nodes.is_empty();
+        let hint = if has_flow {
+            " Click a site or ribbon to isolate its flow."
+        } else {
+            ""
+        };
         let mut html = format!(
             "<h3>{}</h3>\
              <p class=\"muted\">{}. Each column is a site you visited; a thicker ribbon means \
-             you took that step more often.</p>",
+             you took that step more often.{hint}</p>",
             super::session_when(sess.start_ts, sess.end_ts),
             super::plural(sess.nav_count as u64, "visit"),
         );
-        html.push_str(&keys_html(&fg));
-        html.push_str(&flow::render_svg(&fg, vw));
+        html.push_str(&keys_html(&fg_full));
+        // The diagram lives in its own container so a focus click can re-render
+        // just the SVG (from the cached flow) without rebuilding the header/keys.
+        html.push_str("<div id=\"bg-flow-svg\">");
+        if has_flow {
+            html.push_str(&flow::render_svg(&fg, vw, None));
+        } else {
+            html.push_str(
+                "<p class=\"muted\">No links were followed — every visit this session was direct \
+                 (typed, bookmark, or search).</p>",
+            );
+        }
+        html.push_str("</div>");
+        html.push_str(&direct_visits_html(&orphans, &fg_full));
+
+        // Cache the drawn flow so clicks can re-render with a focus highlight; a
+        // fresh flow always starts unfocused.
+        {
+            let mut a = s.borrow_mut();
+            a.sankey_flow = Some(fg.clone());
+            a.sankey_focus = None;
+            a.sankey_vw = vw;
+        }
 
         // Same data → same picture: skip the DOM swap when the markup is identical
         // (e.g. a Hostname/Domain toggle that leaves the flow unchanged), so there
@@ -154,4 +226,65 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     });
 
     Ok(())
+}
+
+/// Click handler for the flow pane: clicking a node (or ribbon) isolates the flow
+/// threading through it — its ancestors and descendants stay lit, the rest dims.
+/// Clicking the same point again, or empty space, clears the focus. Re-renders
+/// only the cached SVG (no event re-read).
+pub(crate) fn on_flow_click(shared: &Shared, ev: &web_sys::Event) {
+    use wasm_bindgen::JsCast;
+    // Resolve the clicked element to a node index or a link index, if any.
+    let target = ev
+        .target()
+        .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
+    let seed = target.and_then(|el| {
+        if let Ok(Some(node)) = el.closest("[data-node]") {
+            node.get_attribute("data-node")
+                .and_then(|v| v.parse::<usize>().ok())
+                .map(|i| (i, i))
+        } else if let Ok(Some(link)) = el.closest("[data-link]") {
+            link.get_attribute("data-link")
+                .and_then(|v| v.parse::<usize>().ok())
+                .and_then(|li| {
+                    shared
+                        .borrow()
+                        .sankey_flow
+                        .as_ref()
+                        .and_then(|fg| fg.links.get(li).map(|l| (l.from, l.to)))
+                })
+        } else {
+            None
+        }
+    });
+
+    // Toggle: clicking the focused point again clears; a new point replaces; a
+    // click on empty space clears.
+    let (focus, fg, vw) = {
+        let mut a = shared.borrow_mut();
+        let new_focus = match (seed, a.sankey_focus) {
+            (Some(s), Some(cur)) if s == cur => None,
+            (s, _) => s,
+        };
+        a.sankey_focus = new_focus;
+        (new_focus, a.sankey_flow.clone(), a.sankey_vw)
+    };
+    let Some(fg) = fg else { return };
+
+    let svg = match focus {
+        Some((up, down)) => {
+            let f = crate::flow::flow_focus(&fg, up, down);
+            crate::flow::render_svg(&fg, vw, Some(&f))
+        }
+        None => crate::flow::render_svg(&fg, vw, None),
+    };
+    let doc = shared.borrow().doc.clone();
+    if let Some(holder) = doc.get_element_by_id("bg-flow-svg") {
+        holder.set_inner_html(&svg);
+    }
+    // The cached `data-sig` on #bg-flow no longer matches the visible DOM (we just
+    // changed it out of band); clear it so the next data render always re-swaps.
+    if let Some(flow_el) = doc.get_element_by_id("bg-flow") {
+        let _ = flow_el.remove_attribute("data-sig");
+    }
 }

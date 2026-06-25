@@ -22,8 +22,8 @@ const FORWARD_BACK_NODE_VISIT: bool = false;
 /// Dispatch one event in global order (§7.3).
 pub fn step(state: &mut DeriveState, acc: &mut Acc, ev: &Event) {
     match ev {
-        Event::Start { .. } => on_start(state, acc),
-        Event::Close { tab_id, .. } => on_close(state, acc, *tab_id as i64),
+        Event::Start { ts, .. } => on_start(state, acc, *ts),
+        Event::Close { ts, tab_id, .. } => on_close(state, acc, *tab_id as i64, *ts),
         Event::Link {
             new_tab_id,
             source_tab_id,
@@ -54,12 +54,13 @@ pub fn step(state: &mut DeriveState, acc: &mut Acc, ev: &Event) {
 /// `Start`: flush every tab's buffer, then clear all per-tab state and close all
 /// sessions. Handles browser-restart tabId reuse — stale chains cannot survive a
 /// restart (§7.3).
-fn on_start(state: &mut DeriveState, acc: &mut Acc) {
+fn on_start(state: &mut DeriveState, acc: &mut Acc, ts: f64) {
     let mut tab_ids: Vec<i64> = state.tabs.keys().copied().collect();
     tab_ids.sort_unstable();
     for t in tab_ids {
         if let Some(b) = state.tabs.get_mut(&t).and_then(|ts| ts.buffer.take()) {
-            finalize(acc, &b);
+            // The restart ends each open page's dwell.
+            finalize(acc, &b, ts);
         }
     }
     state.tabs.clear();
@@ -77,10 +78,11 @@ fn on_start(state: &mut DeriveState, acc: &mut Acc) {
 
 /// `Close{tabId}`: flush that tab's buffer, then evict its state precisely
 /// (bounds growth, prevents within-session tabId-reuse mis-chaining) (§7.3).
-fn on_close(state: &mut DeriveState, acc: &mut Acc, tab_id: i64) {
+fn on_close(state: &mut DeriveState, acc: &mut Acc, tab_id: i64, close_ts: f64) {
     if let Some(mut ts) = state.tabs.remove(&tab_id) {
         if let Some(b) = ts.buffer.take() {
-            finalize(acc, &b);
+            // Closing the tab ends the open page's dwell.
+            finalize(acc, &b, close_ts);
         }
     }
     state.pending_origin.remove(&tab_id);
@@ -152,16 +154,16 @@ fn on_nav(
                     to_url: to_url.to_string(),
                     prov,
                     ts,
-                    had_client_redirect: true,
                 });
                 return;
             }
         }
     }
 
-    // Not a redirect continuation: finalize the buffered (now-stable) Nav.
+    // Not a redirect continuation: finalize the buffered (now-stable) Nav. This
+    // Nav's ts is when the user left that page, so it sets the buffered page's dwell.
     if let Some(b) = state.tabs.entry(tab_id).or_default().buffer.take() {
-        finalize(acc, &b);
+        finalize(acc, &b, ts);
         let tab = state.tabs.get_mut(&tab_id).expect("tab present");
         tab.last_url = Some(b.to_url);
         tab.last_prov = b.prov;
@@ -172,7 +174,7 @@ fn on_nav(
     if has_forward_back {
         if FORWARD_BACK_NODE_VISIT {
             if let Some(k) = node_key(to_url, GRAN) {
-                acc.node(&utc_date(ts), &k, prov);
+                acc.node(&utc_date(ts), &k, prov, 0);
             }
         }
         let tab = state.tabs.entry(tab_id).or_default();
@@ -197,20 +199,23 @@ fn on_nav(
         to_url: to_url.to_string(),
         prov,
         ts,
-        had_client_redirect: false,
     });
 }
 
 /// Emit a buffered Nav's node visit + (if applicable) edge (§7.3 Finalize).
 ///
 /// Date is the buffered nav's own ts (so the visit lands in the correct UTC
-/// bucket regardless of when it is confirmed).
-fn finalize(acc: &mut Acc, b: &Buffered) {
+/// bucket regardless of when it is confirmed). `departure_ts` is when the user
+/// left this page (the next nav / close / restart); the gap back to the page's
+/// arrival (`b.ts`) is its dwell, clamped at 0 and capped at the idle gap so an
+/// overnight-idle tab doesn't claim hours of attention.
+fn finalize(acc: &mut Acc, b: &Buffered, departure_ts: f64) {
     let Some(to_key) = node_key(&b.to_url, GRAN) else {
         return; // non-http(s) landing: no node, no edge.
     };
     let date = utc_date(b.ts);
-    acc.node(&date, &to_key, b.prov);
+    let dwell_ms = (departure_ts - b.ts).clamp(0.0, IDLE_GAP_MS) as u64;
+    acc.node(&date, &to_key, b.prov, dwell_ms);
 
     if b.prov.is_edge() {
         if let Some(from_key) = b.origin_url.as_deref().and_then(|u| node_key(u, GRAN)) {
@@ -243,7 +248,9 @@ pub fn provisional_buckets(state: &DeriveState) -> Vec<crate::rollup::DayBucketD
     tabs.sort_unstable(); // deterministic
     for t in tabs {
         if let Some(b) = state.tabs.get(&t).and_then(|ts| ts.buffer.as_ref()) {
-            finalize(&mut acc, b);
+            // The page is still open (no departure yet), so its provisional dwell
+            // is 0; it fills in once a real following event finalizes the buffer.
+            finalize(&mut acc, b, b.ts);
         }
     }
     acc.days.into_values().collect()

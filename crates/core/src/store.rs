@@ -97,6 +97,19 @@ impl Db {
         deserialize_all(values)
     }
 
+    /// Read the first `limit` events (ascending id) without materializing the whole
+    /// store — for the bounded Raw view. Pair with [`Self::count_events`] for the total.
+    pub async fn read_events_head(&self, limit: u32) -> Result<Vec<Event>, JsValue> {
+        let tx = self
+            .rexie
+            .transaction(&["events"], TransactionMode::ReadOnly)
+            .map_err(je)?;
+        let store = tx.store("events").map_err(je)?;
+        let values = store.get_all(None, Some(limit)).await.map_err(je)?;
+        tx.done().await.map_err(je)?;
+        deserialize_all(values)
+    }
+
     pub async fn count_events(&self) -> Result<u32, JsValue> {
         let tx = self
             .rexie

@@ -251,16 +251,61 @@ fn build_flow(
 ///
 /// This is the cross-tab-aware, provenance-aware entry point used by the Sankey.
 pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
-    let mut current: HashMap<i64, String> = HashMap::new(); // tab → current host
-    let mut current_prov: HashMap<i64, Provenance> = HashMap::new(); // tab → its prov
-    let mut pending: HashMap<i64, String> = HashMap::new(); // new tab → spawn origin
-    let mut pending_prov: HashMap<i64, Provenance> = HashMap::new(); // new tab → origin prov
+    use crate::rollup::REDIRECT_WINDOW_MS;
+
+    /// A nav held one event for redirect lookahead, mirroring `derive::Buffered`.
+    struct Buf {
+        origin: Option<(String, Provenance)>,
+        to: String,
+        prov: Provenance,
+        ts: f64,
+    }
+
+    let mut current: HashMap<i64, (String, Provenance)> = HashMap::new(); // tab → confirmed page
+    let mut buffer: HashMap<i64, Buf> = HashMap::new(); // tab → pending (lookahead) nav
+    let mut pending: HashMap<i64, (String, Provenance)> = HashMap::new(); // new tab → spawn origin
     let mut transitions: Vec<(String, String)> = Vec::new();
     let mut starts: Vec<String> = Vec::new();
     // Display provenance per host (how it was reached) and dominant edge kind per
     // hop — attached to the built graph so bars/ribbons can be colored.
     let mut host_prov: HashMap<String, ProvBreakdown> = HashMap::new();
     let mut trans_kind: HashMap<(String, String), KindBreakdown> = HashMap::new();
+
+    // Flush a stable buffered nav: record its provenance, then emit either a
+    // transition (a real link/form hop) or a column-0 start. Mirrors
+    // `derive::finalize`'s edge/kind rules so the Sankey agrees with the graph.
+    let flush = |buf: Buf,
+                 current: &mut HashMap<i64, (String, Provenance)>,
+                 host_prov: &mut HashMap<String, ProvBreakdown>,
+                 trans_kind: &mut HashMap<(String, String), KindBreakdown>,
+                 transitions: &mut Vec<(String, String)>,
+                 starts: &mut Vec<String>,
+                 t: i64| {
+        host_prov.entry(buf.to.clone()).or_default().add(buf.prov);
+        if buf.prov.is_edge() {
+            if let Some((o, o_prov)) = &buf.origin {
+                if *o != buf.to {
+                    let kind = if *o_prov == Provenance::SearchOrigin {
+                        EdgeKind::SearchLink
+                    } else if buf.prov == Provenance::Form {
+                        EdgeKind::Form
+                    } else {
+                        EdgeKind::Link
+                    };
+                    trans_kind
+                        .entry((o.clone(), buf.to.clone()))
+                        .or_default()
+                        .add(kind);
+                    transitions.push((o.clone(), buf.to.clone()));
+                    current.insert(t, (buf.to.clone(), buf.prov));
+                    return;
+                }
+            }
+        }
+        starts.push(buf.to.clone());
+        current.insert(t, (buf.to, buf.prov));
+    };
+
     for ev in events {
         match ev {
             Event::Link {
@@ -268,11 +313,45 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
                 source_tab_id,
                 ..
             } => {
-                let src_tab = *source_tab_id as i64;
-                if let Some(src) = current.get(&src_tab) {
-                    pending.insert(*new_tab_id as i64, src.clone());
-                    if let Some(&pp) = current_prov.get(&src_tab) {
-                        pending_prov.insert(*new_tab_id as i64, pp);
+                let src = *source_tab_id as i64;
+                // The spawn origin is the source's *buffered* page (what's on screen
+                // now), falling back to its confirmed page — exactly `derive::on_link`.
+                let origin = buffer
+                    .get(&src)
+                    .map(|b| (b.to.clone(), b.prov))
+                    .or_else(|| current.get(&src).cloned());
+                if let Some(o) = origin {
+                    pending.insert(*new_tab_id as i64, o);
+                }
+            }
+            Event::Close { tab_id, .. } => {
+                let t = *tab_id as i64;
+                if let Some(buf) = buffer.remove(&t) {
+                    flush(
+                        buf,
+                        &mut current,
+                        &mut host_prov,
+                        &mut trans_kind,
+                        &mut transitions,
+                        &mut starts,
+                        t,
+                    );
+                }
+            }
+            Event::Start { .. } => {
+                let mut tabs: Vec<i64> = buffer.keys().copied().collect();
+                tabs.sort_unstable(); // deterministic flush order
+                for t in tabs {
+                    if let Some(buf) = buffer.remove(&t) {
+                        flush(
+                            buf,
+                            &mut current,
+                            &mut host_prov,
+                            &mut trans_kind,
+                            &mut transitions,
+                            &mut starts,
+                            t,
+                        );
                     }
                 }
             }
@@ -280,6 +359,8 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
                 tab_id,
                 to_url,
                 transition_type,
+                qualifiers,
+                ts,
                 ..
             } => {
                 let t = *tab_id as i64;
@@ -290,49 +371,90 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
                 if prov.is_ignored() {
                     continue; // reload / other: no flow change
                 }
-                if current.get(&t) == Some(&host) {
-                    continue; // collapse consecutive duplicates
-                }
-                host_prov.entry(host.clone()).or_default().add(prov);
-                if prov.is_edge() {
-                    // Natural traversal: chain from the tab's current page, or the
-                    // source page when the link opened this tab.
-                    let origin = pending.remove(&t).or_else(|| current.get(&t).cloned());
-                    let origin_prov = pending_prov
-                        .remove(&t)
-                        .or_else(|| current_prov.get(&t).copied());
-                    match origin {
-                        Some(o) if o != host => {
-                            // Edge kind mirrors derive::finalize: a hop *out of* a
-                            // search-results page is a SearchLink; a form submit is
-                            // a Form; everything else a plain Link.
-                            let kind = if origin_prov == Some(Provenance::SearchOrigin) {
-                                EdgeKind::SearchLink
-                            } else if prov == Provenance::Form {
-                                EdgeKind::Form
-                            } else {
-                                EdgeKind::Link
-                            };
-                            trans_kind
-                                .entry((o.clone(), host.clone()))
-                                .or_default()
-                                .add(kind);
-                            transitions.push((o, host.clone()));
+                let has_redirect = qualifiers.iter().any(|q| q == "client_redirect");
+                let has_fb = qualifiers.iter().any(|q| q == "forward_back");
+
+                // Redirect continuation: extend the burst in place (carry the
+                // origin, advance the landing) without emitting an intermediate hop,
+                // so A→r1→r2→B collapses to a single A→B ribbon — like the graph.
+                if has_redirect {
+                    if let Some(buf) = buffer.get(&t) {
+                        if (*ts - buf.ts) < REDIRECT_WINDOW_MS {
+                            let origin = buf.origin.clone();
+                            buffer.insert(
+                                t,
+                                Buf {
+                                    origin,
+                                    to: host,
+                                    prov,
+                                    ts: *ts,
+                                },
+                            );
+                            continue;
                         }
-                        _ => starts.push(host.clone()),
                     }
-                } else {
-                    // Rootless (typed / bookmark / search / start): a new origin,
-                    // not an edge from the previous page. Any cross-tab spawn
-                    // origin is irrelevant here — you didn't follow that link.
-                    pending.remove(&t);
-                    pending_prov.remove(&t);
-                    starts.push(host.clone());
                 }
-                current.insert(t, host.clone());
-                current_prov.insert(t, prov);
+
+                // Not a redirect continuation: finalize the buffered (now-stable) nav.
+                if let Some(buf) = buffer.remove(&t) {
+                    flush(
+                        buf,
+                        &mut current,
+                        &mut host_prov,
+                        &mut trans_kind,
+                        &mut transitions,
+                        &mut starts,
+                        t,
+                    );
+                }
+
+                // forward_back: advance position only — no bar, no ribbon (it's a
+                // back-button move, not a fresh traversal). Matches `derive`.
+                if has_fb {
+                    current.insert(t, (host, prov));
+                    continue;
+                }
+
+                // Collapse consecutive duplicates of the current page.
+                if current.get(&t).map(|(h, _)| h.as_str()) == Some(host.as_str()) {
+                    continue;
+                }
+
+                // Compute this nav's origin and buffer it for one step of lookahead.
+                let origin = if prov.is_edge() {
+                    pending.remove(&t).or_else(|| current.get(&t).cloned())
+                } else {
+                    // Rootless (typed / bookmark / search / start): a fresh origin,
+                    // not an edge from the previous page nor a consumed spawn link.
+                    pending.remove(&t);
+                    None
+                };
+                buffer.insert(
+                    t,
+                    Buf {
+                        origin,
+                        to: host,
+                        prov,
+                        ts: *ts,
+                    },
+                );
             }
-            _ => {}
+        }
+    }
+    // Flush every still-open page in deterministic tab order.
+    let mut tabs: Vec<i64> = buffer.keys().copied().collect();
+    tabs.sort_unstable();
+    for t in tabs {
+        if let Some(buf) = buffer.remove(&t) {
+            flush(
+                buf,
+                &mut current,
+                &mut host_prov,
+                &mut trans_kind,
+                &mut transitions,
+                &mut starts,
+                t,
+            );
         }
     }
     // A rootless start whose host is *also* a link target (a real mid-chain node)
@@ -360,10 +482,236 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
     fg
 }
 
+/// Reconstruct the per-tab **link/form chains** from a session's raw events, for
+/// frequent-journey mining ([`crate::graph::frequent_sequences`]). Each chain is
+/// an ordered host sequence following natural traversal; a rootless nav
+/// (typed/bookmark/search/start) ends the current chain and begins a new one, so
+/// chains never fabricate a cross-task A→B→C. Redirect bursts collapse onto the
+/// landing host and forward_back moves are skipped, matching the Sankey/graph.
+/// Only chains of length ≥ 2 (an actual journey) are returned.
+pub fn session_chains(events: &[Event], gran: Granularity) -> Vec<Vec<String>> {
+    use crate::rollup::REDIRECT_WINDOW_MS;
+    let mut cur: HashMap<i64, Vec<String>> = HashMap::new();
+    let mut pending: HashMap<i64, String> = HashMap::new();
+    let mut last_ts: HashMap<i64, f64> = HashMap::new();
+    let mut out: Vec<Vec<String>> = Vec::new();
+
+    let flush = |cur: &mut HashMap<i64, Vec<String>>, out: &mut Vec<Vec<String>>, t: i64| {
+        if let Some(c) = cur.remove(&t) {
+            if c.len() >= 2 {
+                out.push(c);
+            }
+        }
+    };
+
+    for ev in events {
+        match ev {
+            Event::Link {
+                new_tab_id,
+                source_tab_id,
+                ..
+            } => {
+                let src = *source_tab_id as i64;
+                if let Some(last) = cur.get(&src).and_then(|c| c.last()) {
+                    pending.insert(*new_tab_id as i64, last.clone());
+                }
+            }
+            Event::Close { tab_id, .. } => flush(&mut cur, &mut out, *tab_id as i64),
+            Event::Start { .. } => {
+                let mut tabs: Vec<i64> = cur.keys().copied().collect();
+                tabs.sort_unstable();
+                for t in tabs {
+                    flush(&mut cur, &mut out, t);
+                }
+            }
+            Event::Nav {
+                tab_id,
+                to_url,
+                transition_type,
+                qualifiers,
+                ts,
+                ..
+            } => {
+                let t = *tab_id as i64;
+                let Some(host) = node_key(to_url, gran) else {
+                    continue;
+                };
+                let prov = classify(transition_type);
+                if prov.is_ignored() {
+                    continue;
+                }
+                let recent = last_ts.get(&t).map(|p| (*ts - p) < REDIRECT_WINDOW_MS);
+                last_ts.insert(t, *ts);
+                if qualifiers.iter().any(|q| q == "client_redirect") && recent == Some(true) {
+                    // Collapse the redirect onto the landing host in place.
+                    if let Some(c) = cur.get_mut(&t) {
+                        if let Some(last) = c.last_mut() {
+                            *last = host;
+                        } else {
+                            c.push(host);
+                        }
+                    }
+                    continue;
+                }
+                if qualifiers.iter().any(|q| q == "forward_back") {
+                    continue; // position move; don't grow the chain
+                }
+                if cur.get(&t).and_then(|c| c.last()) == Some(&host) {
+                    continue; // consecutive duplicate
+                }
+                if prov.is_edge() {
+                    let chain = cur.entry(t).or_default();
+                    if chain.is_empty() {
+                        if let Some(o) = pending.remove(&t) {
+                            chain.push(o);
+                        }
+                    } else {
+                        pending.remove(&t);
+                    }
+                    chain.push(host);
+                } else {
+                    // Rootless: end the current chain, begin a fresh one.
+                    pending.remove(&t);
+                    flush(&mut cur, &mut out, t);
+                    cur.insert(t, vec![host]);
+                }
+            }
+        }
+    }
+    let mut tabs: Vec<i64> = cur.keys().copied().collect();
+    tabs.sort_unstable();
+    for t in tabs {
+        flush(&mut cur, &mut out, t);
+    }
+    out
+}
+
+/// Partition a flow into the sub-graph that actually flows (nodes that are an
+/// endpoint of at least one ribbon) and the **orphans** — column-0 hosts you
+/// reached directly (typed/bookmark/search) that link to nothing. Returns the
+/// participating sub-graph (re-indexed, ready for [`render_svg`]) plus the orphan
+/// `(host, throughput)` list sorted by throughput desc. This keeps the Sankey
+/// from being mostly empty column-0 bars, surfacing direct visits as a side list.
+pub fn split_orphans(fg: &FlowGraph) -> (FlowGraph, Vec<(String, u32)>) {
+    let n = fg.nodes.len();
+    let mut touched = vec![false; n];
+    for l in &fg.links {
+        touched[l.from] = true;
+        touched[l.to] = true;
+    }
+    // Re-index the participating nodes; old index → new index.
+    let mut remap: Vec<Option<usize>> = vec![None; n];
+    let mut nodes: Vec<FlowNode> = Vec::new();
+    for (i, t) in touched.iter().enumerate() {
+        if *t {
+            remap[i] = Some(nodes.len());
+            nodes.push(fg.nodes[i].clone());
+        }
+    }
+    let links: Vec<FlowLink> = fg
+        .links
+        .iter()
+        .filter_map(|l| {
+            Some(FlowLink {
+                from: remap[l.from]?,
+                to: remap[l.to]?,
+                weight: l.weight,
+                kind: l.kind,
+            })
+        })
+        .collect();
+    let layers = nodes
+        .iter()
+        .map(|n| n.layer)
+        .max()
+        .map(|m| m + 1)
+        .unwrap_or(0);
+
+    let mut orphans: Vec<(String, u32)> = fg
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !touched[*i])
+        .map(|(_, nd)| (nd.key.clone(), nd.throughput))
+        .collect();
+    orphans.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+    (
+        FlowGraph {
+            nodes,
+            links,
+            layers,
+        },
+        orphans,
+    )
+}
+
+/// The set of flow elements to keep lit when the Sankey is focused: node indices
+/// and link indices (into [`FlowGraph`]). Out-of-set elements render dimmed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FocusSet {
+    pub nodes: HashSet<usize>,
+    pub links: HashSet<usize>,
+}
+
+/// Compute the flow threading through a clicked point: every node and ribbon on a
+/// directed path through it. `seed_up` and `seed_down` are equal for a node click
+/// (its ancestors + itself + descendants); for an edge click they are the edge's
+/// `from`/`to` (ancestors of the source, the two endpoints, descendants of the
+/// target). A link is kept when both its endpoints are kept. Cycles terminate via
+/// a visited set.
+pub fn flow_focus(fg: &FlowGraph, seed_up: usize, seed_down: usize) -> FocusSet {
+    let n = fg.nodes.len();
+    let mut fwd: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut rev: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for l in &fg.links {
+        if l.from < n && l.to < n {
+            fwd[l.from].push(l.to);
+            rev[l.to].push(l.from);
+        }
+    }
+    fn reach(adj: &[Vec<usize>], start: usize, out: &mut HashSet<usize>) {
+        if start >= adj.len() {
+            return;
+        }
+        let mut stack = vec![start];
+        while let Some(u) = stack.pop() {
+            if !out.insert(u) {
+                continue;
+            }
+            for &v in &adj[u] {
+                stack.push(v);
+            }
+        }
+    }
+    // Ancestors and descendants go into separate sets — sharing one set would let
+    // the first traversal mark the seed visited and stop the second from expanding
+    // it, so descendants of a node we reached as an ancestor would be lost.
+    let mut nodes = HashSet::new();
+    reach(&rev, seed_up, &mut nodes); // ancestors of the source (inclusive)
+    let mut down = HashSet::new();
+    reach(&fwd, seed_down, &mut down); // descendants of the target (inclusive)
+    nodes.extend(down);
+    nodes.insert(seed_up);
+    nodes.insert(seed_down);
+    let links: HashSet<usize> = fg
+        .links
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| nodes.contains(&l.from) && nodes.contains(&l.to))
+        .map(|(i, _)| i)
+        .collect();
+    FocusSet { nodes, links }
+}
+
 /// Lay out a flow graph and emit an inline SVG Sankey: hosts are column bars,
 /// transitions are bezier ribbons whose thickness ∝ weight. Pure (geometry +
 /// string building) so it is testable; the caller just sets it as innerHTML.
-pub fn render_svg(fg: &FlowGraph, vw: f64) -> String {
+///
+/// `focus` (a clicked node/edge's [`FocusSet`]) dims every element outside the
+/// flow threading through that point. Each bar group carries `data-node` and each
+/// ribbon a `data-link` so the click handler can resolve what was clicked.
+pub fn render_svg(fg: &FlowGraph, vw: f64, focus: Option<&FocusSet>) -> String {
     let n = fg.nodes.len();
     if n == 0 {
         return "<div class=\"bg-empty\">No navigations in this session.</div>".into();
@@ -415,19 +763,32 @@ pub fn render_svg(fg: &FlowGraph, vw: f64) -> String {
         }
     };
 
-    // Place nodes; track the tallest column so the SVG can grow (and scroll).
+    // Per-column bar heights, and the tallest column → the SVG sizes to its real
+    // content (floored modestly) instead of always reserving a fixed 480px box, so
+    // a sparse session no longer floats in a sea of empty canvas.
+    let col_heights: Vec<Vec<f64>> = by_layer
+        .iter()
+        .map(|col| {
+            col.iter()
+                .map(|&i| (fg.nodes[i].throughput as f64 * vscale).max(min_h))
+                .collect()
+        })
+        .collect();
+    let col_total = |hs: &[f64]| hs.iter().sum::<f64>() + hs.len().saturating_sub(1) as f64 * gap;
+    let content_h = col_heights
+        .iter()
+        .map(|hs| col_total(hs))
+        .fold(0.0_f64, f64::max);
+    let svg_h = (content_h + 2.0 * pad_v).clamp(160.0, base_h.max(content_h + 2.0 * pad_v));
+
+    // Place nodes, vertically centering each column within the actual svg height.
     let mut nx = vec![0.0; n];
     let mut ny = vec![0.0; n];
     let mut nh = vec![0.0; n];
-    let mut svg_h = base_h;
     for (l, col) in by_layer.iter().enumerate() {
-        let heights: Vec<f64> = col
-            .iter()
-            .map(|&i| (fg.nodes[i].throughput as f64 * vscale).max(min_h))
-            .collect();
-        let col_h: f64 = heights.iter().sum::<f64>() + col.len().saturating_sub(1) as f64 * gap;
-        svg_h = svg_h.max(col_h + 2.0 * pad_v);
-        let mut y = pad_v + ((base_h - 2.0 * pad_v - col_h).max(0.0)) / 2.0;
+        let heights = &col_heights[l];
+        let col_h = col_total(heights);
+        let mut y = pad_v + ((svg_h - 2.0 * pad_v - col_h).max(0.0)) / 2.0;
         for (k, &i) in col.iter().enumerate() {
             nx[i] = col_x(l);
             ny[i] = y;
@@ -487,17 +848,40 @@ pub fn render_svg(fg: &FlowGraph, vw: f64) -> String {
             EdgeKind::Link => 288.0,
             EdgeKind::Form => 8.0,
         };
+        // A <title> gives a native hover tooltip (from → to ×weight) with no JS,
+        // and the `.sankey-ribbon` class lets CSS brighten the hovered hop.
+        let times = if l.weight == 1 { "time" } else { "times" };
+        let tip = format!(
+            "{} → {} · {} {times}",
+            esc_svg(&fg.nodes[l.from].key),
+            esc_svg(&fg.nodes[l.to].key),
+            l.weight
+        );
+        let dim = if focus.map(|f| !f.links.contains(&li)).unwrap_or(false) {
+            " is-dim"
+        } else {
+            ""
+        };
         s.push_str(&format!(
-            "<path d=\"M{x0:.1} {sy0:.1} C{cx:.1} {sy0:.1} {cx:.1} {ty0:.1} {x1:.1} {ty0:.1} \
+            "<path class=\"sankey-ribbon{dim}\" data-link=\"{li}\" d=\"M{x0:.1} {sy0:.1} C{cx:.1} {sy0:.1} {cx:.1} {ty0:.1} {x1:.1} {ty0:.1} \
              L{x1:.1} {ty1:.1} C{cx:.1} {ty1:.1} {cx:.1} {sy1:.1} {x0:.1} {sy1:.1} Z\" \
-             fill=\"oklch(0.6 0.14 {hue} / 0.4)\"/>"
+             fill=\"oklch(0.6 0.14 {hue} / 0.4)\"><title>{tip}</title></path>"
         ));
     }
     for (i, nd) in fg.nodes.iter().enumerate() {
-        // Bar = provenance color; a provenance glyph + label sit to its right.
+        // Bar = provenance color; a provenance glyph + label sit to its right. The
+        // whole node (bar + glyph + label) is one clickable, `data-node`-tagged group.
         let prov = nd.prov;
+        let hops = if nd.throughput == 1 { "hop" } else { "hops" };
+        let bar_tip = format!("{} · {} {hops}", esc_svg(&nd.key), nd.throughput);
+        let dim = if focus.map(|f| !f.nodes.contains(&i)).unwrap_or(false) {
+            " is-dim"
+        } else {
+            ""
+        };
+        s.push_str(&format!("<g class=\"sankey-node{dim}\" data-node=\"{i}\">"));
         s.push_str(&format!(
-            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{node_w:.1}\" height=\"{:.1}\" rx=\"2\" fill=\"{}\"/>",
+            "<rect class=\"sankey-bar\" x=\"{:.1}\" y=\"{:.1}\" width=\"{node_w:.1}\" height=\"{:.1}\" rx=\"2\" fill=\"{}\"><title>{bar_tip}</title></rect>",
             nx[i], ny[i], nh[i], prov.color()
         ));
         let gx = nx[i] + node_w + 9.0;
@@ -509,6 +893,7 @@ pub fn render_svg(fg: &FlowGraph, vw: f64) -> String {
             gy,
             esc_svg(&clip(&nd.key, 24))
         ));
+        s.push_str("</g>");
     }
     s.push_str("</svg>");
     s
@@ -574,6 +959,17 @@ mod tests {
             to_url: url.to_string(),
             transition_type: tt.to_string(),
             qualifiers: vec![],
+        }
+    }
+    fn nav_q(id: u64, ts: f64, tab: i64, url: &str, tt: &str, quals: &[&str]) -> Event {
+        Event::Nav {
+            id: id as f64,
+            ts,
+            tab_id: tab as f64,
+            window_id: 1.0,
+            to_url: url.to_string(),
+            transition_type: tt.to_string(),
+            qualifiers: quals.iter().map(|s| s.to_string()).collect(),
         }
     }
 
@@ -778,17 +1174,133 @@ mod tests {
     #[test]
     fn render_svg_is_wellformed_with_one_rect_per_node_and_path_per_link() {
         let g = build(&[chain(&["a", "b", "c"]), chain(&["a", "c"])]);
-        let svg = render_svg(&g, 900.0);
+        let svg = render_svg(&g, 900.0, None);
         assert!(svg.starts_with("<svg") && svg.ends_with("</svg>"));
         assert_eq!(svg.matches("<rect").count(), g.nodes.len()); // 3
         assert_eq!(svg.matches("<path").count(), g.links.len()); // a→b, b→c, a→c
         assert!(svg.contains(">a<") && svg.contains(">c<"));
+        // Every node is a clickable group and every ribbon is tagged.
+        assert_eq!(svg.matches("data-node=").count(), g.nodes.len());
+        assert_eq!(svg.matches("data-link=").count(), g.links.len());
     }
 
     #[test]
     fn render_svg_escapes_and_handles_empty() {
-        assert!(render_svg(&FlowGraph::default(), 900.0).contains("bg-empty"));
+        assert!(render_svg(&FlowGraph::default(), 900.0, None).contains("bg-empty"));
         let g = build(&[chain(&["x&<y", "z"])]);
-        assert!(render_svg(&g, 900.0).contains("x&amp;&lt;y"));
+        assert!(render_svg(&g, 900.0, None).contains("x&amp;&lt;y"));
+    }
+
+    #[test]
+    fn flow_focus_traces_the_thread_through_a_point() {
+        // a → b → c → d, with a side branch b → x and a separate root s → c.
+        let g = build(&[
+            chain(&["a", "b", "c", "d"]),
+            chain(&["b", "x"]),
+            chain(&["s", "c"]),
+        ]);
+        let idx = |k: &str| g.nodes.iter().position(|n| n.key == k).unwrap();
+        // Focusing c: ancestors {s, a, b} + c + descendants {d}. x is a sibling
+        // branch off b (not on a path *through* c) → excluded.
+        let f = flow_focus(&g, idx("c"), idx("c"));
+        let keys: std::collections::HashSet<&str> =
+            f.nodes.iter().map(|&i| g.nodes[i].key.as_str()).collect();
+        assert!(keys.contains("a") && keys.contains("b") && keys.contains("s"));
+        assert!(keys.contains("c") && keys.contains("d"));
+        assert!(
+            !keys.contains("x"),
+            "sibling branch off b is not on c's thread"
+        );
+        // The kept links are exactly those with both endpoints kept (a→b, b→c, c→d,
+        // s→c) — never b→x.
+        let lk = |f: &str, t: &str| {
+            g.links
+                .iter()
+                .position(|l| g.nodes[l.from].key == f && g.nodes[l.to].key == t)
+                .unwrap()
+        };
+        assert!(f.links.contains(&lk("a", "b")) && f.links.contains(&lk("s", "c")));
+        assert!(!f.links.contains(&lk("b", "x")));
+    }
+
+    #[test]
+    fn render_svg_dims_out_of_focus_elements() {
+        let g = build(&[chain(&["a", "b"]), chain(&["c", "d"])]); // two separate flows
+        let idx = |k: &str| g.nodes.iter().position(|n| n.key == k).unwrap();
+        let f = flow_focus(&g, idx("a"), idx("a")); // only the a→b flow
+        let svg = render_svg(&g, 900.0, Some(&f));
+        // c→d's flow is dimmed; a→b's is not. Two nodes + one link dimmed.
+        assert_eq!(svg.matches("is-dim").count(), 3);
+    }
+
+    #[test]
+    fn client_redirect_burst_collapses_to_one_ribbon() {
+        // a (typed) → b (link), then b client-redirects to c within the window.
+        // The Sankey must show a→c (the landing), never a→b or b→c, and b must not
+        // appear as a node — matching how the graph collapses the burst.
+        let events = vec![
+            nav_q(1, 100.0, 1, "https://a.com/", "typed", &[]),
+            nav_q(2, 200.0, 1, "https://b.com/", "link", &[]),
+            nav_q(3, 300.0, 1, "https://c.com/", "link", &["client_redirect"]),
+            nav_q(4, 5_000.0, 1, "https://d.com/", "link", &[]), // flushes the burst
+        ];
+        let g = from_session_events(&events, Granularity::Hostname);
+        assert!(has(&g, "a.com", "c.com"), "burst collapses a→c");
+        assert!(has(&g, "c.com", "d.com"));
+        assert!(!has(&g, "a.com", "b.com"), "intermediate hop suppressed");
+        assert!(!has(&g, "b.com", "c.com"));
+        assert!(
+            !g.nodes.iter().any(|n| n.key == "b.com"),
+            "redirect hop is not a node"
+        );
+    }
+
+    #[test]
+    fn forward_back_navs_do_not_fabricate_a_ribbon() {
+        // a→b by link, then a back-button move to c, then c→d by link. The
+        // back-nav must not draw b→c; c chains onward normally.
+        let events = vec![
+            nav_q(1, 100.0, 1, "https://a.com/", "typed", &[]),
+            nav_q(2, 200.0, 1, "https://b.com/", "link", &[]),
+            nav_q(3, 300.0, 1, "https://c.com/", "link", &["forward_back"]),
+            nav_q(4, 400.0, 1, "https://d.com/", "link", &[]),
+        ];
+        let g = from_session_events(&events, Granularity::Hostname);
+        assert!(has(&g, "a.com", "b.com"));
+        assert!(has(&g, "c.com", "d.com"));
+        assert!(!has(&g, "b.com", "c.com"), "back-button isn't a traversal");
+    }
+
+    #[test]
+    fn session_chains_split_on_rootless_and_mine_journeys() {
+        let events = vec![
+            nav_q(1, 100.0, 1, "https://a.com/", "typed", &[]),
+            nav_q(2, 200.0, 1, "https://b.com/", "link", &[]),
+            nav_q(3, 300.0, 1, "https://c.com/", "link", &[]),
+            nav_q(4, 400.0, 1, "https://d.com/", "typed", &[]), // rootless: new chain
+            nav_q(5, 500.0, 1, "https://e.com/", "link", &[]),
+        ];
+        let chains = session_chains(&events, Granularity::Hostname);
+        assert!(chains.contains(&vec!["a.com".into(), "b.com".into(), "c.com".into()]));
+        assert!(chains.contains(&vec!["d.com".into(), "e.com".into()]));
+        // A single rootless visit with no link is not a journey.
+        let lone = session_chains(
+            &[nav_q(1, 1.0, 1, "https://solo.com/", "typed", &[])],
+            Granularity::Hostname,
+        );
+        assert!(lone.is_empty());
+    }
+
+    #[test]
+    fn split_orphans_separates_direct_visits_from_the_flow() {
+        // a→b is a real flow; c is a lone start (a direct visit linking nowhere).
+        let g = build(&[chain(&["a", "b"]), chain(&["c"])]);
+        let (flow, orphans) = split_orphans(&g);
+        let keys: std::collections::HashSet<&str> =
+            flow.nodes.iter().map(|n| n.key.as_str()).collect();
+        assert_eq!(keys, ["a", "b"].into_iter().collect());
+        assert_eq!(flow.links.len(), 1);
+        assert!(has(&flow, "a", "b"), "remapped link survives");
+        assert_eq!(orphans, vec![("c".to_string(), 1)]);
     }
 }

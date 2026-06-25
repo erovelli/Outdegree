@@ -44,6 +44,7 @@ async fn store_roundtrips() {
         NodeStat {
             visits: 3,
             prov: ProvBreakdown::default(),
+            ..Default::default()
         },
     );
     db.write_rollups(&[b]).await.expect("write rollups");
@@ -129,6 +130,7 @@ fn fit_frames_nodes() {
         key: k.into(),
         visits: 1,
         prov: ProvBreakdown::default(),
+        ..Default::default()
     };
     let proj = GraphProjection {
         nodes: vec![node("a"), node("b")],

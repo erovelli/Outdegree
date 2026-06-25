@@ -16,11 +16,18 @@ pub struct Pos {
 
 /// Layout `keys.len()` nodes connected by `edges` (index pairs). Existing nodes
 /// warm-start from `seed[key]`; new nodes get deterministic fresh placement.
+///
+/// `communities[i]` is node `i`'s community id (from [`crate::graph::louvain`]).
+/// When ≥2 distinct communities are present, a gentle pull toward each
+/// community's running centroid clusters its members; the base repulsion then
+/// pushes the resulting blobs apart, so the Google/dev/news clusters separate into
+/// legible groups instead of one hairball. Pass an empty slice to disable.
 pub fn fruchterman_reingold(
     keys: &[String],
     edges: &[(usize, usize)],
     iters: u32,
     seed: &HashMap<String, (f32, f32)>,
+    communities: &[usize],
 ) -> Vec<Pos> {
     let n = keys.len();
     if n == 0 {
@@ -62,6 +69,22 @@ pub fn fruchterman_reingold(
     // (1/dist) repulsion, a disconnected cloud settles at radius ≈ w/√gravity, so
     // this value keeps it compact (≈1400) and well inside `bound`.
     let gravity = 0.5f32;
+    // Community cohesion: only meaningful with ≥2 distinct communities aligned to
+    // the node set. A small fraction so it nudges clusters together without
+    // overpowering the edge structure that defines the layout.
+    let community_strength = 0.20f32;
+    let n_comm = if communities.len() == n {
+        communities
+            .iter()
+            .copied()
+            .max()
+            .map(|m| m + 1)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let use_communities = n_comm >= 2;
+
     let mut temp = w / 10.0;
     let cool = temp / (iters.max(1) as f32 + 1.0);
 
@@ -84,6 +107,30 @@ pub fn fruchterman_reingold(
             disp[a].1 -= uy * force;
             disp[b].0 += ux * force;
             disp[b].1 += uy * force;
+        }
+
+        // Community cohesion: pull each node toward its community's centroid.
+        if use_communities {
+            let mut cx = vec![0.0f32; n_comm];
+            let mut cy = vec![0.0f32; n_comm];
+            let mut cnt = vec![0u32; n_comm];
+            for i in 0..n {
+                let c = communities[i];
+                cx[c] += pos[i].x;
+                cy[c] += pos[i].y;
+                cnt[c] += 1;
+            }
+            for c in 0..n_comm {
+                if cnt[c] > 0 {
+                    cx[c] /= cnt[c] as f32;
+                    cy[c] /= cnt[c] as f32;
+                }
+            }
+            for i in 0..n {
+                let c = communities[i];
+                disp[i].0 += (cx[c] - pos[i].x) * community_strength;
+                disp[i].1 += (cy[c] - pos[i].y) * community_strength;
+            }
         }
 
         // Centering gravity.
@@ -327,7 +374,7 @@ mod tests {
         let mut seed = HashMap::new();
         seed.insert("a".to_string(), (12.0, 34.0));
         seed.insert("b".to_string(), (-5.0, 7.0));
-        let pos = fruchterman_reingold(&keys, &[(0, 1)], 0, &seed);
+        let pos = fruchterman_reingold(&keys, &[(0, 1)], 0, &seed, &[]);
         assert_eq!(pos.len(), 3);
         assert_eq!(pos[0], Pos { x: 12.0, y: 34.0 });
         assert_eq!(pos[1], Pos { x: -5.0, y: 7.0 });
@@ -340,8 +387,8 @@ mod tests {
         let keys: Vec<String> = (0..8).map(|i| format!("n{i}")).collect();
         let edges = vec![(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (6, 7)];
         let seed = HashMap::new();
-        let a = fruchterman_reingold(&keys, &edges, 50, &seed);
-        let b = fruchterman_reingold(&keys, &edges, 50, &seed);
+        let a = fruchterman_reingold(&keys, &edges, 50, &seed, &[]);
+        let b = fruchterman_reingold(&keys, &edges, 50, &seed, &[]);
         assert_eq!(a.len(), 8);
         assert_eq!(a, b, "layout must be deterministic");
         assert!(a.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
@@ -354,8 +401,8 @@ mod tests {
         let keys: Vec<String> = (0..n).map(|i| format!("n{i}")).collect();
         let edges: Vec<(usize, usize)> = (0..n).map(|i| (i, (i + 1) % n)).collect();
         let seed = HashMap::new();
-        let a = fruchterman_reingold(&keys, &edges, 30, &seed);
-        let b = fruchterman_reingold(&keys, &edges, 30, &seed);
+        let a = fruchterman_reingold(&keys, &edges, 30, &seed, &[]);
+        let b = fruchterman_reingold(&keys, &edges, 30, &seed, &[]);
         assert_eq!(a.len(), n);
         assert_eq!(a, b, "Barnes–Hut layout must be deterministic");
         assert!(a.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
@@ -369,7 +416,7 @@ mod tests {
         for k in &keys {
             seed.insert(k.clone(), (5.0, 5.0));
         }
-        let p = fruchterman_reingold(&keys, &[(0, 1), (1, 2)], 20, &seed);
+        let p = fruchterman_reingold(&keys, &[(0, 1), (1, 2)], 20, &seed, &[]);
         assert!(p.iter().all(|q| q.x.is_finite() && q.y.is_finite()));
     }
 
@@ -383,7 +430,7 @@ mod tests {
         seed.insert("n1".into(), (f32::INFINITY, f32::NEG_INFINITY));
         seed.insert("n2".into(), (1e30, -1e30));
         let edges = vec![(0, 1), (2, 3)];
-        let p = fruchterman_reingold(&keys, &edges, 40, &seed);
+        let p = fruchterman_reingold(&keys, &edges, 40, &seed, &[]);
         let bound = 4.0 * 1000.0 + 1.0;
         assert!(
             p.iter().all(|q| q.x.is_finite() && q.y.is_finite()),
@@ -393,12 +440,46 @@ mod tests {
     }
 
     #[test]
+    fn community_cohesion_is_deterministic_and_separates_clusters() {
+        // Two 4-cliques with a single weak bridge; community ids group them.
+        let keys: Vec<String> = (0..8).map(|i| format!("n{i}")).collect();
+        let mut edges = Vec::new();
+        for grp in [[0, 1, 2, 3], [4, 5, 6, 7]] {
+            for a in 0..4 {
+                for b in (a + 1)..4 {
+                    edges.push((grp[a], grp[b]));
+                }
+            }
+        }
+        edges.push((3, 4)); // weak bridge
+        let comm = vec![0, 0, 0, 0, 1, 1, 1, 1];
+        let seed = HashMap::new();
+        let a = fruchterman_reingold(&keys, &edges, 120, &seed, &comm);
+        let b = fruchterman_reingold(&keys, &edges, 120, &seed, &comm);
+        assert_eq!(a, b, "community layout must be deterministic");
+        assert!(a.iter().all(|p| p.x.is_finite() && p.y.is_finite()));
+        // The two community centroids should be meaningfully separated.
+        let cen = |idx: &[usize]| {
+            let (mut x, mut y) = (0.0f32, 0.0f32);
+            for &i in idx {
+                x += a[i].x;
+                y += a[i].y;
+            }
+            (x / idx.len() as f32, y / idx.len() as f32)
+        };
+        let (ax, ay) = cen(&[0, 1, 2, 3]);
+        let (bx, by) = cen(&[4, 5, 6, 7]);
+        let sep = ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt();
+        assert!(sep > 50.0, "communities should separate, got sep={sep}");
+    }
+
+    #[test]
     fn disconnected_nodes_stay_centered_by_gravity() {
         // No edges at all: gravity must keep every node within a sane radius of
         // the origin (not drifting off-screen).
         let keys: Vec<String> = (0..30).map(|i| format!("n{i}")).collect();
         let seed = HashMap::new();
-        let p = fruchterman_reingold(&keys, &[], 200, &seed);
+        let p = fruchterman_reingold(&keys, &[], 200, &seed, &[]);
         assert!(p.iter().all(|q| q.x.is_finite() && q.y.is_finite()));
         // gravity vs. repulsion equilibrium keeps the cloud compact
         let max_r = p

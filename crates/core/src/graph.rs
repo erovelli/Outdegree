@@ -47,6 +47,43 @@ pub fn hubs(g: &DiGraph<NodeAgg, EdgeAgg>, n: usize) -> Vec<(String, u32)> {
     v
 }
 
+/// A ranked `(host, weight)` list (descending), as returned by the hub queries.
+pub type RankedHosts = Vec<(String, u32)>;
+
+/// Directional hubs: the top `n` **launch pads** (by outbound edge weight — where
+/// journeys start) and top `n` **destinations** (by inbound edge weight — where
+/// journeys end). Unlike [`hubs`], which sums both directions into one symmetric
+/// degree, this surfaces the asymmetry a single column can't express: google.com
+/// is a launch pad (high out, low in); a checkout or doc page is a sink (high in,
+/// ~0 out). Nodes with zero weight in the relevant direction are omitted.
+pub fn directional_hubs(g: &DiGraph<NodeAgg, EdgeAgg>, n: usize) -> (RankedHosts, RankedHosts) {
+    let mut out: Vec<(String, u32)> = Vec::new();
+    let mut inb: Vec<(String, u32)> = Vec::new();
+    for i in g.node_indices() {
+        let o: u32 = g
+            .edges_directed(i, Direction::Outgoing)
+            .map(|e| e.weight().weight)
+            .sum();
+        let n_in: u32 = g
+            .edges_directed(i, Direction::Incoming)
+            .map(|e| e.weight().weight)
+            .sum();
+        if o > 0 {
+            out.push((g[i].key.clone(), o));
+        }
+        if n_in > 0 {
+            inb.push((g[i].key.clone(), n_in));
+        }
+    }
+    let by_weight = |v: &mut Vec<(String, u32)>| {
+        v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        v.truncate(n);
+    };
+    by_weight(&mut out);
+    by_weight(&mut inb);
+    (out, inb)
+}
+
 /// Heaviest `n` edges by weight.
 pub fn top_edges(p: &GraphProjection, n: usize) -> Vec<EdgeAgg> {
     let mut e = p.edges.clone();
@@ -58,6 +95,28 @@ pub fn top_edges(p: &GraphProjection, n: usize) -> Vec<EdgeAgg> {
     });
     e.truncate(n);
     e
+}
+
+/// Where your searches went: group edges that carry any `search_link` traversal
+/// (a hop *out of* a search-results page) by destination host, summing the
+/// search-link counts. Uses the raw `search_link` channel rather than the edge's
+/// `dominant()` kind, so a destination reached by both search and plain links
+/// isn't dropped when links happen to outnumber searches. Returns `(dest, count)`
+/// descending.
+pub fn search_destinations(p: &GraphProjection, n: usize) -> Vec<(String, u32)> {
+    let mut by_dest: HashMap<&str, u32> = HashMap::new();
+    for e in &p.edges {
+        if e.kinds.search_link > 0 {
+            *by_dest.entry(e.to.as_str()).or_insert(0) += e.kinds.search_link;
+        }
+    }
+    let mut v: Vec<(String, u32)> = by_dest
+        .into_iter()
+        .map(|(k, c)| (k.to_string(), c))
+        .collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    v.truncate(n);
+    v
 }
 
 // ───────────────────────────── Louvain (symmetrized) ─────────────────────────────
@@ -304,6 +363,7 @@ mod tests {
             key: key.into(),
             visits,
             prov: ProvBreakdown::default(),
+            ..Default::default()
         }
     }
     fn edge(f: &str, t: &str, w: u32) -> EdgeAgg {
@@ -382,6 +442,56 @@ mod tests {
         let h = hubs(&g, 1);
         assert_eq!(h[0].0, "hub");
         assert_eq!(h[0].1, 10);
+    }
+
+    #[test]
+    fn search_destinations_use_the_search_link_channel_not_dominant() {
+        use crate::model::KindBreakdown;
+        // google->wiki is mostly plain links (dominant = Link) but has 2 search
+        // hops; google->docs is purely search. Both must surface as destinations.
+        let p = GraphProjection {
+            nodes: vec![node("google", 1), node("wiki", 1), node("docs", 1)],
+            edges: vec![
+                EdgeAgg {
+                    from: "google".into(),
+                    to: "wiki".into(),
+                    weight: 12,
+                    kinds: KindBreakdown {
+                        link: 10,
+                        search_link: 2,
+                        ..Default::default()
+                    },
+                },
+                EdgeAgg {
+                    from: "google".into(),
+                    to: "docs".into(),
+                    weight: 5,
+                    kinds: KindBreakdown {
+                        search_link: 5,
+                        ..Default::default()
+                    },
+                },
+            ],
+        };
+        let d = search_destinations(&p, 10);
+        assert_eq!(d, vec![("docs".to_string(), 5), ("wiki".to_string(), 2)]);
+    }
+
+    #[test]
+    fn directional_hubs_split_sources_from_sinks() {
+        // launch is a pure source (out 8, in 0); sink is a pure sink (in 8, out 0).
+        // hubs() would rank both identically at weighted degree 8.
+        let p = GraphProjection {
+            nodes: vec![node("launch", 1), node("sink", 1)],
+            edges: vec![edge("launch", "sink", 8)],
+        };
+        let g = build(&p);
+        let (pads, dests) = directional_hubs(&g, 10);
+        assert_eq!(pads, vec![("launch".to_string(), 8)]);
+        assert_eq!(dests, vec![("sink".to_string(), 8)]);
+        // A pure sink never appears as a launch pad, and vice-versa.
+        assert!(!pads.iter().any(|(k, _)| k == "sink"));
+        assert!(!dests.iter().any(|(k, _)| k == "launch"));
     }
 
     #[test]

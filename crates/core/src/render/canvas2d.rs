@@ -26,6 +26,11 @@ const CONNECTOR: &str = "#3a3a40";
 const CALLOUT_FILL: &str = "oklch(0.12 0.004 285 / 0.92)";
 const CALLOUT_BORDER: &str = "#2c2c30";
 const CALLOUT_HOST: &str = "#f4f4f5";
+// Community hulls: deliberately ACHROMATIC (chroma ≈ 0) so they read as a soft
+// grouping backdrop and never compete with the provenance hue spectrum that is
+// the only data color in the product. Communities are told apart by separation.
+const HULL_FILL: &str = "oklch(0.55 0.012 290 / 0.05)";
+const HULL_STROKE: &str = "oklch(0.62 0.012 290 / 0.12)";
 
 const MONO: &str = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
@@ -172,9 +177,116 @@ fn draw_backdrop(ctx: &CanvasRenderingContext2d, w: f64, h: f64, cam: &Camera) {
     }
 }
 
+/// Andrew's monotone-chain convex hull (counter-clockwise). Returns the input
+/// (deduped) when fewer than three distinct points.
+fn convex_hull(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let mut pts = points.to_vec();
+    pts.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    pts.dedup();
+    if pts.len() < 3 {
+        return pts;
+    }
+    let cross = |o: (f64, f64), a: (f64, f64), b: (f64, f64)| {
+        (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
+    };
+    let mut lower: Vec<(f64, f64)> = Vec::new();
+    for &p in &pts {
+        while lower.len() >= 2 && cross(lower[lower.len() - 2], lower[lower.len() - 1], p) <= 0.0 {
+            lower.pop();
+        }
+        lower.push(p);
+    }
+    let mut upper: Vec<(f64, f64)> = Vec::new();
+    for &p in pts.iter().rev() {
+        while upper.len() >= 2 && cross(upper[upper.len() - 2], upper[upper.len() - 1], p) <= 0.0 {
+            upper.pop();
+        }
+        upper.push(p);
+    }
+    lower.pop();
+    upper.pop();
+    lower.extend(upper);
+    lower
+}
+
+/// Soft achromatic backdrop hull per multi-node community, expanded outward from
+/// its centroid so member nodes sit comfortably inside.
+fn draw_community_hulls(
+    ctx: &CanvasRenderingContext2d,
+    w: f64,
+    h: f64,
+    proj: &GraphProjection,
+    pos: &HashMap<String, Pos>,
+    cam: &Camera,
+    communities: &HashMap<String, usize>,
+) {
+    let mut groups: HashMap<usize, Vec<(f64, f64)>> = HashMap::new();
+    for n in &proj.nodes {
+        if let (Some(&c), Some(p)) = (communities.get(&n.key), pos.get(&n.key)) {
+            groups.entry(c).or_default().push(cam.project(p, w, h));
+        }
+    }
+    // Deterministic draw order (community id) so overlapping fills are stable.
+    let mut ids: Vec<usize> = groups.keys().copied().collect();
+    ids.sort_unstable();
+    set_fill(ctx, HULL_FILL);
+    set_stroke(ctx, HULL_STROKE);
+    ctx.set_line_width(1.0);
+    set_dash(ctx, &[]);
+    let pad = (24.0 * cam.scale).clamp(14.0, 40.0);
+    for id in ids {
+        let members = &groups[&id];
+        if members.len() < 3 {
+            continue; // a hull needs a polygon; tiny communities stay implicit
+        }
+        let hull = convex_hull(members);
+        if hull.len() < 3 {
+            continue;
+        }
+        let (mut cx, mut cy) = (0.0, 0.0);
+        for &(x, y) in &hull {
+            cx += x;
+            cy += y;
+        }
+        cx /= hull.len() as f64;
+        cy /= hull.len() as f64;
+        ctx.begin_path();
+        for (i, &(x, y)) in hull.iter().enumerate() {
+            let (dx, dy) = (x - cx, y - cy);
+            let d = (dx * dx + dy * dy).sqrt().max(1e-3);
+            let (ex, ey) = (x + dx / d * pad, y + dy / d * pad);
+            if i == 0 {
+                ctx.move_to(ex, ey);
+            } else {
+                ctx.line_to(ex, ey);
+            }
+        }
+        ctx.close_path();
+        ctx.fill();
+        ctx.stroke();
+    }
+}
+
+/// Compact human dwell string (`45s`, `12m`, `1h 20m`) for the inspect callout.
+fn fmt_dwell(ms: u64) -> String {
+    let s = ms / 1000;
+    if s < 60 {
+        format!("{s}s")
+    } else if s < 3600 {
+        format!("{}m", s / 60)
+    } else {
+        format!("{}h {}m", s / 3600, (s % 3600) / 60)
+    }
+}
+
 /// Draw the full graph. `hover` labels + spotlights a node; `selected` (the
 /// drilled-down focus) wears the reticle bracket; `filter` (a clicked legend key)
 /// keeps only nodes of that provenance bright and dims the rest + all edges.
+#[allow(clippy::too_many_arguments)]
 pub fn draw(
     ctx: &CanvasRenderingContext2d,
     w: f64,
@@ -185,8 +297,16 @@ pub fn draw(
     hover: Option<&str>,
     selected: Option<&str>,
     filter: Option<Provenance>,
+    communities: &HashMap<String, usize>,
 ) {
     draw_backdrop(ctx, w, h, cam);
+
+    // Faint achromatic hulls behind everything, so multi-node communities read as
+    // soft groups. Suppressed while a hover/filter spotlight or drill-down focus is
+    // active (the spotlight is the figure then; the hulls would only add noise).
+    if hover.is_none() && filter.is_none() && selected.is_none() {
+        draw_community_hulls(ctx, w, h, proj, pos, cam, communities);
+    }
 
     // When a node is hovered, light it + its neighbors and dim the rest — the
     // Obsidian/Palantir "spotlight" behavior.
@@ -211,13 +331,17 @@ pub fn draw(
         .iter()
         .map(|n| (n.key.as_str(), n.visits))
         .collect();
+    // Base stroke width, then per-edge thickening by √weight so a heavily-travelled
+    // backbone (e.g. google→gmail, weight 19) reads boldly while one-off hops stay
+    // hairline — turning the tangle into a legible flow map.
     let ew = (1.2 * cam.scale).clamp(0.6, 4.0);
-    ctx.set_line_width(ew);
     for e in &proj.edges {
         if let (Some(a), Some(b)) = (pos.get(&e.from), pos.get(&e.to)) {
             let (ax, ay) = cam.project(a, w, h);
             let (bx, by) = cam.project(b, w, h);
             let kind = e.kinds.dominant();
+            let lw = (ew * (e.weight as f64).sqrt()).clamp(ew, ew * 5.0);
+            ctx.set_line_width(lw);
             // A legend filter dims every edge (the highlight is about nodes of a
             // provenance, and edges have no single provenance).
             let touches =
@@ -430,7 +554,14 @@ fn draw_callout(
     set_fill(ctx, LABEL);
     ctx.set_font(&format!("11px {MONO}"));
     let noun = if node.visits == 1 { "visit" } else { "visits" };
-    let sub = format!("{} {noun} · {}", node.visits, prov_label(prov));
+    // Sub-line: visit count plus either time-spent (when we have a meaningful
+    // dwell) or the provenance label. The marker shape/color already carry
+    // provenance, so dwell earns the slot when present.
+    let sub = if node.dwell_ms >= 1000 {
+        format!("{} {noun} · {}", node.visits, fmt_dwell(node.dwell_ms))
+    } else {
+        format!("{} {noun} · {}", node.visits, prov_label(prov))
+    };
     let _ = ctx.fill_text(&sub, bx + 16.0, by + 41.0);
     ctx.set_text_baseline("alphabetic");
 }
