@@ -149,6 +149,13 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let flow = el(&doc, "div");
     let _ = flow.set_attribute("id", "bg-flow");
     let _ = flow.set_attribute("class", "sp-flow");
+    // Delegated click: clicking a node/ribbon in the flow isolates it.
+    {
+        let s = shared.clone();
+        on(flow.as_ref(), "click", move |ev| {
+            super::sankey::on_flow_click(&s, &ev)
+        });
+    }
 
     let _ = right.append_child(&bar);
     let _ = right.append_child(&flow);

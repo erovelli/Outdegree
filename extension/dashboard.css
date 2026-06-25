@@ -393,11 +393,14 @@ a { color: var(--text-primary); }
 }
 /* Pure-CSS hover affordance: brighten the hovered ribbon/bar (the <title> child
  * supplies a native from→to tooltip; no JS needed). */
-.sankey-ribbon { transition: fill-opacity 0.12s ease; }
+.sankey-ribbon { transition: fill-opacity 0.12s ease, opacity 0.12s ease; cursor: pointer; }
 .sankey:hover .sankey-ribbon { fill-opacity: 0.5; }
 .sankey-ribbon:hover { fill-opacity: 1; }
-.sankey-bar { cursor: default; }
+.sankey-node { cursor: pointer; }
 .sankey-bar:hover { stroke: var(--text-primary); stroke-width: 1.5; }
+/* Click-to-focus: elements outside the clicked flow fade back. */
+.sankey .is-dim { opacity: 0.12; transition: opacity 0.12s ease; }
+.sankey .sankey-node.is-dim .sankey-label { fill: var(--text-faint); }
 /* "Direct visits" side list under the diagram (orphan typed/bookmark/search hosts) */
 .direct-visits { margin-top: 18px; }
 .direct-visits h4 {

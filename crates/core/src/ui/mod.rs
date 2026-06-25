@@ -79,6 +79,13 @@ pub(crate) struct App {
     pub anim_gen: u64,
     pub last_mouse: (f64, f64),
     pub selected_session: Option<f64>,
+    /// The participating flow graph currently drawn in the Sankey, cached so a
+    /// click can re-render with a focus highlight without re-reading the session's
+    /// events. `sankey_focus` is the clicked `(seed_up, seed_down)` (equal for a
+    /// node, the edge's endpoints for a ribbon); `None` means nothing is focused.
+    pub sankey_flow: Option<crate::flow::FlowGraph>,
+    pub sankey_focus: Option<(usize, usize)>,
+    pub sankey_vw: f64,
     /// Session-picker filters: a host substring query and whether to hide trivial
     /// single-visit sessions (which are usually just a stray tab open).
     pub session_query: String,
@@ -166,6 +173,9 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         anim_gen: 0,
         last_mouse: (0.0, 0.0),
         selected_session: None,
+        sankey_flow: None,
+        sankey_focus: None,
+        sankey_vw: 0.0,
         session_query: String::new(),
         hide_trivial_sessions: false,
         spa_mode: false,

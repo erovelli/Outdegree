@@ -646,10 +646,72 @@ pub fn split_orphans(fg: &FlowGraph) -> (FlowGraph, Vec<(String, u32)>) {
     )
 }
 
+/// The set of flow elements to keep lit when the Sankey is focused: node indices
+/// and link indices (into [`FlowGraph`]). Out-of-set elements render dimmed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FocusSet {
+    pub nodes: HashSet<usize>,
+    pub links: HashSet<usize>,
+}
+
+/// Compute the flow threading through a clicked point: every node and ribbon on a
+/// directed path through it. `seed_up` and `seed_down` are equal for a node click
+/// (its ancestors + itself + descendants); for an edge click they are the edge's
+/// `from`/`to` (ancestors of the source, the two endpoints, descendants of the
+/// target). A link is kept when both its endpoints are kept. Cycles terminate via
+/// a visited set.
+pub fn flow_focus(fg: &FlowGraph, seed_up: usize, seed_down: usize) -> FocusSet {
+    let n = fg.nodes.len();
+    let mut fwd: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut rev: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for l in &fg.links {
+        if l.from < n && l.to < n {
+            fwd[l.from].push(l.to);
+            rev[l.to].push(l.from);
+        }
+    }
+    fn reach(adj: &[Vec<usize>], start: usize, out: &mut HashSet<usize>) {
+        if start >= adj.len() {
+            return;
+        }
+        let mut stack = vec![start];
+        while let Some(u) = stack.pop() {
+            if !out.insert(u) {
+                continue;
+            }
+            for &v in &adj[u] {
+                stack.push(v);
+            }
+        }
+    }
+    // Ancestors and descendants go into separate sets — sharing one set would let
+    // the first traversal mark the seed visited and stop the second from expanding
+    // it, so descendants of a node we reached as an ancestor would be lost.
+    let mut nodes = HashSet::new();
+    reach(&rev, seed_up, &mut nodes); // ancestors of the source (inclusive)
+    let mut down = HashSet::new();
+    reach(&fwd, seed_down, &mut down); // descendants of the target (inclusive)
+    nodes.extend(down);
+    nodes.insert(seed_up);
+    nodes.insert(seed_down);
+    let links: HashSet<usize> = fg
+        .links
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| nodes.contains(&l.from) && nodes.contains(&l.to))
+        .map(|(i, _)| i)
+        .collect();
+    FocusSet { nodes, links }
+}
+
 /// Lay out a flow graph and emit an inline SVG Sankey: hosts are column bars,
 /// transitions are bezier ribbons whose thickness ∝ weight. Pure (geometry +
 /// string building) so it is testable; the caller just sets it as innerHTML.
-pub fn render_svg(fg: &FlowGraph, vw: f64) -> String {
+///
+/// `focus` (a clicked node/edge's [`FocusSet`]) dims every element outside the
+/// flow threading through that point. Each bar group carries `data-node` and each
+/// ribbon a `data-link` so the click handler can resolve what was clicked.
+pub fn render_svg(fg: &FlowGraph, vw: f64, focus: Option<&FocusSet>) -> String {
     let n = fg.nodes.len();
     if n == 0 {
         return "<div class=\"bg-empty\">No navigations in this session.</div>".into();
@@ -795,17 +857,29 @@ pub fn render_svg(fg: &FlowGraph, vw: f64) -> String {
             esc_svg(&fg.nodes[l.to].key),
             l.weight
         );
+        let dim = if focus.map(|f| !f.links.contains(&li)).unwrap_or(false) {
+            " is-dim"
+        } else {
+            ""
+        };
         s.push_str(&format!(
-            "<path class=\"sankey-ribbon\" d=\"M{x0:.1} {sy0:.1} C{cx:.1} {sy0:.1} {cx:.1} {ty0:.1} {x1:.1} {ty0:.1} \
+            "<path class=\"sankey-ribbon{dim}\" data-link=\"{li}\" d=\"M{x0:.1} {sy0:.1} C{cx:.1} {sy0:.1} {cx:.1} {ty0:.1} {x1:.1} {ty0:.1} \
              L{x1:.1} {ty1:.1} C{cx:.1} {ty1:.1} {cx:.1} {sy1:.1} {x0:.1} {sy1:.1} Z\" \
              fill=\"oklch(0.6 0.14 {hue} / 0.4)\"><title>{tip}</title></path>"
         ));
     }
     for (i, nd) in fg.nodes.iter().enumerate() {
-        // Bar = provenance color; a provenance glyph + label sit to its right.
+        // Bar = provenance color; a provenance glyph + label sit to its right. The
+        // whole node (bar + glyph + label) is one clickable, `data-node`-tagged group.
         let prov = nd.prov;
         let hops = if nd.throughput == 1 { "hop" } else { "hops" };
         let bar_tip = format!("{} · {} {hops}", esc_svg(&nd.key), nd.throughput);
+        let dim = if focus.map(|f| !f.nodes.contains(&i)).unwrap_or(false) {
+            " is-dim"
+        } else {
+            ""
+        };
+        s.push_str(&format!("<g class=\"sankey-node{dim}\" data-node=\"{i}\">"));
         s.push_str(&format!(
             "<rect class=\"sankey-bar\" x=\"{:.1}\" y=\"{:.1}\" width=\"{node_w:.1}\" height=\"{:.1}\" rx=\"2\" fill=\"{}\"><title>{bar_tip}</title></rect>",
             nx[i], ny[i], nh[i], prov.color()
@@ -819,6 +893,7 @@ pub fn render_svg(fg: &FlowGraph, vw: f64) -> String {
             gy,
             esc_svg(&clip(&nd.key, 24))
         ));
+        s.push_str("</g>");
     }
     s.push_str("</svg>");
     s
@@ -1099,18 +1174,63 @@ mod tests {
     #[test]
     fn render_svg_is_wellformed_with_one_rect_per_node_and_path_per_link() {
         let g = build(&[chain(&["a", "b", "c"]), chain(&["a", "c"])]);
-        let svg = render_svg(&g, 900.0);
+        let svg = render_svg(&g, 900.0, None);
         assert!(svg.starts_with("<svg") && svg.ends_with("</svg>"));
         assert_eq!(svg.matches("<rect").count(), g.nodes.len()); // 3
         assert_eq!(svg.matches("<path").count(), g.links.len()); // a→b, b→c, a→c
         assert!(svg.contains(">a<") && svg.contains(">c<"));
+        // Every node is a clickable group and every ribbon is tagged.
+        assert_eq!(svg.matches("data-node=").count(), g.nodes.len());
+        assert_eq!(svg.matches("data-link=").count(), g.links.len());
     }
 
     #[test]
     fn render_svg_escapes_and_handles_empty() {
-        assert!(render_svg(&FlowGraph::default(), 900.0).contains("bg-empty"));
+        assert!(render_svg(&FlowGraph::default(), 900.0, None).contains("bg-empty"));
         let g = build(&[chain(&["x&<y", "z"])]);
-        assert!(render_svg(&g, 900.0).contains("x&amp;&lt;y"));
+        assert!(render_svg(&g, 900.0, None).contains("x&amp;&lt;y"));
+    }
+
+    #[test]
+    fn flow_focus_traces_the_thread_through_a_point() {
+        // a → b → c → d, with a side branch b → x and a separate root s → c.
+        let g = build(&[
+            chain(&["a", "b", "c", "d"]),
+            chain(&["b", "x"]),
+            chain(&["s", "c"]),
+        ]);
+        let idx = |k: &str| g.nodes.iter().position(|n| n.key == k).unwrap();
+        // Focusing c: ancestors {s, a, b} + c + descendants {d}. x is a sibling
+        // branch off b (not on a path *through* c) → excluded.
+        let f = flow_focus(&g, idx("c"), idx("c"));
+        let keys: std::collections::HashSet<&str> =
+            f.nodes.iter().map(|&i| g.nodes[i].key.as_str()).collect();
+        assert!(keys.contains("a") && keys.contains("b") && keys.contains("s"));
+        assert!(keys.contains("c") && keys.contains("d"));
+        assert!(
+            !keys.contains("x"),
+            "sibling branch off b is not on c's thread"
+        );
+        // The kept links are exactly those with both endpoints kept (a→b, b→c, c→d,
+        // s→c) — never b→x.
+        let lk = |f: &str, t: &str| {
+            g.links
+                .iter()
+                .position(|l| g.nodes[l.from].key == f && g.nodes[l.to].key == t)
+                .unwrap()
+        };
+        assert!(f.links.contains(&lk("a", "b")) && f.links.contains(&lk("s", "c")));
+        assert!(!f.links.contains(&lk("b", "x")));
+    }
+
+    #[test]
+    fn render_svg_dims_out_of_focus_elements() {
+        let g = build(&[chain(&["a", "b"]), chain(&["c", "d"])]); // two separate flows
+        let idx = |k: &str| g.nodes.iter().position(|n| n.key == k).unwrap();
+        let f = flow_focus(&g, idx("a"), idx("a")); // only the a→b flow
+        let svg = render_svg(&g, 900.0, Some(&f));
+        // c→d's flow is dimmed; a→b's is not. Two nodes + one link dimmed.
+        assert_eq!(svg.matches("is-dim").count(), 3);
     }
 
     #[test]
