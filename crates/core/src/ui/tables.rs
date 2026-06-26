@@ -32,6 +32,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let search_dest = graph::search_destinations(&a.proj, 12);
     let next_hops = graph::next_hops(&a.proj, 4, 12);
     let authorities = graph::pagerank(&a.proj, 0.85, 40);
+    let reciprocal = graph::reciprocal_pairs(&a.proj, 12);
     let dwell: HashMap<&str, u64> = a
         .proj
         .nodes
@@ -103,6 +104,25 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
                 "<tr><td>{}</td><td class=\"num\">{}</td></tr>",
                 esc(k),
                 c
+            ));
+        }
+        html.push_str("</table>");
+    }
+
+    // ── back-and-forth pairs ─────────────────────────────────────────────────
+    if !reciprocal.is_empty() {
+        html.push_str(
+            "<h3>Back-and-forth</h3>\
+             <p class=\"muted tbl-sub\">sites you bounce between (both directions)</p>\
+             <table class=\"tbl\"><tr><th>Pair</th><th class=\"num\">→</th><th class=\"num\">←</th></tr>",
+        );
+        for r in &reciprocal {
+            html.push_str(&format!(
+                "<tr><td>{} ⇄ {}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
+                esc(&r.a),
+                esc(&r.b),
+                r.ab,
+                r.ba
             ));
         }
         html.push_str("</table>");

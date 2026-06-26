@@ -244,6 +244,57 @@ pub fn pagerank(p: &GraphProjection, damping: f32, iters: usize) -> Vec<(String,
     v
 }
 
+/// A back-and-forth pair: hosts linked in *both* directions (`a→b` and `b→a`).
+/// `a` is the lexicographically smaller host so each unordered pair appears once.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReciprocalPair {
+    pub a: String,
+    pub b: String,
+    pub ab: u32,
+    pub ba: u32,
+}
+
+impl ReciprocalPair {
+    /// Strength of the loop = the lighter of the two directions (a true round-trip
+    /// needs both), which is how the list is ranked.
+    pub fn strength(&self) -> u32 {
+        self.ab.min(self.ba)
+    }
+}
+
+/// Your back-and-forth workflow loops: host pairs with edges in both directions —
+/// the issue-tracker↔code, docs↔editor dances that `top_edges` scatters as two
+/// unrelated heavy rows. Ranked by `min(ab, ba)` descending (a round-trip is only
+/// as strong as its lighter leg), ties by host name for determinism.
+pub fn reciprocal_pairs(p: &GraphProjection, top: usize) -> Vec<ReciprocalPair> {
+    let mut w: HashMap<(&str, &str), u32> = HashMap::new();
+    for e in &p.edges {
+        *w.entry((e.from.as_str(), e.to.as_str())).or_insert(0) += e.weight;
+    }
+    let mut out: Vec<ReciprocalPair> = Vec::new();
+    for (&(f, t), &fw) in &w {
+        if f >= t {
+            continue; // canonical order: emit each unordered pair once
+        }
+        if let Some(&bw) = w.get(&(t, f)) {
+            out.push(ReciprocalPair {
+                a: f.to_string(),
+                b: t.to_string(),
+                ab: fw,
+                ba: bw,
+            });
+        }
+    }
+    out.sort_by(|x, y| {
+        y.strength()
+            .cmp(&x.strength())
+            .then_with(|| x.a.cmp(&y.a))
+            .then_with(|| x.b.cmp(&y.b))
+    });
+    out.truncate(top);
+    out
+}
+
 // ───────────────────────────── Louvain (symmetrized) ─────────────────────────────
 
 /// Community assignment via Louvain on the symmetrized graph (§7.6).
@@ -617,6 +668,31 @@ mod tests {
         // A pure sink never appears as a launch pad, and vice-versa.
         assert!(!pads.iter().any(|(k, _)| k == "sink"));
         assert!(!dests.iter().any(|(k, _)| k == "launch"));
+    }
+
+    #[test]
+    fn reciprocal_pairs_find_round_trips_ranked_by_lighter_leg() {
+        let p = GraphProjection {
+            nodes: vec![node("a", 1), node("b", 1), node("c", 1), node("d", 1)],
+            edges: vec![
+                edge("a", "b", 5),
+                edge("b", "a", 3), // a⇄b round-trip, strength min(5,3)=3
+                edge("c", "d", 9), // one-way only — not reciprocal
+            ],
+        };
+        let pairs = reciprocal_pairs(&p, 10);
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(
+            (
+                pairs[0].a.as_str(),
+                pairs[0].b.as_str(),
+                pairs[0].ab,
+                pairs[0].ba
+            ),
+            ("a", "b", 5, 3)
+        );
+        assert_eq!(pairs[0].strength(), 3);
+        assert!(!pairs.iter().any(|p| p.b == "d"), "one-way pair excluded");
     }
 
     #[test]
