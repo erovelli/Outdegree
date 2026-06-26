@@ -29,6 +29,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let stats = project::range_stats(&a.buckets, a.time_range);
     let delta = project::period_delta(&a.buckets, a.time_range);
     let series = project::daily_series(&a.buckets, a.time_range);
+    let surging = project::surging_hosts(&a.buckets, a.time_range, 3, 10);
     let search_dest = graph::search_destinations(&a.proj, 12);
     let next_hops = graph::next_hops(&a.proj, 4, 12);
     let authorities = graph::pagerank(&a.proj, 0.85, 40);
@@ -47,6 +48,31 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
 
     // ── activity (from the sessions overlapping the range) ───────────────────
     html.push_str(&activity_html(&a.sessions, a.time_range));
+
+    // ── surging this period ──────────────────────────────────────────────────
+    if !surging.is_empty() {
+        html.push_str(
+            "<h3>Surging this period</h3>\
+             <p class=\"muted tbl-sub\">sites you're visiting more than before</p>\
+             <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Now</th>\
+             <th class=\"num\">Before</th><th class=\"num\">×</th></tr>",
+        );
+        for sg in &surging {
+            let mult = if sg.is_new() {
+                "new".to_string()
+            } else {
+                format!("{:.0}×", sg.ratio())
+            };
+            html.push_str(&format!(
+                "<tr><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
+                esc(&sg.host),
+                sg.now,
+                sg.prev,
+                esc(&mult)
+            ));
+        }
+        html.push_str("</table>");
+    }
 
     // ── frequent journeys (filled asynchronously below) ──────────────────────
     html.push_str(
