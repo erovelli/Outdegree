@@ -185,11 +185,35 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
             super::plural(sess.nav_count as u64, "visit"),
         );
         html.push_str(&keys_html(&fg_full));
+        // A focus set by clicking should survive a re-render the user didn't ask
+        // for (the 15s live-refresh poll). Keep it only if it still points at the
+        // SAME hosts in the freshly-built flow — bounds-check the cached (up, down)
+        // indices and verify the node keys (and, for an edge, the link) are
+        // unchanged; otherwise the flow reshaped (new events) and we drop it.
+        let retained_focus = {
+            let a = s.borrow();
+            match (a.sankey_focus, a.sankey_flow.as_ref()) {
+                (Some((up, down)), Some(old)) => {
+                    let n = fg.nodes.len();
+                    let key =
+                        |g: &flow::FlowGraph, i: usize| g.nodes.get(i).map(|nd| nd.key.clone());
+                    let same = up < n
+                        && down < n
+                        && key(old, up) == key(&fg, up)
+                        && key(old, down) == key(&fg, down)
+                        && (up == down || fg.links.iter().any(|l| l.from == up && l.to == down));
+                    same.then_some((up, down))
+                }
+                _ => None,
+            }
+        };
+        let focus_set = retained_focus.map(|(up, down)| flow::flow_focus(&fg, up, down));
+
         // The diagram lives in its own container so a focus click can re-render
         // just the SVG (from the cached flow) without rebuilding the header/keys.
         html.push_str("<div id=\"bg-flow-svg\">");
         if has_flow {
-            html.push_str(&flow::render_svg(&fg, vw, None));
+            html.push_str(&flow::render_svg(&fg, vw, focus_set.as_ref()));
         } else {
             html.push_str(
                 "<p class=\"muted\">No links were followed — every visit this session was direct \
@@ -199,12 +223,12 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         html.push_str("</div>");
         html.push_str(&direct_visits_html(&orphans, &fg_full));
 
-        // Cache the drawn flow so clicks can re-render with a focus highlight; a
-        // fresh flow always starts unfocused.
+        // Cache the drawn flow so clicks can re-render with a focus highlight, and
+        // carry a still-valid focus across a poll-driven re-render.
         {
             let mut a = s.borrow_mut();
             a.sankey_flow = Some(fg.clone());
-            a.sankey_focus = None;
+            a.sankey_focus = retained_focus;
             a.sankey_vw = vw;
         }
 
