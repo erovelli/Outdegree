@@ -34,6 +34,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let next_hops = graph::next_hops(&a.proj, 4, 12);
     let authorities = graph::pagerank(&a.proj, 0.85, 40);
     let reciprocal = graph::reciprocal_pairs(&a.proj, 12);
+    let bridges = graph::bridges(&a.proj, 12);
     let dwell: HashMap<&str, u64> = a
         .proj
         .nodes
@@ -152,6 +153,26 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             ));
         }
         html.push_str("</table>");
+    }
+
+    // ── bridge sites (cross-community betweenness) ───────────────────────────
+    if !bridges.is_empty() {
+        if let Some((_, top)) = bridges.first() {
+            let top = top.max(1.0);
+            html.push_str(
+                "<h3>Bridge sites</h3>\
+                 <p class=\"muted tbl-sub\">gateways between your browsing communities</p>\
+                 <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
+            );
+            for (k, b) in &bridges {
+                let rel = (b / top * 100.0).round() as u32;
+                html.push_str(&format!(
+                    "<tr><td>{}</td><td class=\"num\">{rel}</td></tr>",
+                    esc(k)
+                ));
+            }
+            html.push_str("</table>");
+        }
     }
 
     // ── authorities (PageRank) ───────────────────────────────────────────────
