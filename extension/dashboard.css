@@ -367,6 +367,23 @@ a { color: var(--text-primary); }
   color: var(--text-primary); line-height: 1.1;
 }
 .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+/* vs-previous-period delta chip — achromatic by design (no second data hue);
+ * direction is carried by the ▲/▼ glyph + brightness, not color. */
+.stat-delta {
+  font: 11px var(--mono); margin-left: 8px; vertical-align: 2px;
+  letter-spacing: -0.02em;
+}
+.stat-delta.up { color: var(--text-secondary); }
+.stat-delta.down { color: var(--text-muted); }
+.stat-delta.flat { color: var(--text-faint); }
+/* daily-visits sparkline (achromatic polyline) */
+.sparkline-wrap { display: flex; align-items: center; gap: 10px; margin: 12px 0 2px; }
+.sparkline-cap {
+  font: 10px var(--mono); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.sparkline polyline { stroke: var(--text-tertiary); stroke-width: 1.5; }
+.sparkline circle { fill: var(--text-primary); }
 .tbl-sub { font-size: 11px; margin: 0 0 6px; }
 /* Launch pads / Destinations sit side by side on wide screens, stack when narrow. */
 .tbl-pair { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
