@@ -9,7 +9,7 @@
 use crate::model::{EdgeAgg, GraphProjection, NodeAgg};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Build a directed graph from a projection. Edges whose endpoints are not in the
 /// node set are skipped.
@@ -293,6 +293,110 @@ pub fn reciprocal_pairs(p: &GraphProjection, top: usize) -> Vec<ReciprocalPair> 
     });
     out.truncate(top);
     out
+}
+
+/// Bridge sites: the cut-vertices that connect otherwise-separate parts of your
+/// browsing. Betweenness centrality (Brandes, unweighted, on the symmetrized
+/// graph) measures how many shortest paths route *through* a node — but raw
+/// betweenness just re-ranks the high-degree hubs, so this filters to nodes whose
+/// direct neighbors span ≥2 Louvain communities. That's what makes it complement
+/// `hubs`: the gateways *between* topics, not the busiest sites within one.
+/// Returns `(host, betweenness)` descending, ties by host name.
+pub fn bridges(p: &GraphProjection, top: usize) -> Vec<(String, f32)> {
+    let n = p.nodes.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let idx: HashMap<&str, usize> = p
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, nd)| (nd.key.as_str(), i))
+        .collect();
+    // Symmetrized, de-duplicated adjacency.
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut seen: HashSet<(usize, usize)> = HashSet::new();
+    for e in &p.edges {
+        if let (Some(&a), Some(&b)) = (idx.get(e.from.as_str()), idx.get(e.to.as_str())) {
+            if a == b {
+                continue;
+            }
+            let key = if a < b { (a, b) } else { (b, a) };
+            if seen.insert(key) {
+                adj[a].push(b);
+                adj[b].push(a);
+            }
+        }
+    }
+    let bc = brandes_betweenness(n, &adj);
+
+    // Community per node (build adds nodes in p.nodes order, so NodeIndex(i) ↔ i).
+    let g = build(p);
+    let comm_ix = louvain(&g);
+    let comm: Vec<usize> = (0..n)
+        .map(|i| comm_ix.get(&NodeIndex::new(i)).copied().unwrap_or(0))
+        .collect();
+
+    let mut out: Vec<(String, f32)> = (0..n)
+        .filter_map(|i| {
+            let mut comms: HashSet<usize> = HashSet::new();
+            for &j in &adj[i] {
+                comms.insert(comm[j]);
+            }
+            if comms.len() >= 2 && bc[i] > 0.0 {
+                Some((p.nodes[i].key.clone(), bc[i]))
+            } else {
+                None
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    out.truncate(top);
+    out
+}
+
+/// Brandes' betweenness centrality for an unweighted undirected graph (BFS
+/// accumulation). Each undirected shortest path is counted from both endpoints,
+/// so the totals are halved.
+fn brandes_betweenness(n: usize, adj: &[Vec<usize>]) -> Vec<f32> {
+    let mut bc = vec![0.0f64; n];
+    for s in 0..n {
+        let mut stack: Vec<usize> = Vec::new();
+        let mut pred: Vec<Vec<usize>> = vec![Vec::new(); n];
+        let mut sigma = vec![0.0f64; n];
+        sigma[s] = 1.0;
+        let mut dist = vec![-1i64; n];
+        dist[s] = 0;
+        let mut queue: VecDeque<usize> = VecDeque::new();
+        queue.push_back(s);
+        while let Some(v) = queue.pop_front() {
+            stack.push(v);
+            for &w in &adj[v] {
+                if dist[w] < 0 {
+                    dist[w] = dist[v] + 1;
+                    queue.push_back(w);
+                }
+                if dist[w] == dist[v] + 1 {
+                    sigma[w] += sigma[v];
+                    pred[w].push(v);
+                }
+            }
+        }
+        let mut delta = vec![0.0f64; n];
+        while let Some(w) = stack.pop() {
+            for &v in &pred[w] {
+                delta[v] += (sigma[v] / sigma[w]) * (1.0 + delta[w]);
+            }
+            if w != s {
+                bc[w] += delta[w];
+            }
+        }
+    }
+    bc.iter().map(|x| (*x / 2.0) as f32).collect()
 }
 
 // ───────────────────────────── Louvain (symmetrized) ─────────────────────────────
@@ -690,6 +794,36 @@ mod tests {
         // A pure sink never appears as a launch pad, and vice-versa.
         assert!(!pads.iter().any(|(k, _)| k == "sink"));
         assert!(!dests.iter().any(|(k, _)| k == "launch"));
+    }
+
+    #[test]
+    fn bridges_surface_cross_community_cut_vertices() {
+        // Two triangles {a,b,c} and {x,y,z} joined only by c—x. c and x are the
+        // cut-vertices; their neighbors span both communities.
+        let p = GraphProjection {
+            nodes: vec![
+                node("a", 1),
+                node("b", 1),
+                node("c", 1),
+                node("x", 1),
+                node("y", 1),
+                node("z", 1),
+            ],
+            edges: vec![
+                edge("a", "b", 10),
+                edge("b", "c", 10),
+                edge("a", "c", 10),
+                edge("x", "y", 10),
+                edge("y", "z", 10),
+                edge("x", "z", 10),
+                edge("c", "x", 1),
+            ],
+        };
+        let br = bridges(&p, 10);
+        let hosts: HashSet<&str> = br.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(hosts, ["c", "x"].into_iter().collect());
+        // Interior triangle nodes (single-community neighborhoods) are excluded.
+        assert!(!hosts.contains("a") && !hosts.contains("y"));
     }
 
     #[test]
