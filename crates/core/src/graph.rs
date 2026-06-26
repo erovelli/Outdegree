@@ -119,6 +119,70 @@ pub fn search_destinations(p: &GraphProjection, n: usize) -> Vec<(String, u32)> 
     v
 }
 
+/// A predictable next step: from `from`, the host you most often go to next is
+/// `to`, with conditional probability `share = P(to | from)` over `weight` of the
+/// source's total outbound traversals.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NextHop {
+    pub from: String,
+    pub to: String,
+    pub share: f32,
+    pub weight: u32,
+}
+
+/// "From X you usually go to Y." For each source host with at least `min_out`
+/// outbound traversals, take its single heaviest outgoing edge and report the
+/// conditional probability `share = edge.weight / Σ out-weight(from)`; return the
+/// most deterministic such hops, descending by share.
+///
+/// Distinct from `top_edges` (absolute weight) and `frequent_sequences` (long
+/// paths): this measures per-site *determinism*, not volume. The `min_out` floor
+/// is load-bearing — without it a host visited outbound exactly once reads as a
+/// spurious 100% prediction. Ties break by weight then host name so the f32 sort
+/// stays a total order (deterministic, NaN-free since shares are finite ratios).
+pub fn next_hops(p: &GraphProjection, min_out: u32, top: usize) -> Vec<NextHop> {
+    let mut out_total: HashMap<&str, u32> = HashMap::new();
+    for e in &p.edges {
+        *out_total.entry(e.from.as_str()).or_insert(0) += e.weight;
+    }
+    // Heaviest outgoing edge per source (ties by destination name for determinism).
+    let mut best: HashMap<&str, &EdgeAgg> = HashMap::new();
+    for e in &p.edges {
+        best.entry(e.from.as_str())
+            .and_modify(|cur| {
+                if e.weight > cur.weight || (e.weight == cur.weight && e.to < cur.to) {
+                    *cur = e;
+                }
+            })
+            .or_insert(e);
+    }
+    let mut v: Vec<NextHop> = best
+        .values()
+        .filter_map(|e| {
+            let tot = *out_total.get(e.from.as_str())?;
+            if tot < min_out {
+                return None;
+            }
+            Some(NextHop {
+                from: e.from.clone(),
+                to: e.to.clone(),
+                share: e.weight as f32 / tot as f32,
+                weight: e.weight,
+            })
+        })
+        .collect();
+    v.sort_by(|a, b| {
+        b.share
+            .partial_cmp(&a.share)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(b.weight.cmp(&a.weight))
+            .then(a.from.cmp(&b.from))
+            .then(a.to.cmp(&b.to))
+    });
+    v.truncate(top);
+    v
+}
+
 // ───────────────────────────── Louvain (symmetrized) ─────────────────────────────
 
 /// Community assignment via Louvain on the symmetrized graph (§7.6).
@@ -492,6 +556,41 @@ mod tests {
         // A pure sink never appears as a launch pad, and vice-versa.
         assert!(!pads.iter().any(|(k, _)| k == "sink"));
         assert!(!dests.iter().any(|(k, _)| k == "launch"));
+    }
+
+    #[test]
+    fn next_hops_rank_by_determinism_and_respect_the_floor() {
+        // gh: out 10 total → site 9 (90%), other 1. hub: out 12 → a 6, b 6 (50%).
+        // lonely: out 1 → x (would be 100% but below the min_out floor).
+        let p = GraphProjection {
+            nodes: vec![
+                node("gh", 1),
+                node("site", 1),
+                node("other", 1),
+                node("hub", 1),
+                node("a", 1),
+                node("b", 1),
+                node("lonely", 1),
+                node("x", 1),
+            ],
+            edges: vec![
+                edge("gh", "site", 9),
+                edge("gh", "other", 1),
+                edge("hub", "a", 6),
+                edge("hub", "b", 6),
+                edge("lonely", "x", 1),
+            ],
+        };
+        let hops = next_hops(&p, 4, 10);
+        // One row per qualifying source; lonely (out 1 < 4) is excluded.
+        assert!(!hops.iter().any(|h| h.from == "lonely"));
+        // Most deterministic first: gh→site 90% before hub→a 50%.
+        assert_eq!((hops[0].from.as_str(), hops[0].to.as_str()), ("gh", "site"));
+        assert!((hops[0].share - 0.9).abs() < 1e-6);
+        assert_eq!(hops[1].from, "hub");
+        // The tie between hub→a and hub→b resolves to the lexicographically smaller
+        // destination, so the heaviest-edge pick is deterministic.
+        assert_eq!(hops[1].to, "a");
     }
 
     #[test]
