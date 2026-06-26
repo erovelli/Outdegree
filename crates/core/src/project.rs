@@ -280,6 +280,120 @@ pub fn range_stats(buckets: &[DayBucket], range: TimeRange) -> RangeStats {
     }
 }
 
+/// Per-day visit totals across the selected window, ascending by date — the
+/// series behind a trend sparkline. One point per dated bucket that falls in the
+/// window (rollup_days holds at most one bucket per UTC day). Session/Day collapse
+/// to a single point, so the caller gates the sparkline to Week/Month/Year.
+pub fn daily_series(buckets: &[DayBucket], range: TimeRange) -> Vec<(String, u32)> {
+    let Some(latest) = buckets.iter().filter_map(|b| day_number(&b.date)).max() else {
+        return Vec::new();
+    };
+    let cutoff = latest - (range.days() - 1);
+    let mut pts: Vec<(i64, String, u32)> = buckets
+        .iter()
+        .filter_map(|b| {
+            let d = day_number(&b.date)?;
+            if d < cutoff {
+                return None;
+            }
+            let visits: u32 = b.nodes.values().map(|n| n.visits).sum();
+            Some((d, b.date.clone(), visits))
+        })
+        .collect();
+    pts.sort_by_key(|(d, ..)| *d);
+    pts.into_iter().map(|(_, date, v)| (date, v)).collect()
+}
+
+/// This-window-vs-previous-window comparison (same length, immediately prior), for
+/// "↑12% vs last week" deltas. `*_pct` return `None` when the prior window is empty
+/// (no baseline to compare against — the caller shows nothing rather than "↑∞%").
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PeriodDelta {
+    pub visits_now: u64,
+    pub visits_prev: u64,
+    pub hosts_now: u32,
+    pub hosts_prev: u32,
+    pub new_hosts_now: u32,
+    pub new_hosts_prev: u32,
+}
+
+impl PeriodDelta {
+    pub fn visits_pct(&self) -> Option<i32> {
+        pct_change(self.visits_prev, self.visits_now)
+    }
+    pub fn hosts_pct(&self) -> Option<i32> {
+        pct_change(self.hosts_prev as u64, self.hosts_now as u64)
+    }
+    pub fn new_hosts_pct(&self) -> Option<i32> {
+        pct_change(self.new_hosts_prev as u64, self.new_hosts_now as u64)
+    }
+    /// True when there's no prior window to compare against (first period of data).
+    pub fn no_baseline(&self) -> bool {
+        self.visits_prev == 0 && self.hosts_prev == 0
+    }
+}
+
+fn pct_change(prev: u64, now: u64) -> Option<i32> {
+    if prev == 0 {
+        return None;
+    }
+    Some((((now as f64 - prev as f64) / prev as f64) * 100.0).round() as i32)
+}
+
+pub fn period_delta(buckets: &[DayBucket], range: TimeRange) -> Option<PeriodDelta> {
+    let latest = buckets.iter().filter_map(|b| day_number(&b.date)).max()?;
+    let days = range.days();
+    let lo = latest - (days - 1);
+    let (plo, phi) = (lo - days, lo - 1); // the equal-length window just before
+
+    // First-seen day per host across all history (for "new in window" counts).
+    let mut first_seen: HashMap<&str, i64> = HashMap::new();
+    for b in buckets {
+        if let Some(d) = day_number(&b.date) {
+            for k in b.nodes.keys() {
+                let e = first_seen.entry(k.as_str()).or_insert(d);
+                *e = (*e).min(d);
+            }
+        }
+    }
+    // Aggregate one window: distinct hosts, total visits, and hosts first-seen in it.
+    let agg = |wlo: i64, whi: i64| -> (u32, u64, u32) {
+        let mut hosts: HashSet<&str> = HashSet::new();
+        let mut visits = 0u64;
+        let mut new_hosts = 0u32;
+        for b in buckets {
+            let Some(d) = day_number(&b.date) else {
+                continue;
+            };
+            if d < wlo || d > whi {
+                continue;
+            }
+            for (k, n) in &b.nodes {
+                if hosts.insert(k.as_str())
+                    && first_seen
+                        .get(k.as_str())
+                        .map(|f| *f >= wlo)
+                        .unwrap_or(false)
+                {
+                    new_hosts += 1;
+                }
+                visits += n.visits as u64;
+            }
+        }
+        (hosts.len() as u32, visits, new_hosts)
+    };
+    let (hosts_now, visits_now, new_hosts_now) = agg(lo, latest);
+    let (hosts_prev, visits_prev, new_hosts_prev) = agg(plo, phi);
+    Some(PeriodDelta {
+        visits_now,
+        visits_prev,
+        hosts_now,
+        hosts_prev,
+        new_hosts_now,
+        new_hosts_prev,
+    })
+}
+
 /// Total provenance breakdown across a range — the "origination" view (§M2).
 pub fn origination(buckets: &[DayBucket]) -> ProvBreakdown {
     let mut p = ProvBreakdown::default();
@@ -690,6 +804,66 @@ mod tests {
         assert_eq!(s.new_hosts, 1, "only new.com is first-seen in-window");
         // 4 visits, 2 distinct → 2 of the loads were revisits → 0.5.
         assert!((s.revisit_rate - 0.5).abs() < 1e-6);
+    }
+
+    fn bucket_with(date: &str, host: &str, visits: u32) -> DayBucket {
+        let mut b = bucket(date);
+        b.nodes.insert(
+            host.into(),
+            NodeStat {
+                visits,
+                ..Default::default()
+            },
+        );
+        b
+    }
+
+    #[test]
+    fn daily_series_is_per_day_visits_ascending_in_window() {
+        let bs = vec![
+            bucket_with("2021-01-01", "a.com", 9), // before the Week window from 01-11
+            bucket_with("2021-01-08", "a.com", 2),
+            bucket_with("2021-01-10", "b.com", 5),
+            bucket_with("2021-01-11", "a.com", 3), // latest
+        ];
+        let series = daily_series(&bs, TimeRange::Week); // cutoff = 01-05
+        assert_eq!(
+            series,
+            vec![
+                ("2021-01-08".to_string(), 2),
+                ("2021-01-10".to_string(), 5),
+                ("2021-01-11".to_string(), 3),
+            ]
+        );
+        assert!(
+            !series.iter().any(|(d, _)| d == "2021-01-01"),
+            "pre-window day excluded"
+        );
+    }
+
+    #[test]
+    fn period_delta_compares_window_against_the_prior_window() {
+        // Week window from 01-15 = [01-09 .. 01-15]; prior = [01-02 .. 01-08].
+        let bs = vec![
+            bucket_with("2021-01-03", "old.com", 4), // prior week: 4 visits, host old.com
+            bucket_with("2021-01-10", "old.com", 6), // this week: revisit old.com
+            bucket_with("2021-01-12", "new.com", 2), // this week: new host
+            bucket_with("2021-01-15", "old.com", 2), // latest
+        ];
+        let d = period_delta(&bs, TimeRange::Week).unwrap();
+        assert_eq!(d.visits_now, 10); // 6 + 2 + 2
+        assert_eq!(d.visits_prev, 4);
+        assert_eq!(d.hosts_now, 2); // old.com, new.com
+        assert_eq!(d.hosts_prev, 1); // old.com
+        assert_eq!(d.new_hosts_now, 1); // new.com first-seen in this window
+        assert_eq!(d.visits_pct(), Some(150)); // (10-4)/4 = +150%
+        assert!(!d.no_baseline());
+
+        // With no prior data, percentages are None (no "↑∞%").
+        let only_now = vec![bucket_with("2021-01-15", "x.com", 3)];
+        let d2 = period_delta(&only_now, TimeRange::Week).unwrap();
+        assert!(d2.no_baseline());
+        assert_eq!(d2.visits_pct(), None);
     }
 
     #[test]

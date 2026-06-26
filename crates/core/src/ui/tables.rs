@@ -27,6 +27,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let edges = graph::top_edges(&a.proj, 20);
     let prov = project::origination(&a.buckets);
     let stats = project::range_stats(&a.buckets, a.time_range);
+    let delta = project::period_delta(&a.buckets, a.time_range);
+    let series = project::daily_series(&a.buckets, a.time_range);
     let search_dest = graph::search_destinations(&a.proj, 12);
     let dwell: HashMap<&str, u64> = a
         .proj
@@ -38,7 +40,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let mut html = String::new();
 
     // ── range stats banner ───────────────────────────────────────────────────
-    html.push_str(&stats_html(&stats, a.time_range));
+    html.push_str(&stats_html(&stats, a.time_range, delta, &series));
 
     // ── activity (from the sessions overlapping the range) ───────────────────
     html.push_str(&activity_html(&a.sessions, a.time_range));
@@ -147,19 +149,85 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     Ok(())
 }
 
-/// The range-stats summary cards (sites, visits, new sites discovered, revisits).
-fn stats_html(s: &project::RangeStats, range: TimeRange) -> String {
+/// The range-stats summary cards (sites, visits, new sites discovered, revisits),
+/// each with a vs-previous-period delta chip, plus a daily-visits sparkline for
+/// multi-day ranges.
+fn stats_html(
+    s: &project::RangeStats,
+    range: TimeRange,
+    delta: Option<project::PeriodDelta>,
+    series: &[(String, u32)],
+) -> String {
     let pct = (s.revisit_rate * 100.0).round() as u32;
-    let card = |value: String, label: &str| -> String {
-        format!("<div class=\"stat-card\"><div class=\"stat-value\">{value}</div><div class=\"stat-label\">{label}</div></div>")
+    // A delta chip is shown only when there's a prior period to compare against.
+    let baseline = delta.map(|d| !d.no_baseline()).unwrap_or(false);
+    let chip = |p: Option<i32>| -> String {
+        if !baseline {
+            return String::new();
+        }
+        match p {
+            Some(p) if p > 0 => format!(" <span class=\"stat-delta up\">▲{p}%</span>"),
+            Some(p) if p < 0 => format!(" <span class=\"stat-delta down\">▼{}%</span>", -p),
+            Some(_) => " <span class=\"stat-delta flat\">±0%</span>".to_string(),
+            None => " <span class=\"stat-delta flat\">new</span>".to_string(),
+        }
+    };
+    let card = |value: String, label: &str, p: Option<i32>| -> String {
+        format!(
+            "<div class=\"stat-card\"><div class=\"stat-value\">{value}{}</div>\
+             <div class=\"stat-label\">{label}</div></div>",
+            chip(p)
+        )
     };
     format!(
-        "<h2 class=\"range-title\">{}</h2><div class=\"stat-cards\">{}{}{}{}</div>",
+        "<h2 class=\"range-title\">{}</h2><div class=\"stat-cards\">{}{}{}{}</div>{}",
         range_label(range),
-        card(s.window_hosts.to_string(), "sites"),
-        card(s.window_visits.to_string(), "visits"),
-        card(s.new_hosts.to_string(), "newly discovered"),
-        card(format!("{pct}%"), "were revisits"),
+        card(
+            s.window_hosts.to_string(),
+            "sites",
+            delta.and_then(|d| d.hosts_pct())
+        ),
+        card(
+            s.window_visits.to_string(),
+            "visits",
+            delta.and_then(|d| d.visits_pct())
+        ),
+        card(
+            s.new_hosts.to_string(),
+            "newly discovered",
+            delta.and_then(|d| d.new_hosts_pct())
+        ),
+        card(format!("{pct}%"), "were revisits", None),
+        sparkline_html(series),
+    )
+}
+
+/// A small achromatic daily-visits sparkline (SVG polyline). Empty for fewer than
+/// two points (Session/Day, or a single-bucket window) — nothing to trend.
+fn sparkline_html(series: &[(String, u32)]) -> String {
+    if series.len() < 2 {
+        return String::new();
+    }
+    let (w, h, pad) = (260.0_f64, 42.0_f64, 5.0_f64);
+    let max = series.iter().map(|(_, v)| *v).max().unwrap_or(1).max(1) as f64;
+    let n = series.len();
+    let dx = (w - 2.0 * pad) / ((n - 1) as f64);
+    let pts: Vec<String> = series
+        .iter()
+        .enumerate()
+        .map(|(i, (_, v))| {
+            let x = pad + i as f64 * dx;
+            let y = h - pad - (*v as f64 / max) * (h - 2.0 * pad);
+            format!("{x:.1},{y:.1}")
+        })
+        .collect();
+    let last = pts.last().cloned().unwrap_or_default();
+    let (lx, ly) = last.split_once(',').unwrap_or(("0", "0"));
+    format!(
+        "<div class=\"sparkline-wrap\"><span class=\"sparkline-cap\">daily visits</span>\
+         <svg class=\"sparkline\" width=\"{w:.0}\" height=\"{h:.0}\" viewBox=\"0 0 {w:.0} {h:.0}\">\
+         <polyline points=\"{}\" fill=\"none\"/><circle cx=\"{lx}\" cy=\"{ly}\" r=\"2.5\"/></svg></div>",
+        pts.join(" ")
     )
 }
 
