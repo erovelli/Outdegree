@@ -394,6 +394,86 @@ pub fn period_delta(buckets: &[DayBucket], range: TimeRange) -> Option<PeriodDel
     })
 }
 
+/// A host whose visits jumped this window versus the equal-length window before
+/// it — the sites behind the bare `new_hosts`/discovery scalar, named.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Surge {
+    pub host: String,
+    pub now: u32,
+    pub prev: u32,
+}
+
+impl Surge {
+    /// Growth factor (prev floored at 1 so a brand-new host reads as `now×`, not ∞).
+    pub fn ratio(&self) -> f32 {
+        self.now as f32 / self.prev.max(1) as f32
+    }
+    pub fn is_new(&self) -> bool {
+        self.prev == 0
+    }
+}
+
+/// Hosts surging this period: visited at least `min_now` times in the current
+/// window AND strictly more than in the prior equal-length window, ranked by
+/// growth factor. The `min_now` floor is load-bearing — without it a host visited
+/// once now and never before (1 vs 0) reads as an infinite surge and drowns the
+/// list. Pure, from the same day buckets as `range_stats` (no raw-event read).
+pub fn surging_hosts(
+    buckets: &[DayBucket],
+    range: TimeRange,
+    min_now: u32,
+    top: usize,
+) -> Vec<Surge> {
+    let Some(latest) = buckets.iter().filter_map(|b| day_number(&b.date)).max() else {
+        return Vec::new();
+    };
+    let days = range.days();
+    let lo = latest - (days - 1);
+    let (plo, phi) = (lo - days, lo - 1);
+
+    let mut now_v: HashMap<&str, u32> = HashMap::new();
+    let mut prev_v: HashMap<&str, u32> = HashMap::new();
+    for b in buckets {
+        let Some(d) = day_number(&b.date) else {
+            continue;
+        };
+        if d >= lo && d <= latest {
+            for (k, n) in &b.nodes {
+                *now_v.entry(k.as_str()).or_insert(0) += n.visits;
+            }
+        } else if d >= plo && d <= phi {
+            for (k, n) in &b.nodes {
+                *prev_v.entry(k.as_str()).or_insert(0) += n.visits;
+            }
+        }
+    }
+
+    let mut out: Vec<Surge> = now_v
+        .iter()
+        .filter_map(|(&k, &now)| {
+            let prev = prev_v.get(k).copied().unwrap_or(0);
+            // A surge: enough volume now, and strictly up from before.
+            if now < min_now || now <= prev {
+                return None;
+            }
+            Some(Surge {
+                host: k.to_string(),
+                now,
+                prev,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        b.ratio()
+            .partial_cmp(&a.ratio())
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| b.now.cmp(&a.now))
+            .then_with(|| a.host.cmp(&b.host))
+    });
+    out.truncate(top);
+    out
+}
+
 /// Total provenance breakdown across a range — the "origination" view (§M2).
 pub fn origination(buckets: &[DayBucket]) -> ProvBreakdown {
     let mut p = ProvBreakdown::default();
@@ -864,6 +944,36 @@ mod tests {
         let d2 = period_delta(&only_now, TimeRange::Week).unwrap();
         assert!(d2.no_baseline());
         assert_eq!(d2.visits_pct(), None);
+    }
+
+    #[test]
+    fn surging_hosts_rank_jumps_and_respect_the_floor() {
+        // Week window from 01-15 = [01-09..01-15]; prior = [01-02..01-08].
+        let bs = vec![
+            bucket_with("2021-01-03", "boom.com", 2),  // prior 2
+            bucket_with("2021-01-10", "boom.com", 20), // now 20 → ratio 10
+            bucket_with("2021-01-04", "flat.com", 5),  // prior 5
+            bucket_with("2021-01-11", "flat.com", 5),  // now 5 == prev → not a surge
+            bucket_with("2021-01-12", "fresh.com", 6), // new, now 6 → ratio 6
+            bucket_with("2021-01-13", "tiny.com", 1),  // now 1 < floor → excluded
+            bucket_with("2021-01-15", "boom.com", 0),  // latest anchor (0 visits ok)
+        ];
+        let s = surging_hosts(&bs, TimeRange::Week, 3, 10);
+        let hosts: Vec<&str> = s.iter().map(|x| x.host.as_str()).collect();
+        assert_eq!(
+            hosts,
+            vec!["boom.com", "fresh.com"],
+            "ranked by growth, floored"
+        );
+        assert!(s.iter().find(|x| x.host == "fresh.com").unwrap().is_new());
+        assert!(
+            !s.iter().any(|x| x.host == "flat.com"),
+            "flat is not a surge"
+        );
+        assert!(
+            !s.iter().any(|x| x.host == "tiny.com"),
+            "below min_now floor"
+        );
     }
 
     #[test]
