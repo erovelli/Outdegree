@@ -30,6 +30,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let delta = project::period_delta(&a.buckets, a.time_range);
     let series = project::daily_series(&a.buckets, a.time_range);
     let search_dest = graph::search_destinations(&a.proj, 12);
+    let next_hops = graph::next_hops(&a.proj, 4, 12);
     let dwell: HashMap<&str, u64> = a
         .proj
         .nodes
@@ -101,6 +102,24 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
                 "<tr><td>{}</td><td class=\"num\">{}</td></tr>",
                 esc(k),
                 c
+            ));
+        }
+        html.push_str("</table>");
+    }
+
+    // ── where you usually go next ────────────────────────────────────────────
+    if !next_hops.is_empty() {
+        html.push_str(
+            "<h3>Where you usually go next</h3>\
+             <p class=\"muted tbl-sub\">your most predictable next step from a site</p>\
+             <table class=\"tbl\"><tr><th>From</th><th>Usually →</th><th class=\"num\">Share</th></tr>",
+        );
+        for h in &next_hops {
+            let pct = (h.share * 100.0).round() as u32;
+            html.push_str(&format!(
+                "<tr><td>{}</td><td>{}</td><td class=\"num\">{pct}%</td></tr>",
+                esc(&h.from),
+                esc(&h.to)
             ));
         }
         html.push_str("</table>");
