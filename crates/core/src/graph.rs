@@ -486,6 +486,28 @@ pub fn frequent_sequences(
     out
 }
 
+/// Keep only **closed** patterns: drop any pattern that some longer pattern
+/// extends as a prefix *without losing support*. PrefixSpan emits every
+/// prefix of a frequent trail (`a→b`, `a→b→c`, `a→b→c→d`), so one repeated trail
+/// otherwise fills a journeys list with its own redundant prefixes; closure keeps
+/// just the maximal one and the genuinely-shorter patterns that branch (a shorter
+/// pattern survives when no equal-support extension of it exists — e.g. `a→b` at
+/// support 3 when its extensions only reach support 2). Order is preserved.
+pub fn closed_sequences(patterns: Vec<(Vec<String>, u32)>) -> Vec<(Vec<String>, u32)> {
+    // Support is non-increasing under prefix extension, so an extension with equal
+    // support means the shorter pattern carries no extra information.
+    let subsumed = |p: &[String], sup: u32| {
+        patterns
+            .iter()
+            .any(|(q, qsup)| *qsup == sup && q.len() > p.len() && q[..p.len()] == *p)
+    };
+    patterns
+        .iter()
+        .filter(|(p, sup)| !subsumed(p, *sup))
+        .cloned()
+        .collect()
+}
+
 fn prefixspan(
     chains: &[Vec<String>],
     db: &[(usize, usize)],
@@ -772,5 +794,27 @@ mod tests {
         assert!(!seqs
             .iter()
             .any(|(p, _)| p == &vec!["a".to_string(), "b".to_string(), "d".to_string()]));
+    }
+
+    #[test]
+    fn closed_sequences_drops_redundant_prefixes() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        // One trail a→b→c→d repeated 4× (every prefix at support 4), plus a→b at a
+        // higher support 6 (a→b also occurs in two other chains that don't continue).
+        let patterns = vec![
+            (s(&["a", "b"]), 6),
+            (s(&["a", "b", "c"]), 4),
+            (s(&["a", "b", "c", "d"]), 4),
+            (s(&["a", "b", "c", "d", "e"]), 2),
+        ];
+        let closed = closed_sequences(patterns);
+        let has = |v: &[&str]| closed.iter().any(|(p, _)| *p == s(v));
+        // a→b survives: its extensions only reach support 4 (< 6), so it's closed.
+        assert!(has(&["a", "b"]));
+        // a→b→c is subsumed by a→b→c→d at the same support 4 — dropped.
+        assert!(!has(&["a", "b", "c"]));
+        // a→b→c→d survives: its only extension drops to support 2.
+        assert!(has(&["a", "b", "c", "d"]));
+        assert!(has(&["a", "b", "c", "d", "e"]));
     }
 }

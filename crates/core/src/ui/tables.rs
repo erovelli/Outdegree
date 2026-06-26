@@ -503,9 +503,10 @@ fn spawn_journeys(shared: &Shared) {
                 chains.extend(crate::flow::session_chains(&events, gran));
             }
         }
-        // Paths taken at least twice, up to 5 hops. Prefer longer paths at equal
-        // support so genuine multi-step journeys rank above their 2-hop prefixes.
-        let mut journeys = graph::frequent_sequences(&chains, 2, 5);
+        // Paths taken at least twice, up to 5 hops, reduced to closed patterns so a
+        // single repeated trail doesn't fill the list with its own prefixes
+        // (a→b, a→b→c, a→b→c→d). Then prefer longer paths at equal support.
+        let mut journeys = graph::closed_sequences(graph::frequent_sequences(&chains, 2, 5));
         journeys.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.len().cmp(&a.0.len())));
 
         let Some(el) = s.borrow().doc.get_element_by_id("bg-journeys") else {
