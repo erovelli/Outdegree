@@ -31,6 +31,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let series = project::daily_series(&a.buckets, a.time_range);
     let search_dest = graph::search_destinations(&a.proj, 12);
     let next_hops = graph::next_hops(&a.proj, 4, 12);
+    let authorities = graph::pagerank(&a.proj, 0.85, 40);
     let dwell: HashMap<&str, u64> = a
         .proj
         .nodes
@@ -105,6 +106,28 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             ));
         }
         html.push_str("</table>");
+    }
+
+    // ── authorities (PageRank) ───────────────────────────────────────────────
+    // Only meaningful with edges; scores shown relative to the top (raw PageRank
+    // values ~0.003 read poorly beside the integer-degree tables).
+    if !a.proj.edges.is_empty() {
+        if let Some((_, top)) = authorities.first().filter(|(_, r)| *r > 0.0) {
+            let top = *top;
+            html.push_str(
+                "<h3>Authorities (PageRank)</h3>\
+                 <p class=\"muted tbl-sub\">sites your meaningful paths converge on</p>\
+                 <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
+            );
+            for (k, r) in authorities.iter().take(15) {
+                let rel = (r / top * 100.0).round() as u32;
+                html.push_str(&format!(
+                    "<tr><td>{}</td><td class=\"num\">{rel}</td></tr>",
+                    esc(k)
+                ));
+            }
+            html.push_str("</table>");
+        }
     }
 
     // ── where you usually go next ────────────────────────────────────────────

@@ -183,6 +183,67 @@ pub fn next_hops(p: &GraphProjection, min_out: u32, top: usize) -> Vec<NextHop> 
     v
 }
 
+/// Weighted PageRank over the projection's directed edges — recursive authority,
+/// the sites your *meaningful* paths converge on rather than the high-degree pass-
+/// throughs `hubs` surfaces. `damping` is the usual 0.85; `iters` power-iteration
+/// steps (≈40 converges for browsing-sized graphs). Dangling nodes (no out-edges)
+/// redistribute their mass uniformly so total rank stays ≈ 1. Returns
+/// `(host, rank)` descending, ties broken by host name for determinism.
+pub fn pagerank(p: &GraphProjection, damping: f32, iters: usize) -> Vec<(String, f32)> {
+    let n = p.nodes.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let idx: HashMap<&str, usize> = p
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, nd)| (nd.key.as_str(), i))
+        .collect();
+    let mut out_w = vec![0u32; n];
+    let mut adj: Vec<Vec<(usize, u32)>> = vec![Vec::new(); n];
+    for e in &p.edges {
+        if let (Some(&fi), Some(&ti)) = (idx.get(e.from.as_str()), idx.get(e.to.as_str())) {
+            out_w[fi] += e.weight;
+            adj[fi].push((ti, e.weight));
+        }
+    }
+    let inv_n = 1.0f32 / n as f32;
+    let mut rank = vec![inv_n; n];
+    let base = (1.0 - damping) * inv_n;
+    for _ in 0..iters {
+        let mut next = vec![base; n];
+        // Mass stranded at dangling nodes is redistributed uniformly.
+        let dangling: f32 = (0..n).filter(|&i| out_w[i] == 0).map(|i| rank[i]).sum();
+        let dshare = damping * dangling * inv_n;
+        for v in next.iter_mut() {
+            *v += dshare;
+        }
+        for i in 0..n {
+            if out_w[i] == 0 {
+                continue;
+            }
+            let ow = out_w[i] as f32;
+            for &(j, w) in &adj[i] {
+                next[j] += damping * rank[i] * (w as f32 / ow);
+            }
+        }
+        rank = next;
+    }
+    let mut v: Vec<(String, f32)> = p
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, nd)| (nd.key.clone(), rank[i]))
+        .collect();
+    v.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.0.cmp(&b.0))
+    });
+    v
+}
+
 // ───────────────────────────── Louvain (symmetrized) ─────────────────────────────
 
 /// Community assignment via Louvain on the symmetrized graph (§7.6).
@@ -556,6 +617,29 @@ mod tests {
         // A pure sink never appears as a launch pad, and vice-versa.
         assert!(!pads.iter().any(|(k, _)| k == "sink"));
         assert!(!dests.iter().any(|(k, _)| k == "launch"));
+    }
+
+    #[test]
+    fn pagerank_ranks_recursive_authority_and_conserves_mass() {
+        // a, b, c all point at hub (a pure authority); hub points nowhere.
+        let p = GraphProjection {
+            nodes: vec![node("a", 1), node("b", 1), node("c", 1), node("hub", 1)],
+            edges: vec![
+                edge("a", "hub", 1),
+                edge("b", "hub", 1),
+                edge("c", "hub", 1),
+            ],
+        };
+        let pr = pagerank(&p, 0.85, 60);
+        assert_eq!(
+            pr[0].0, "hub",
+            "the sink everything points at is the authority"
+        );
+        // Total rank is conserved (≈ 1) despite the dangling hub.
+        let sum: f32 = pr.iter().map(|(_, r)| r).sum();
+        assert!((sum - 1.0).abs() < 1e-3, "mass not conserved: {sum}");
+        // Empty graph → no ranks.
+        assert!(pagerank(&GraphProjection::default(), 0.85, 10).is_empty());
     }
 
     #[test]
