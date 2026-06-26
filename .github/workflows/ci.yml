@@ -35,8 +35,12 @@ jobs:
       - name: Clippy (native, warnings = errors)
         run: cargo clippy -p browsing-graph-core --lib --tests -- -D warnings
 
-      - name: Compile WASM shell (wasm32)
-        run: cargo build -p browsing-graph-core --target wasm32-unknown-unknown
+      # Stronger than a plain `cargo build --target wasm32`: --all-targets also
+      # type-checks the wasm32-only tests (tests/browser.rs) and the store/render/
+      # bridge modules, so wasm-gated breakage is caught here instead of only in
+      # the slow headless-Chrome leg below.
+      - name: Clippy + compile WASM shell & tests (wasm32, warnings = errors)
+        run: cargo clippy -p browsing-graph-core --target wasm32-unknown-unknown --all-targets -- -D warnings
 
   # ── WASM shell: store + bridge round-trips in headless Chrome ─────────────────
   browser:
@@ -92,6 +96,43 @@ jobs:
 
       - name: Build extension (wasm-pack + vite)
         run: npm run build
+
+      # Enforce the headline privacy guarantees against the *emitted*
+      # dist/manifest.json (not just the source manifest.config.ts), so a build
+      # plugin or a config change can't silently widen permissions / capability.
+      - name: Audit emitted manifest for privacy invariants
+        run: |
+          set -euo pipefail
+          M=dist/manifest.json
+          test -f "$M" || { echo "::error::missing $M"; exit 1; }
+          fail() { echo "::error::$1"; exit 1; }
+
+          # No host access of any kind.
+          [ "$(jq -c '.host_permissions // []' "$M")" = "[]" ] \
+            || fail "host_permissions must be []: $(jq -c '.host_permissions' "$M")"
+          [ "$(jq -c '.optional_host_permissions // []' "$M")" = "[]" ] \
+            || fail "optional_host_permissions must be absent/[]"
+
+          # Permissions (and optional_permissions) confined to the allowlist.
+          ALLOW='["webNavigation","storage","unlimitedStorage"]'
+          for key in permissions optional_permissions; do
+            EXTRA=$(jq -c --argjson a "$ALLOW" "[.${key}[]? | select(. as \$p | \$a | index(\$p) | not)]" "$M")
+            [ "$EXTRA" = "[]" ] || fail "disallowed ${key}: $EXTRA"
+          done
+
+          # Never observe incognito.
+          [ "$(jq -r '.incognito // ""' "$M")" = "not_allowed" ] \
+            || fail "incognito must be not_allowed"
+
+          # CSP must block all network connections.
+          CSP=$(jq -r '.content_security_policy.extension_pages // ""' "$M")
+          case "$CSP" in *"connect-src 'none'"*) : ;; *) fail "CSP missing connect-src 'none': $CSP";; esac
+
+          # No content scripts or web-accessible resources (no page-context reach).
+          [ "$(jq -c '.content_scripts // []' "$M")" = "[]" ] || fail "content_scripts present"
+          [ "$(jq -c '.web_accessible_resources // []' "$M")" = "[]" ] || fail "web_accessible_resources present"
+
+          echo "Manifest privacy invariants enforced: host_permissions=[], permissions⊆allowlist, connect-src 'none', incognito not_allowed, no content_scripts/WAR."
 
       - name: Audit built bundle for network surface (§12.7)
         run: |
