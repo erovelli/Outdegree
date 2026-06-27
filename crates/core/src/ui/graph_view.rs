@@ -250,6 +250,53 @@ fn animate_to(shared: &Shared, target: Camera) {
     }
 }
 
+/// Export the graph to a PNG: render the whole projection (fit-to-page, no
+/// hover/focus/filter chrome) to an offscreen canvas at 2× for crispness, then
+/// hand `toDataURL` bytes to the local download bridge — independent of the live
+/// camera's pan/zoom.
+pub(crate) fn export_png(shared: &Shared) {
+    const PAGE_W: f64 = 1600.0;
+    const PAGE_H: f64 = 1000.0;
+    const SS: f64 = 2.0; // supersample for crisp text/edges
+    let a = shared.borrow();
+    let Ok(canvas) = a
+        .doc
+        .create_element("canvas")
+        .and_then(|e| e.dyn_into::<HtmlCanvasElement>().map_err(|_| JsValue::NULL))
+    else {
+        return;
+    };
+    canvas.set_width((PAGE_W * SS) as u32);
+    canvas.set_height((PAGE_H * SS) as u32);
+    let Some(ctx) = ctx_of(&canvas) else { return };
+    let _ = ctx.set_transform(SS, 0.0, 0.0, SS, 0.0, 0.0);
+    let cam = canvas2d::fit(&a.proj, &a.layout_pos, PAGE_W, PAGE_H);
+    canvas2d::draw(
+        &ctx,
+        PAGE_W,
+        PAGE_H,
+        &a.proj,
+        &a.layout_pos,
+        &cam,
+        None,
+        None,
+        None,
+        &a.communities,
+    );
+    match canvas.to_data_url_with_type("image/png") {
+        Ok(url) => crate::bridge::download_data_url("outdegree-graph.png", &url),
+        Err(e) => super::log_err(&e),
+    }
+}
+
+/// Export the graph as a standalone, fit-to-page SVG (vector) via the pure
+/// `crate::svg` serializer and the local download bridge.
+pub(crate) fn export_svg(shared: &Shared) {
+    let a = shared.borrow();
+    let svg = crate::svg::graph_svg(&a.proj, &a.layout_pos, 1600.0, 1000.0);
+    crate::bridge::download_text("outdegree-graph.svg", "image/svg+xml", &svg);
+}
+
 fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
     let Some(ctx) = ctx_of(canvas) else { return };
     let a = shared.borrow();
