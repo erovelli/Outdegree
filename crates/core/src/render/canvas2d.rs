@@ -34,10 +34,28 @@ const HULL_STROKE: &str = "oklch(0.62 0.012 290 / 0.12)";
 
 const MONO: &str = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
+// Viewport-cull margin (screen px): markers/edges/labels whose projected extent
+// falls outside the canvas expanded by this much are skipped, so a large graph
+// only pays for what's on-screen. Generous enough that nodes peeking in at the
+// edge (and their just-off-screen labels) still draw.
+const CULL_MARGIN: f64 = 96.0;
+// Level-of-detail zoom threshold: below this camera scale the graph is too small
+// to read provenance shapes or labels, so nodes fall back to plain discs and
+// non-selected labels are dropped — cutting per-frame path + text work on big,
+// zoomed-out graphs. At/above it, full fidelity is preserved.
+const LOD_SCALE: f64 = 0.22;
+
 /// Node disc radius in screen pixels: `max(8, 2.6·√visits)` (design units),
 /// scaled by zoom and clamped so nodes never vanish or dominate.
 fn radius(visits: u32, scale: f64) -> f64 {
     ((8.0_f64).max(2.6 * (visits as f64).sqrt()) * scale).clamp(2.0, 64.0)
+}
+
+/// Whether a marker of radius `r` centered at screen `(x, y)` intersects the
+/// `w`×`h` viewport expanded by `margin` — the viewport-cull predicate. Pure so
+/// the cull math is unit-tested (see `tests/browser.rs`).
+pub fn in_viewport(x: f64, y: f64, r: f64, w: f64, h: f64, margin: f64) -> bool {
+    x + r >= -margin && x - r <= w + margin && y + r >= -margin && y - r <= h + margin
 }
 
 /// Label font size in screen pixels — scales with zoom so labels shrink when
@@ -328,6 +346,10 @@ pub fn draw(
 ) {
     draw_backdrop(ctx, w, h, cam);
 
+    // Below this zoom the graph reads as a constellation: drop provenance shapes
+    // (plain discs) and non-selected labels to keep big zoomed-out redraws cheap.
+    let lod = cam.scale < LOD_SCALE;
+
     // Faint achromatic hulls behind everything, so multi-node communities read as
     // soft groups. Suppressed while a hover/filter spotlight or drill-down focus is
     // active (the spotlight is the figure then; the hulls would only add noise).
@@ -366,6 +388,15 @@ pub fn draw(
         if let (Some(a), Some(b)) = (pos.get(&e.from), pos.get(&e.to)) {
             let (ax, ay) = cam.project(a, w, h);
             let (bx, by) = cam.project(b, w, h);
+            // viewport-cull: skip an edge whose segment bounding box misses the
+            // screen entirely (cheap and never drops a visible edge).
+            if ax.max(bx) < -CULL_MARGIN
+                || ax.min(bx) > w + CULL_MARGIN
+                || ay.max(by) < -CULL_MARGIN
+                || ay.min(by) > h + CULL_MARGIN
+            {
+                continue;
+            }
             let kind = e.kinds.dominant();
             let lw = (ew * (e.weight as f64).sqrt()).clamp(ew, ew * 5.0);
             ctx.set_line_width(lw);
@@ -434,13 +465,23 @@ pub fn draw(
         if let Some(p) = pos.get(&n.key) {
             let (x, y) = cam.project(p, w, h);
             let r = radius(n.visits, cam.scale);
+            // viewport-cull: off-screen nodes contribute nothing to draw.
+            if !in_viewport(x, y, r, w, h, CULL_MARGIN) {
+                continue;
+            }
             // Fill = dominant provenance; shape = same provenance (a CVD-safe
             // redundant channel). A node stays bright only if it survives both the
             // hover spotlight and (if set) the legend provenance filter.
             let prov = n.prov.dominant().display();
             ctx.set_global_alpha(if hotness(&n.key, prov) { 1.0 } else { 0.22 });
             set_fill(ctx, prov.color());
-            trace_marker(ctx, prov.shape(), x, y, r);
+            // LOD: at far zoom the polygon shapes are sub-pixel — draw plain discs.
+            let shape = if lod {
+                crate::model::Shape::Circle
+            } else {
+                prov.shape()
+            };
+            trace_marker(ctx, shape, x, y, r);
             ctx.fill();
             ctx.stroke();
         }
@@ -471,6 +512,11 @@ pub fn draw(
             .any(|&(ox0, oy0, ox1, oy1)| bx0 < ox1 && bx1 > ox0 && by0 < oy1 && by1 > oy0);
         // Always keep the active hover/filter selection's label; else drop on collision.
         let force = hot && (hover.is_some() || filter.is_some());
+        // viewport-cull + LOD: skip off-screen labels, and at far zoom keep only
+        // the active hover/filter selection's label.
+        if (lod || !in_viewport(x, y, r, w, h, CULL_MARGIN)) && !force {
+            continue;
+        }
         if overlaps && !force {
             continue;
         }
