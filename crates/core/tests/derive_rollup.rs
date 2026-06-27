@@ -531,6 +531,91 @@ fn dwell_caps_at_idle_gap_and_clamps_backward() {
     assert_eq!(node_dwell(&map, "next.com"), 0, "backward jump clamps to 0");
 }
 
+/// A marathon session that touches more distinct hosts than the per-session cap
+/// keeps `host_counts` bounded — deterministically, and identically across a
+/// checkpoint round-trip (so the fold == recompute invariant still holds).
+#[test]
+fn session_host_counts_are_capped_deterministically() {
+    use browsing_graph_core::rollup::SESSION_HOST_CAP;
+    let n = SESSION_HOST_CAP + 16;
+    // One window/tab, all navs within the idle gap → a single open session.
+    let events: Vec<Event> = (0..n)
+        .map(|i| {
+            nav(
+                (i + 1) as u64,
+                1_000.0 + (i as f64) * 1_000.0,
+                1,
+                1,
+                &format!("https://h{i:03}.com/"),
+                "link",
+                &[],
+            )
+        })
+        .collect();
+
+    let (_, _, st_all) = run_all(&events);
+    let hc = &st_all.open_sessions[&1].host_counts;
+    assert_eq!(
+        hc.len(),
+        SESSION_HOST_CAP,
+        "tracked hosts bounded by the cap"
+    );
+    // The first SESSION_HOST_CAP distinct hosts are retained (exact count 1);
+    // hosts first seen after the cap is reached are dropped.
+    assert_eq!(hc.get("h000.com"), Some(&1));
+    assert_eq!(
+        hc.get(&format!("h{:03}.com", SESSION_HOST_CAP - 1)),
+        Some(&1)
+    );
+    assert_eq!(hc.get(&format!("h{:03}.com", SESSION_HOST_CAP)), None);
+    assert_eq!(hc.get(&format!("h{:03}.com", n - 1)), None);
+
+    // fold == recompute: the capped map is identical after a checkpoint split.
+    for at in [1, SESSION_HOST_CAP, n - 1] {
+        let (_, _, st_sp) = run_split(&events, at);
+        assert_eq!(
+            serde_json::to_value(&st_all.open_sessions).unwrap(),
+            serde_json::to_value(&st_sp.open_sessions).unwrap(),
+            "open-session checkpoint mismatch at split {at}"
+        );
+    }
+}
+
+/// A retained host keeps an exact count even in a marathon session: re-visiting
+/// an already-tracked host increments past the cap-eviction of new hosts.
+#[test]
+fn capped_session_keeps_exact_counts_for_retained_hosts() {
+    use browsing_graph_core::rollup::SESSION_HOST_CAP;
+    let mut events = Vec::new();
+    let mut id = 0u64;
+    let mut ts = 1_000.0;
+    // Closure captures nothing (all state passed in), so `events` stays free to
+    // borrow for `run_all` below.
+    let add = |events: &mut Vec<Event>, id: &mut u64, ts: &mut f64, url: &str| {
+        *id += 1;
+        *ts += 1_000.0;
+        events.push(nav(*id, *ts, 1, 1, url, "link", &[]));
+    };
+    // h000 visited three times, interleaved with enough distinct hosts to fill
+    // and overflow the cap.
+    add(&mut events, &mut id, &mut ts, "https://h000.com/");
+    for i in 1..(SESSION_HOST_CAP + 8) {
+        add(
+            &mut events,
+            &mut id,
+            &mut ts,
+            &format!("https://h{i:03}.com/"),
+        );
+    }
+    add(&mut events, &mut id, &mut ts, "https://h000.com/");
+    add(&mut events, &mut id, &mut ts, "https://h000.com/");
+
+    let (_, _, st) = run_all(&events);
+    let hc = &st.open_sessions[&1].host_counts;
+    assert_eq!(hc.len(), SESSION_HOST_CAP);
+    assert_eq!(hc.get("h000.com"), Some(&3), "retained host counts exactly");
+}
+
 /// Destructive-edit invalidation rebuilds identically: clearing the rollup +
 /// watermark and re-folding from scratch reproduces the original rollup.
 #[test]
