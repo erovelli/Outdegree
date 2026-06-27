@@ -42,17 +42,19 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         .map(|n| (n.key.as_str(), n.dwell_ms))
         .collect();
 
-    let mut html = String::new();
+    // Each analytic section builds into its category bucket; a category's divider
+    // header is emitted only when that bucket has content, so the view groups the
+    // depth (Overview / Key sites / Patterns / Communities / Reference) instead of
+    // presenting one long flat scroll. The range banner stays the page header.
+    let mut overview = String::new();
+    let mut key_sites = String::new();
+    let mut patterns = String::new();
+    let mut reference = String::new();
 
-    // ── range stats banner ───────────────────────────────────────────────────
-    html.push_str(&stats_html(&stats, a.time_range, delta, &series));
-
-    // ── activity (from the sessions overlapping the range) ───────────────────
-    html.push_str(&activity_html(&a.sessions, a.time_range));
-
-    // ── surging this period ──────────────────────────────────────────────────
+    // ── Overview: activity + surging ─────────────────────────────────────────
+    overview.push_str(&activity_html(&a.sessions, a.time_range));
     if !surging.is_empty() {
-        html.push_str(
+        overview.push_str(
             "<h3>Surging this period</h3>\
              <p class=\"muted tbl-sub\">sites you're visiting more than before</p>\
              <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Now</th>\
@@ -64,7 +66,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             } else {
                 format!("{:.0}×", sg.ratio())
             };
-            html.push_str(&format!(
+            overview.push_str(&format!(
                 "<tr><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
                 esc(&sg.host),
                 sg.now,
@@ -72,17 +74,11 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
                 esc(&mult)
             ));
         }
-        html.push_str("</table>");
+        overview.push_str("</table>");
     }
 
-    // ── frequent journeys (filled asynchronously below) ──────────────────────
-    html.push_str(
-        "<div id=\"bg-journeys\"><h3>Your common journeys</h3>\
-         <p class=\"muted\">Finding the multi-step paths you take most…</p></div>",
-    );
-
-    // ── top hubs (with time spent) ───────────────────────────────────────────
-    html.push_str(
+    // ── Key sites: hubs, launch/destinations, authorities, bridges ───────────
+    key_sites.push_str(
         "<h3>Top hubs (by weighted degree)</h3>\
          <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Degree</th>\
          <th class=\"num\">Time spent</th></tr>",
@@ -94,57 +90,96 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         } else {
             "—".to_string()
         };
-        html.push_str(&format!(
+        key_sites.push_str(&format!(
             "<tr><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
             esc(k),
             d,
             esc(&tcell)
         ));
     }
-    html.push_str("</table>");
+    key_sites.push_str("</table>");
 
-    // ── directional hubs: launch pads vs destinations ────────────────────────
-    html.push_str("<div class=\"tbl-pair\">");
-    html.push_str(&degree_table(
+    key_sites.push_str("<div class=\"tbl-pair\">");
+    key_sites.push_str(&degree_table(
         "Launch pads",
         "where journeys start (outbound)",
         &pads,
     ));
-    html.push_str(&degree_table(
+    key_sites.push_str(&degree_table(
         "Destinations",
         "where journeys end (inbound)",
         &dests,
     ));
-    html.push_str("</div>");
+    key_sites.push_str("</div>");
 
-    // ── browsing communities (Louvain) ───────────────────────────────────────
-    html.push_str(&communities_html(&a));
-
-    // ── where your searches went ─────────────────────────────────────────────
-    if !search_dest.is_empty() {
-        html.push_str(
-            "<h3>Where your searches went</h3>\
-             <table class=\"tbl\"><tr><th>Destination</th><th class=\"num\">From searches</th></tr>",
-        );
-        for (k, c) in &search_dest {
-            html.push_str(&format!(
-                "<tr><td>{}</td><td class=\"num\">{}</td></tr>",
-                esc(k),
-                c
-            ));
+    if !a.proj.edges.is_empty() {
+        if let Some((_, top)) = authorities.first().filter(|(_, r)| *r > 0.0) {
+            let top = *top;
+            key_sites.push_str(
+                "<h3>Authorities (PageRank)</h3>\
+                 <p class=\"muted tbl-sub\">sites your meaningful paths converge on</p>\
+                 <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
+            );
+            for (k, r) in authorities.iter().take(15) {
+                let rel = (r / top * 100.0).round() as u32;
+                key_sites.push_str(&format!(
+                    "<tr><td>{}</td><td class=\"num\">{rel}</td></tr>",
+                    esc(k)
+                ));
+            }
+            key_sites.push_str("</table>");
         }
-        html.push_str("</table>");
     }
 
-    // ── back-and-forth pairs ─────────────────────────────────────────────────
+    if !bridges.is_empty() {
+        if let Some((_, top)) = bridges.first() {
+            let top = top.max(1.0);
+            key_sites.push_str(
+                "<h3>Bridge sites</h3>\
+                 <p class=\"muted tbl-sub\">gateways between your browsing communities</p>\
+                 <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
+            );
+            for (k, b) in &bridges {
+                let rel = (b / top * 100.0).round() as u32;
+                key_sites.push_str(&format!(
+                    "<tr><td>{}</td><td class=\"num\">{rel}</td></tr>",
+                    esc(k)
+                ));
+            }
+            key_sites.push_str("</table>");
+        }
+    }
+
+    // ── Patterns: journeys, next-hop, back-and-forth, searches ───────────────
+    // The journeys block keeps its id so spawn_journeys fills it asynchronously.
+    patterns.push_str(
+        "<div id=\"bg-journeys\"><h3>Your common journeys</h3>\
+         <p class=\"muted\">Finding the multi-step paths you take most…</p></div>",
+    );
+    if !next_hops.is_empty() {
+        patterns.push_str(
+            "<h3>Where you usually go next</h3>\
+             <p class=\"muted tbl-sub\">your most predictable next step from a site</p>\
+             <table class=\"tbl\"><tr><th>From</th><th>Usually →</th><th class=\"num\">Share</th></tr>",
+        );
+        for h in &next_hops {
+            let pct = (h.share * 100.0).round() as u32;
+            patterns.push_str(&format!(
+                "<tr><td>{}</td><td>{}</td><td class=\"num\">{pct}%</td></tr>",
+                esc(&h.from),
+                esc(&h.to)
+            ));
+        }
+        patterns.push_str("</table>");
+    }
     if !reciprocal.is_empty() {
-        html.push_str(
+        patterns.push_str(
             "<h3>Back-and-forth</h3>\
              <p class=\"muted tbl-sub\">sites you bounce between (both directions)</p>\
              <table class=\"tbl\"><tr><th>Pair</th><th class=\"num\">→</th><th class=\"num\">←</th></tr>",
         );
         for r in &reciprocal {
-            html.push_str(&format!(
+            patterns.push_str(&format!(
                 "<tr><td>{} ⇄ {}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
                 esc(&r.a),
                 esc(&r.b),
@@ -152,74 +187,31 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
                 r.ba
             ));
         }
-        html.push_str("</table>");
+        patterns.push_str("</table>");
     }
-
-    // ── bridge sites (cross-community betweenness) ───────────────────────────
-    if !bridges.is_empty() {
-        if let Some((_, top)) = bridges.first() {
-            let top = top.max(1.0);
-            html.push_str(
-                "<h3>Bridge sites</h3>\
-                 <p class=\"muted tbl-sub\">gateways between your browsing communities</p>\
-                 <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
-            );
-            for (k, b) in &bridges {
-                let rel = (b / top * 100.0).round() as u32;
-                html.push_str(&format!(
-                    "<tr><td>{}</td><td class=\"num\">{rel}</td></tr>",
-                    esc(k)
-                ));
-            }
-            html.push_str("</table>");
-        }
-    }
-
-    // ── authorities (PageRank) ───────────────────────────────────────────────
-    // Only meaningful with edges; scores shown relative to the top (raw PageRank
-    // values ~0.003 read poorly beside the integer-degree tables).
-    if !a.proj.edges.is_empty() {
-        if let Some((_, top)) = authorities.first().filter(|(_, r)| *r > 0.0) {
-            let top = *top;
-            html.push_str(
-                "<h3>Authorities (PageRank)</h3>\
-                 <p class=\"muted tbl-sub\">sites your meaningful paths converge on</p>\
-                 <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
-            );
-            for (k, r) in authorities.iter().take(15) {
-                let rel = (r / top * 100.0).round() as u32;
-                html.push_str(&format!(
-                    "<tr><td>{}</td><td class=\"num\">{rel}</td></tr>",
-                    esc(k)
-                ));
-            }
-            html.push_str("</table>");
-        }
-    }
-
-    // ── where you usually go next ────────────────────────────────────────────
-    if !next_hops.is_empty() {
-        html.push_str(
-            "<h3>Where you usually go next</h3>\
-             <p class=\"muted tbl-sub\">your most predictable next step from a site</p>\
-             <table class=\"tbl\"><tr><th>From</th><th>Usually →</th><th class=\"num\">Share</th></tr>",
+    if !search_dest.is_empty() {
+        patterns.push_str(
+            "<h3>Where your searches went</h3>\
+             <table class=\"tbl\"><tr><th>Destination</th><th class=\"num\">From searches</th></tr>",
         );
-        for h in &next_hops {
-            let pct = (h.share * 100.0).round() as u32;
-            html.push_str(&format!(
-                "<tr><td>{}</td><td>{}</td><td class=\"num\">{pct}%</td></tr>",
-                esc(&h.from),
-                esc(&h.to)
+        for (k, c) in &search_dest {
+            patterns.push_str(&format!(
+                "<tr><td>{}</td><td class=\"num\">{}</td></tr>",
+                esc(k),
+                c
             ));
         }
-        html.push_str("</table>");
+        patterns.push_str("</table>");
     }
 
-    // ── top edges ────────────────────────────────────────────────────────────
-    html.push_str("<h3>Top edges (by weight)</h3>\
+    // ── Communities (its own group; may be empty) ────────────────────────────
+    let communities = communities_html(&a);
+
+    // ── Reference: top edges, origination ────────────────────────────────────
+    reference.push_str("<h3>Top edges (by weight)</h3>\
         <table class=\"tbl\"><tr><th>From</th><th>To</th><th class=\"num\">Weight</th><th>Kind</th></tr>");
     for e in &edges {
-        html.push_str(&format!(
+        reference.push_str(&format!(
             "<tr><td>{}</td><td>{}</td><td class=\"num\">{}</td><td>{:?}</td></tr>",
             esc(&e.from),
             esc(&e.to),
@@ -227,10 +219,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             e.kinds.dominant()
         ));
     }
-    html.push_str("</table>");
-
-    // ── origination ──────────────────────────────────────────────────────────
-    html.push_str(
+    reference.push_str("</table>");
+    reference.push_str(
         "<h3>Origination (how pages were reached)</h3>\
         <table class=\"tbl\"><tr><th>Provenance</th><th class=\"num\">Count</th></tr>",
     );
@@ -244,11 +234,27 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         ("Reload", prov.reload),
         ("Other", prov.other),
     ] {
-        html.push_str(&format!(
+        reference.push_str(&format!(
             "<tr><td>{name}</td><td class=\"num\">{count}</td></tr>"
         ));
     }
-    html.push_str("</table>");
+    reference.push_str("</table>");
+
+    // Assemble: page header, then each non-empty category under its divider.
+    let mut html = String::new();
+    html.push_str(&stats_html(&stats, a.time_range, delta, &series));
+    for (title, body_html) in [
+        ("Overview", &overview),
+        ("Key sites", &key_sites),
+        ("Patterns", &patterns),
+        ("Communities", &communities),
+        ("Reference", &reference),
+    ] {
+        if !body_html.is_empty() {
+            html.push_str(&group(title));
+            html.push_str(body_html);
+        }
+    }
 
     body.set_inner_html(&html);
     drop(a);
@@ -338,6 +344,11 @@ fn sparkline_html(series: &[(String, u32)]) -> String {
          <polyline points=\"{}\" fill=\"none\"/><circle cx=\"{lx}\" cy=\"{ly}\" r=\"2.5\"/></svg></div>",
         pts.join(" ")
     )
+}
+
+/// A category divider between groups of sections in the Tables view.
+fn group(title: &str) -> String {
+    format!("<h2 class=\"tbl-group\">{title}</h2>")
 }
 
 fn range_label(range: TimeRange) -> &'static str {

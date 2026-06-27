@@ -357,6 +357,14 @@ a { color: var(--text-primary); }
   font-size: 19px; font-weight: 600; margin: 4px 0 14px; letter-spacing: -0.01em;
 }
 .mode-data h3 { font-size: 14px; font-weight: 600; margin: 26px 0 4px; }
+/* Category dividers grouping the analytic sections (Overview / Key sites / …). */
+.mode-data h2.tbl-group {
+  font: 11px var(--mono); text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--text-muted); font-weight: 600;
+  margin: 40px 0 2px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--toolbar-divider);
+}
+.mode-data h2.tbl-group + h3 { margin-top: 14px; }
 .stat-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 4px; }
 .stat-card {
   min-width: 132px; padding: 12px 16px; border-radius: 10px;
