@@ -214,7 +214,9 @@ fn convex_hull(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
 }
 
 /// Soft achromatic backdrop hull per multi-node community, expanded outward from
-/// its centroid so member nodes sit comfortably inside.
+/// its centroid so member nodes sit comfortably inside, captioned with the
+/// community's busiest member host (an achromatic name, since communities never
+/// get a hue — only the layout + hull + this label distinguish them).
 fn draw_community_hulls(
     ctx: &CanvasRenderingContext2d,
     w: f64,
@@ -225,19 +227,26 @@ fn draw_community_hulls(
     communities: &HashMap<String, usize>,
 ) {
     let mut groups: HashMap<usize, Vec<(f64, f64)>> = HashMap::new();
+    // Busiest (most-visited) positioned member per community → the hull's caption.
+    let mut top_member: HashMap<usize, (&str, u32)> = HashMap::new();
     for n in &proj.nodes {
         if let (Some(&c), Some(p)) = (communities.get(&n.key), pos.get(&n.key)) {
             groups.entry(c).or_default().push(cam.project(p, w, h));
+            top_member
+                .entry(c)
+                .and_modify(|best| {
+                    if n.visits > best.1 || (n.visits == best.1 && n.key.as_str() < best.0) {
+                        *best = (n.key.as_str(), n.visits);
+                    }
+                })
+                .or_insert((n.key.as_str(), n.visits));
         }
     }
     // Deterministic draw order (community id) so overlapping fills are stable.
     let mut ids: Vec<usize> = groups.keys().copied().collect();
     ids.sort_unstable();
-    set_fill(ctx, HULL_FILL);
-    set_stroke(ctx, HULL_STROKE);
-    ctx.set_line_width(1.0);
-    set_dash(ctx, &[]);
     let pad = (24.0 * cam.scale).clamp(14.0, 40.0);
+    let label_px = (12.0 * cam.scale).clamp(9.0, 15.0);
     for id in ids {
         let members = &groups[&id];
         if members.len() < 3 {
@@ -254,11 +263,17 @@ fn draw_community_hulls(
         }
         cx /= hull.len() as f64;
         cy /= hull.len() as f64;
+        set_fill(ctx, HULL_FILL);
+        set_stroke(ctx, HULL_STROKE);
+        ctx.set_line_width(1.0);
+        set_dash(ctx, &[]);
         ctx.begin_path();
+        let mut top_y = f64::INFINITY;
         for (i, &(x, y)) in hull.iter().enumerate() {
             let (dx, dy) = (x - cx, y - cy);
             let d = (dx * dx + dy * dy).sqrt().max(1e-3);
             let (ex, ey) = (x + dx / d * pad, y + dy / d * pad);
+            top_y = top_y.min(ey);
             if i == 0 {
                 ctx.move_to(ex, ey);
             } else {
@@ -268,6 +283,18 @@ fn draw_community_hulls(
         ctx.close_path();
         ctx.fill();
         ctx.stroke();
+
+        // Caption above the hull (drawn before nodes, so place it in the clear
+        // band above the cluster rather than over the members at the centroid).
+        if let Some((host, _)) = top_member.get(&id) {
+            ctx.set_font(&format!("600 {label_px:.0}px {MONO}"));
+            ctx.set_text_align("center");
+            ctx.set_text_baseline("alphabetic");
+            set_fill(ctx, LABEL);
+            ctx.set_global_alpha(0.75);
+            let _ = ctx.fill_text(&clip(host, 22), cx, top_y - 6.0);
+            ctx.set_global_alpha(1.0);
+        }
     }
 }
 
