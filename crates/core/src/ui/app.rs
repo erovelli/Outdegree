@@ -626,6 +626,24 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
         });
     }
 
+    // Opt-in, default off: surface search terms parsed from already-captured
+    // result URLs. Reflects the persisted choice and writes it back on change.
+    let (search_row, search_input) =
+        menu_toggle(doc, "Show search terms", shared.borrow().show_searches);
+    {
+        let s = shared.clone();
+        on(&search_input, "change", move |ev| {
+            let c = ev
+                .target()
+                .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+                .map(|i| i.checked())
+                .unwrap_or(false);
+            s.borrow_mut().show_searches = c;
+            crate::bridge::storage_local_set("showSearches", if c { "true" } else { "false" });
+            super::reload_searches(&s);
+        });
+    }
+
     let raw = menu_btn(doc, "Raw events");
     {
         let s = shared.clone();
@@ -832,6 +850,7 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
     }
 
     let _ = pop.append_child(&spa_row);
+    let _ = pop.append_child(&search_row);
     let sep = el(doc, "div");
     let _ = sep.set_attribute("class", "menu-sep");
     let _ = pop.append_child(&sep);

@@ -204,6 +204,24 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         }
         patterns.push_str("</table>");
     }
+    // Opt-in only (default off): the actual search terms, parsed from already-
+    // captured result URLs. Achromatic text — search terms get no data hue.
+    if a.show_searches && !a.searches.is_empty() {
+        patterns.push_str(
+            "<h3>Top search terms</h3>\
+             <p class=\"muted tbl-sub\">parsed from your search-result URLs (opt-in)</p>\
+             <table class=\"tbl\"><tr><th>Query</th><th>Engine</th><th class=\"num\">Times</th></tr>",
+        );
+        for sc in &a.searches {
+            patterns.push_str(&format!(
+                "<tr><td>{}</td><td>{}</td><td class=\"num\">{}</td></tr>",
+                esc(&sc.terms),
+                esc(&sc.engine),
+                sc.count
+            ));
+        }
+        patterns.push_str("</table>");
+    }
 
     // ── Communities (its own group; may be empty) ────────────────────────────
     let communities = communities_html(&a);
