@@ -13,7 +13,7 @@ declare global {
 export interface ChromeBridge {
   storageLocalGet: (k: string) => Promise<string | null>;
   storageLocalSet: (k: string, v: string) => void;
-  downloadJson: (name: string, json: string) => void;
+  downloadText: (name: string, mime: string, body: string) => void;
 }
 
 const chromeBridge: ChromeBridge = {
@@ -26,8 +26,8 @@ const chromeBridge: ChromeBridge = {
 
   // Export = a Blob written to the user's disk via an object URL. A *download*,
   // never an upload — the only path by which data leaves the extension (§7.8).
-  downloadJson: (name: string, json: string) => {
-    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+  downloadText: (name: string, mime: string, body: string) => {
+    const url = URL.createObjectURL(new Blob([body], { type: mime }));
     const a = document.createElement("a");
     a.href = url;
     a.download = name;

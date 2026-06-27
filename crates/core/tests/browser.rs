@@ -98,7 +98,7 @@ async fn bridge_externs_resolve() {
         globalThis.chromeBridge = {
             storageLocalGet: (k) => Promise.resolve(k === 'paused' ? 'true' : null),
             storageLocalSet: (k, v) => { globalThis.__calls.push('set:' + k + '=' + v); },
-            downloadJson: (name, json) => { globalThis.__calls.push('dl:' + name + ':' + json.length); },
+            downloadText: (name, mime, body) => { globalThis.__calls.push('dl:' + name + ':' + body.length); },
         };
         "#,
     )

@@ -3,7 +3,8 @@
 //! destinations, browsing communities (Louvain), where-searches-went, top edges,
 //! origination, and a raw event stream (M1).
 
-use super::{body_container, empty_body_html, esc, fmt_dwell, plural, Shared};
+use super::{body_container, empty_body_html, esc, fmt_dwell, plural, App, Shared};
+use crate::export::csv_line;
 use crate::graph;
 use crate::model::Event;
 use crate::project::{self, TimeRange};
@@ -614,6 +615,155 @@ fn journeys_html(journeys: &[(Vec<String>, u32)], capped: bool, total: usize) ->
     }
     h.push_str("</table>");
     h
+}
+
+/// Assemble the current projection's synchronous tables into one multi-section
+/// CSV document (the async journeys/activity panes are omitted). Each section is a
+/// title line, a header row, then data rows — practical for spreadsheets. Pure
+/// string building over data already in memory; downloaded via the Blob sink.
+pub(crate) fn tables_csv(a: &App) -> String {
+    let g = graph::build(&a.proj);
+    let hubs = graph::hubs(&g, 10_000);
+    let (pads, dests) = graph::directional_hubs(&g, 10_000);
+    let edges = graph::top_edges(&a.proj, 10_000);
+    let prov = project::origination(&a.buckets);
+    let stats = project::range_stats(&a.buckets, a.time_range);
+    let search_dest = graph::search_destinations(&a.proj, 10_000);
+    let next_hops = graph::next_hops(&a.proj, 4, 10_000);
+    let authorities = graph::pagerank(&a.proj, 0.85, 40);
+    let bridges = graph::bridges(&a.proj, 10_000);
+    let reciprocal = graph::reciprocal_pairs(&a.proj, 10_000);
+    let surging = project::surging_hosts(&a.buckets, a.time_range, 3, 10_000);
+    let dwell: HashMap<&str, u64> = a
+        .proj
+        .nodes
+        .iter()
+        .map(|n| (n.key.as_str(), n.dwell_ms))
+        .collect();
+
+    let mut out = String::new();
+    // Both helpers append to `out`; as macros (not closures) they avoid holding a
+    // persistent mutable borrow that would conflict between section and row writes.
+    macro_rules! section {
+        ($title:expr, $header:expr $(,)?) => {{
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str($title);
+            out.push('\n');
+            out.push_str(&csv_line($header));
+            out.push('\n');
+        }};
+    }
+    macro_rules! row {
+        ($($f:expr),+ $(,)?) => {{
+            out.push_str(&csv_line(&[$($f),+]));
+            out.push('\n');
+        }};
+    }
+
+    section!("Range summary", &["Metric", "Value"]);
+    let (wh, wv, nh) = (
+        stats.window_hosts.to_string(),
+        stats.window_visits.to_string(),
+        stats.new_hosts.to_string(),
+    );
+    let rr = format!("{}%", (stats.revisit_rate * 100.0).round() as u32);
+    row!("Range", range_label(a.time_range));
+    row!("Sites", &wh);
+    row!("Visits", &wv);
+    row!("Newly discovered", &nh);
+    row!("Revisit rate", &rr);
+
+    section!("Top hubs", &["Host", "Degree", "Dwell (ms)"]);
+    for (k, d) in &hubs {
+        let d = d.to_string();
+        let t = dwell.get(k.as_str()).copied().unwrap_or(0).to_string();
+        row!(k, &d, &t);
+    }
+
+    section!("Launch pads", &["Host", "Outbound"]);
+    for (k, d) in &pads {
+        let d = d.to_string();
+        row!(k, &d);
+    }
+    section!("Destinations", &["Host", "Inbound"]);
+    for (k, d) in &dests {
+        let d = d.to_string();
+        row!(k, &d);
+    }
+
+    if let Some((_, top)) = authorities.first().filter(|(_, r)| *r > 0.0) {
+        let top = *top;
+        section!("Authorities (PageRank)", &["Host", "Score"]);
+        for (k, r) in authorities.iter().take(50) {
+            let s = ((r / top) * 100.0).round().to_string();
+            row!(k, &s);
+        }
+    }
+    if let Some((_, top)) = bridges.first() {
+        let top = top.max(1.0);
+        section!("Bridge sites", &["Host", "Score"]);
+        for (k, b) in &bridges {
+            let s = ((b / top) * 100.0).round().to_string();
+            row!(k, &s);
+        }
+    }
+
+    if !surging.is_empty() {
+        section!("Surging this period", &["Host", "Now", "Before"]);
+        for sg in &surging {
+            let (n, p) = (sg.now.to_string(), sg.prev.to_string());
+            row!(&sg.host, &n, &p);
+        }
+    }
+    if !next_hops.is_empty() {
+        section!("Where you usually go next", &["From", "To", "Share %"]);
+        for h in &next_hops {
+            let pct = ((h.share) * 100.0).round().to_string();
+            row!(&h.from, &h.to, &pct);
+        }
+    }
+    if !reciprocal.is_empty() {
+        section!("Back-and-forth", &["A", "B", "A→B", "B→A"]);
+        for r in &reciprocal {
+            let (ab, ba) = (r.ab.to_string(), r.ba.to_string());
+            row!(&r.a, &r.b, &ab, &ba);
+        }
+    }
+    if !search_dest.is_empty() {
+        section!(
+            "Where your searches went",
+            &["Destination", "From searches"],
+        );
+        for (k, c) in &search_dest {
+            let c = c.to_string();
+            row!(k, &c);
+        }
+    }
+
+    section!("Top edges", &["From", "To", "Weight", "Kind"]);
+    for e in &edges {
+        let (w, kind) = (e.weight.to_string(), format!("{:?}", e.kinds.dominant()));
+        row!(&e.from, &e.to, &w, &kind);
+    }
+
+    section!("Origination", &["Provenance", "Count"]);
+    for (name, count) in [
+        ("Link", prov.link),
+        ("Form", prov.form),
+        ("Typed URL", prov.typed_url),
+        ("Search origin", prov.search_origin),
+        ("Bookmark", prov.bookmark),
+        ("External", prov.start),
+        ("Reload", prov.reload),
+        ("Other", prov.other),
+    ] {
+        let c = count.to_string();
+        row!(name, &c);
+    }
+
+    out
 }
 
 /// Raw event stream (M1) — a bounded read (first 1000) plus a total count, so the
