@@ -28,6 +28,30 @@ pub(crate) fn build_shell(shared: &Shared) -> Result<(), JsValue> {
     let _ = body.set_attribute("id", "bg-body");
     let _ = body.set_attribute("class", "bg-body mode-graph");
     let _ = root.append_child(&body);
+    // Delegated: clicking a host cell in any table jumps to the Graph view focused
+    // on that host. One listener on the persistent #bg-body survives the innerHTML
+    // rebuilds the table views do.
+    {
+        let s = shared.clone();
+        on(&body, "click", move |ev| {
+            let host = ev
+                .target()
+                .and_then(|t| t.dyn_into::<Element>().ok())
+                .and_then(|e| e.closest("[data-host]").ok().flatten())
+                .and_then(|h| h.get_attribute("data-host"));
+            let Some(host) = host else { return };
+            {
+                let mut a = s.borrow_mut();
+                if !a.proj.nodes.iter().any(|n| n.key == host) {
+                    return; // host filtered out of the current projection
+                }
+                a.view = View::Graph;
+            }
+            // No canvas is mounted in table mode yet, so focus_and_animate falls
+            // back to a full re-render that builds the graph already focused.
+            super::focus_and_animate(&s, Some(host));
+        });
+    }
 
     let _ = root.append_child(&brand_panel(&doc, shared));
     let _ = root.append_child(&range_panel(&doc, shared));

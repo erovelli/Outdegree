@@ -67,8 +67,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
                 format!("{:.0}×", sg.ratio())
             };
             overview.push_str(&format!(
-                "<tr><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
-                esc(&sg.host),
+                "<tr>{}<td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
+                host_td(&sg.host),
                 sg.now,
                 sg.prev,
                 esc(&mult)
@@ -91,8 +91,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             "—".to_string()
         };
         key_sites.push_str(&format!(
-            "<tr><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
-            esc(k),
+            "<tr>{}<td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
+            host_td(k),
             d,
             esc(&tcell)
         ));
@@ -123,8 +123,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             for (k, r) in authorities.iter().take(15) {
                 let rel = (r / top * 100.0).round() as u32;
                 key_sites.push_str(&format!(
-                    "<tr><td>{}</td><td class=\"num\">{rel}</td></tr>",
-                    esc(k)
+                    "<tr>{}<td class=\"num\">{rel}</td></tr>",
+                    host_td(k)
                 ));
             }
             key_sites.push_str("</table>");
@@ -142,8 +142,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             for (k, b) in &bridges {
                 let rel = (b / top * 100.0).round() as u32;
                 key_sites.push_str(&format!(
-                    "<tr><td>{}</td><td class=\"num\">{rel}</td></tr>",
-                    esc(k)
+                    "<tr>{}<td class=\"num\">{rel}</td></tr>",
+                    host_td(k)
                 ));
             }
             key_sites.push_str("</table>");
@@ -165,9 +165,9 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         for h in &next_hops {
             let pct = (h.share * 100.0).round() as u32;
             patterns.push_str(&format!(
-                "<tr><td>{}</td><td>{}</td><td class=\"num\">{pct}%</td></tr>",
-                esc(&h.from),
-                esc(&h.to)
+                "<tr>{}{}<td class=\"num\">{pct}%</td></tr>",
+                host_td(&h.from),
+                host_td(&h.to)
             ));
         }
         patterns.push_str("</table>");
@@ -181,8 +181,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         for r in &reciprocal {
             patterns.push_str(&format!(
                 "<tr><td>{} ⇄ {}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
-                esc(&r.a),
-                esc(&r.b),
+                host_span(&r.a),
+                host_span(&r.b),
                 r.ab,
                 r.ba
             ));
@@ -196,8 +196,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         );
         for (k, c) in &search_dest {
             patterns.push_str(&format!(
-                "<tr><td>{}</td><td class=\"num\">{}</td></tr>",
-                esc(k),
+                "<tr>{}<td class=\"num\">{}</td></tr>",
+                host_td(k),
                 c
             ));
         }
@@ -212,9 +212,9 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         <table class=\"tbl\"><tr><th>From</th><th>To</th><th class=\"num\">Weight</th><th>Kind</th></tr>");
     for e in &edges {
         reference.push_str(&format!(
-            "<tr><td>{}</td><td>{}</td><td class=\"num\">{}</td><td>{:?}</td></tr>",
-            esc(&e.from),
-            esc(&e.to),
+            "<tr>{}{}<td class=\"num\">{}</td><td>{:?}</td></tr>",
+            host_td(&e.from),
+            host_td(&e.to),
             e.weight,
             e.kinds.dominant()
         ));
@@ -351,6 +351,20 @@ fn group(title: &str) -> String {
     format!("<h2 class=\"tbl-group\">{title}</h2>")
 }
 
+/// A host table cell tagged for click-to-focus: clicking it jumps to the Graph
+/// view focused on that host (a delegated listener on #bg-body reads `data-host`).
+fn host_td(host: &str) -> String {
+    let h = esc(host);
+    format!("<td class=\"host-cell\" data-host=\"{h}\">{h}</td>")
+}
+
+/// Inline host span variant for cells that list several hosts (pairs, community
+/// members), so each name is independently clickable.
+fn host_span(host: &str) -> String {
+    let h = esc(host);
+    format!("<span class=\"host-cell\" data-host=\"{h}\">{h}</span>")
+}
+
 fn range_label(range: TimeRange) -> &'static str {
     match range {
         TimeRange::Session => "This session",
@@ -416,7 +430,7 @@ fn communities_html(a: &super::App) -> String {
         let top = m
             .iter()
             .take(5)
-            .map(|s| esc(s))
+            .map(|s| host_span(s))
             .collect::<Vec<_>>()
             .join(", ");
         let more = if m.len() > 5 {

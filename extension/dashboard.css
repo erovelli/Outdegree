@@ -397,6 +397,12 @@ a { color: var(--text-primary); }
 .tbl-pair { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
 .tbl-col { flex: 1 1 260px; min-width: 240px; }
 .tbl-col table.tbl { max-width: none; }
+/* Host cells jump to the graph focused on that site. */
+.host-cell { cursor: pointer; }
+td.host-cell:hover, span.host-cell:hover {
+  color: var(--text-primary); text-decoration: underline;
+  text-decoration-color: var(--text-faint); text-underline-offset: 2px;
+}
 
 /* session picker (two-pane) + sankey */
 .sp-flow h3, .sp-list h3 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
