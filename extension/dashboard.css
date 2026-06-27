@@ -520,6 +520,28 @@ td.host-cell:hover, span.host-cell:hover {
 .modal-confirm.danger { background: oklch(0.58 0.19 18); color: #fff; }
 .modal-confirm.danger:hover { background: oklch(0.64 0.21 18); }
 
+/* saved views manager */
+.modal-saverow { display: flex; gap: 8px; }
+.modal-saverow .modal-input { flex: 1 1 auto; }
+.modal-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.modal-empty { font: 12px var(--mono); color: var(--text-tertiary); padding: 6px 2px; }
+.modal-list-row { display: flex; gap: 6px; align-items: stretch; }
+.modal-list-apply {
+  appearance: none; cursor: pointer; flex: 1 1 auto; text-align: left;
+  font: 12px var(--mono); color: var(--text-secondary);
+  padding: 8px 11px; border-radius: 8px;
+  background: oklch(1 0 0 / 0.04); border: 1px solid var(--toolbar-divider);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.modal-list-apply:hover { background: oklch(1 0 0 / 0.09); color: var(--text-primary); }
+.modal-list-del {
+  appearance: none; cursor: pointer; flex: 0 0 auto; width: 34px;
+  font: 12px var(--mono); color: var(--text-tertiary);
+  border-radius: 8px; background: oklch(1 0 0 / 0.04);
+  border: 1px solid var(--toolbar-divider);
+}
+.modal-list-del:hover { background: oklch(0.58 0.19 18 / 0.25); color: var(--text-primary); }
+
 /* empty / loading states */
 .bg-empty {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
