@@ -9,8 +9,8 @@ extern "C" {
     fn storage_local_get_js(key: &str) -> js_sys::Promise;
     #[wasm_bindgen(js_namespace = chromeBridge, js_name = storageLocalSet)]
     fn storage_local_set_js(key: &str, val: &str);
-    #[wasm_bindgen(js_namespace = chromeBridge, js_name = downloadJson)]
-    fn download_json_js(name: &str, json: &str);
+    #[wasm_bindgen(js_namespace = chromeBridge, js_name = downloadText)]
+    fn download_text_js(name: &str, mime: &str, body: &str);
 }
 
 /// Read a string value from `chrome.storage.local` (SW-owned).
@@ -25,10 +25,15 @@ pub fn storage_local_set(key: &str, val: &str) {
     storage_local_set_js(key, val);
 }
 
-/// Trigger a local-file download of `json` named `name`. A *download*, never an
-/// upload (§7.8 / §12.1).
+/// Trigger a local-file download of `body` (named `name`, MIME `mime`). A
+/// *download*, never an upload (§7.8 / §12.1).
+pub fn download_text(name: &str, mime: &str, body: &str) {
+    download_text_js(name, mime, body);
+}
+
+/// Convenience for the JSON export path.
 pub fn download_json(name: &str, json: &str) {
-    download_json_js(name, json);
+    download_text(name, "application/json", json);
 }
 
 /// Dashboard entry point (called from `dashboard.ts` after the SW readiness ack).

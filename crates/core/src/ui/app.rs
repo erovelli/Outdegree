@@ -651,6 +651,16 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
         });
     }
 
+    let export_csv = menu_btn(doc, "Export tables (CSV)");
+    {
+        let s = shared.clone();
+        on(&export_csv, "click", move |_| {
+            close_popover(&s);
+            let csv = super::tables::tables_csv(&s.borrow());
+            crate::bridge::download_text("outdegree-tables.csv", "text/csv", &csv);
+        });
+    }
+
     let import = menu_btn(doc, "Import JSON");
     {
         let s = shared.clone();
@@ -800,6 +810,7 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
     let _ = pop.append_child(&sep);
     let _ = pop.append_child(&raw);
     let _ = pop.append_child(&export);
+    let _ = pop.append_child(&export_csv);
     let _ = pop.append_child(&import);
     let _ = pop.append_child(&forget);
     let _ = pop.append_child(&delete);
