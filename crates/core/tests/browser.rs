@@ -151,3 +151,21 @@ fn fit_frames_nodes() {
     assert!((cy - h / 2.0).abs() < 1e-6, "y not centered: {cy}");
     assert!(cam.scale > 0.0 && cam.scale <= 3.0);
 }
+
+/// The viewport-cull predicate keeps on-screen and edge-peeking markers and
+/// rejects ones fully outside the canvas + margin.
+#[wasm_bindgen_test]
+fn in_viewport_culls_offscreen() {
+    use browsing_graph_core::render::canvas2d::in_viewport;
+    let (w, h, m) = (800.0, 600.0, 96.0);
+    // Dead center → visible.
+    assert!(in_viewport(400.0, 300.0, 10.0, w, h, m));
+    // Just off the right edge but within margin → still drawn.
+    assert!(in_viewport(w + 50.0, 300.0, 10.0, w, h, m));
+    // A big node whose center is off-screen but whose radius reaches in → drawn.
+    assert!(in_viewport(w + 120.0, 300.0, 60.0, w, h, m));
+    // Far past the margin → culled.
+    assert!(!in_viewport(w + 200.0, 300.0, 10.0, w, h, m));
+    assert!(!in_viewport(-200.0, 300.0, 10.0, w, h, m));
+    assert!(!in_viewport(400.0, -200.0, 10.0, w, h, m));
+}
