@@ -81,13 +81,17 @@ pub struct OpenSession {
     pub host_counts: HashMap<String, u32>,
 }
 
+/// Upper bound on the number of distinct hosts tracked per open session. A
+/// marathon session (left open for days, touching thousands of hosts) would
+/// otherwise grow `host_counts` — and therefore the persisted `DeriveState`
+/// checkpoint — without bound. 64 is far above the 5 surfaced in `to_record`, so
+/// the displayed top-hosts are unaffected in practice; only the long tail of
+/// once-seen hosts in an unusually broad session is dropped.
+pub const SESSION_HOST_CAP: usize = 64;
+
 impl OpenSession {
     pub(crate) fn open(id: f64, window_id: i64, ts: f64, first_key: Option<String>) -> Self {
-        let mut host_counts = HashMap::new();
-        if let Some(k) = first_key {
-            host_counts.insert(k, 1);
-        }
-        OpenSession {
+        let mut s = OpenSession {
             id,
             window_id,
             start_ts: ts,
@@ -95,7 +99,26 @@ impl OpenSession {
             last_ts: ts,
             end_id: id,
             nav_count: 1,
-            host_counts,
+            host_counts: HashMap::new(),
+        };
+        if let Some(k) = first_key {
+            s.bump_host(k);
+        }
+        s
+    }
+
+    /// Record one more visit to `key` within this session, keeping `host_counts`
+    /// bounded to [`SESSION_HOST_CAP`] distinct hosts. An already-tracked host
+    /// always increments (exact count retained); a brand-new host is added only
+    /// while there's room, and dropped once the cap is reached. Applied per-event
+    /// in global id order, so the result is identical whether the session is built
+    /// by an incremental fold or a from-scratch recompute (the fold == recompute
+    /// invariant, §11).
+    pub(crate) fn bump_host(&mut self, key: String) {
+        if let Some(c) = self.host_counts.get_mut(&key) {
+            *c += 1;
+        } else if self.host_counts.len() < SESSION_HOST_CAP {
+            self.host_counts.insert(key, 1);
         }
     }
 

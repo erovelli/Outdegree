@@ -286,7 +286,7 @@ fn update_session(
                 s.nav_count += 1;
                 s.end_id = id;
                 if let Some(k) = key {
-                    *s.host_counts.entry(k).or_insert(0) += 1;
+                    s.bump_host(k);
                 }
             }
         }
