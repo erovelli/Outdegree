@@ -15,6 +15,7 @@ pub mod layout;
 pub mod model;
 pub mod project;
 pub mod rollup;
+pub mod search;
 pub mod svg;
 pub mod views;
 

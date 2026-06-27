@@ -103,6 +103,12 @@ pub(crate) struct App {
     /// Guards against overlapping live-refresh folds (rollups merge, so a double
     /// fold of the same events would double-count).
     pub refreshing: bool,
+    /// Opt-in (default off): parse search terms from already-captured result URLs
+    /// and surface them in a Tables section. Off by default because search terms
+    /// are sensitive; persisted under the "showSearches" storage key.
+    pub show_searches: bool,
+    /// Aggregated top search terms, populated only while `show_searches` is on.
+    pub searches: Vec<crate::search::SearchCount>,
 }
 
 pub(crate) type Shared = Rc<RefCell<App>>;
@@ -145,6 +151,10 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         .await
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
+    let show_searches = crate::bridge::storage_local_get("showSearches")
+        .await
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
 
     let app = App {
         db,
@@ -184,6 +194,8 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         resize_hooked: false,
         live_hooked: false,
         refreshing: false,
+        show_searches,
+        searches: Vec::new(),
     };
     let shared: Shared = Rc::new(RefCell::new(app));
 
@@ -194,6 +206,10 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
     install_live_refresh(&shared);
     // Warm the Session-range buckets so switching to "Session" is instant.
     refresh_session_buckets(&shared);
+    // If the user previously opted in, warm the search-term aggregation too.
+    if shared.borrow().show_searches {
+        reload_searches(&shared);
+    }
     Ok(())
 }
 
@@ -522,6 +538,32 @@ pub(crate) fn reload_buckets(shared: &Shared) {
         };
         s.borrow_mut().buckets = buckets;
         recompute_projection(&s);
+        let _ = rerender(&s);
+    });
+}
+
+/// Recompute the opt-in search-term aggregation from already-captured event URLs
+/// and rerender. Clears the list (and rerenders) when the toggle is off. No new
+/// capture, no network — it only reads URLs already in the event store.
+pub(crate) fn reload_searches(shared: &Shared) {
+    let s = shared.clone();
+    let db = shared.borrow().db.clone();
+    let on = shared.borrow().show_searches;
+    wasm_bindgen_futures::spawn_local(async move {
+        let searches = if on {
+            let events = db.read_events_after(0.0).await.unwrap_or_default();
+            let urls: Vec<String> = events
+                .into_iter()
+                .filter_map(|e| match e {
+                    crate::model::Event::Nav { to_url, .. } => Some(to_url),
+                    _ => None,
+                })
+                .collect();
+            crate::search::top_searches(&urls, 20)
+        } else {
+            Vec::new()
+        };
+        s.borrow_mut().searches = searches;
         let _ = rerender(&s);
     });
 }
