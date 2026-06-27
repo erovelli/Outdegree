@@ -4,10 +4,12 @@
 use crate::interpret::registrable;
 use crate::model::{EdgeAgg, Granularity, GraphProjection, NodeAgg, ProvBreakdown, Provenance};
 use crate::rollup::{split_edge_key, DayBucket, EdgeStat, NodeStat};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 /// Display filters applied to the merged projection (§7.5).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Filters {
     pub min_visits: u32,
     pub hide_search_hubs: bool,
@@ -21,7 +23,8 @@ pub struct Filters {
 /// Time window over the day-bucket history (design "Range" control). The window
 /// is measured back from the most recent bucket present, so historical data is
 /// still visible under the wider ranges.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum TimeRange {
     /// The most recent session ≈ the latest day with data.
     Session,

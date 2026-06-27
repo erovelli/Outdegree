@@ -16,6 +16,7 @@ pub mod model;
 pub mod project;
 pub mod rollup;
 pub mod svg;
+pub mod views;
 
 // ── WASM-only shell (dashboard page) ───────────────────────────────────────────
 #[cfg(target_arch = "wasm32")]
