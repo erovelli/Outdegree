@@ -14,6 +14,7 @@ export interface ChromeBridge {
   storageLocalGet: (k: string) => Promise<string | null>;
   storageLocalSet: (k: string, v: string) => void;
   downloadText: (name: string, mime: string, body: string) => void;
+  downloadDataUrl: (name: string, dataUrl: string) => void;
 }
 
 const chromeBridge: ChromeBridge = {
@@ -33,6 +34,15 @@ const chromeBridge: ChromeBridge = {
     a.download = name;
     a.click();
     URL.revokeObjectURL(url);
+  },
+
+  // Download from a data: URL (PNG bytes from canvas.toDataURL). Same local-only
+  // download path as downloadText — no network sink (§7.8).
+  downloadDataUrl: (name: string, dataUrl: string) => {
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = name;
+    a.click();
   },
 };
 

@@ -661,6 +661,24 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
         });
     }
 
+    let export_png = menu_btn(doc, "Export graph (PNG)");
+    {
+        let s = shared.clone();
+        on(&export_png, "click", move |_| {
+            close_popover(&s);
+            super::graph_view::export_png(&s);
+        });
+    }
+
+    let export_svg = menu_btn(doc, "Export graph (SVG)");
+    {
+        let s = shared.clone();
+        on(&export_svg, "click", move |_| {
+            close_popover(&s);
+            super::graph_view::export_svg(&s);
+        });
+    }
+
     let import = menu_btn(doc, "Import JSON");
     {
         let s = shared.clone();
@@ -811,6 +829,8 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
     let _ = pop.append_child(&raw);
     let _ = pop.append_child(&export);
     let _ = pop.append_child(&export_csv);
+    let _ = pop.append_child(&export_png);
+    let _ = pop.append_child(&export_svg);
     let _ = pop.append_child(&import);
     let _ = pop.append_child(&forget);
     let _ = pop.append_child(&delete);

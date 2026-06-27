@@ -99,6 +99,7 @@ async fn bridge_externs_resolve() {
             storageLocalGet: (k) => Promise.resolve(k === 'paused' ? 'true' : null),
             storageLocalSet: (k, v) => { globalThis.__calls.push('set:' + k + '=' + v); },
             downloadText: (name, mime, body) => { globalThis.__calls.push('dl:' + name + ':' + body.length); },
+            downloadDataUrl: (name, dataUrl) => { globalThis.__calls.push('dlurl:' + name + ':' + dataUrl.length); },
         };
         "#,
     )

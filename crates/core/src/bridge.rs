@@ -11,6 +11,8 @@ extern "C" {
     fn storage_local_set_js(key: &str, val: &str);
     #[wasm_bindgen(js_namespace = chromeBridge, js_name = downloadText)]
     fn download_text_js(name: &str, mime: &str, body: &str);
+    #[wasm_bindgen(js_namespace = chromeBridge, js_name = downloadDataUrl)]
+    fn download_data_url_js(name: &str, data_url: &str);
 }
 
 /// Read a string value from `chrome.storage.local` (SW-owned).
@@ -34,6 +36,13 @@ pub fn download_text(name: &str, mime: &str, body: &str) {
 /// Convenience for the JSON export path.
 pub fn download_json(name: &str, json: &str) {
     download_text(name, "application/json", json);
+}
+
+/// Trigger a local-file download from a `data:` URL (named `name`) — used for the
+/// PNG graph export, whose bytes come from `canvas.toDataURL`. Still a download,
+/// never an upload (§7.8 / §12.1).
+pub fn download_data_url(name: &str, data_url: &str) {
+    download_data_url_js(name, data_url);
 }
 
 /// Dashboard entry point (called from `dashboard.ts` after the SW readiness ack).
