@@ -11,6 +11,10 @@ use crate::project::{self, TimeRange};
 use crate::rollup::SessionRec;
 use std::collections::HashMap;
 
+/// Per-card row cap so the curated dashboard fits one screen without scrolling.
+/// Full data remains available via Export tables (CSV) and the Graph view.
+const TOP: usize = 6;
+
 pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let Some(body) = body_container(shared) else {
         return Ok(());
@@ -23,19 +27,13 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     }
 
     let g = graph::build(&a.proj);
-    let hubs = graph::hubs(&g, 20);
-    let (pads, dests) = graph::directional_hubs(&g, 12);
-    let edges = graph::top_edges(&a.proj, 20);
-    let prov = project::origination(&a.buckets);
+    let hubs = graph::hubs(&g, TOP);
     let stats = project::range_stats(&a.buckets, a.time_range);
     let delta = project::period_delta(&a.buckets, a.time_range);
     let series = project::daily_series(&a.buckets, a.time_range);
-    let surging = project::surging_hosts(&a.buckets, a.time_range, 3, 10);
-    let search_dest = graph::search_destinations(&a.proj, 12);
-    let next_hops = graph::next_hops(&a.proj, 4, 12);
+    let surging = project::surging_hosts(&a.buckets, a.time_range, 3, TOP);
+    let next_hops = graph::next_hops(&a.proj, 4, TOP);
     let authorities = graph::pagerank(&a.proj, 0.85, 40);
-    let reciprocal = graph::reciprocal_pairs(&a.proj, 12);
-    let bridges = graph::bridges(&a.proj, 12);
     let dwell: HashMap<&str, u64> = a
         .proj
         .nodes
@@ -43,20 +41,64 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         .map(|n| (n.key.as_str(), n.dwell_ms))
         .collect();
 
-    // Each analytic section builds into its category bucket; a category's divider
-    // header is emitted only when that bucket has content, so the view groups the
-    // depth (Overview / Key sites / Patterns / Communities / Reference) instead of
-    // presenting one long flat scroll. The range banner stays the page header.
-    let mut overview = String::new();
-    let mut key_sites = String::new();
-    let mut patterns = String::new();
-    let mut reference = String::new();
+    // Curated single-screen dashboard (no tabs): only the highest-signal widgets,
+    // row-capped to fit one screen. The full set of tables stays available via
+    // Export tables (CSV) and the Graph view.
+    let mut grid = String::new();
 
-    // ── Overview: activity + surging ─────────────────────────────────────────
+    // Activity summary (full width).
     let activity = activity_html(&a.sessions, a.time_range);
     if !activity.is_empty() {
-        overview.push_str(&card("full", &activity));
+        grid.push_str(&card("full", &activity));
     }
+
+    // Top hubs.
+    {
+        let mut s = String::from(
+            "<h3>Top hubs (by weighted degree)</h3>\
+             <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Degree</th>\
+             <th class=\"num\">Time spent</th></tr>",
+        );
+        for (k, d) in &hubs {
+            let t = dwell.get(k.as_str()).copied().unwrap_or(0);
+            let tcell = if t >= 1000 {
+                fmt_dwell(t)
+            } else {
+                "—".to_string()
+            };
+            s.push_str(&format!(
+                "<tr>{}<td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
+                host_td(k),
+                d,
+                esc(&tcell)
+            ));
+        }
+        s.push_str("</table>");
+        grid.push_str(&card("", &s));
+    }
+
+    // Authorities (PageRank).
+    if !a.proj.edges.is_empty() {
+        if let Some((_, top)) = authorities.first().filter(|(_, r)| *r > 0.0) {
+            let top = *top;
+            let mut s = String::from(
+                "<h3>Authorities (PageRank)</h3>\
+                 <p class=\"muted tbl-sub\">sites your meaningful paths converge on</p>\
+                 <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
+            );
+            for (k, r) in authorities.iter().take(TOP) {
+                let rel = (r / top * 100.0).round() as u32;
+                s.push_str(&format!(
+                    "<tr>{}<td class=\"num\">{rel}</td></tr>",
+                    host_td(k)
+                ));
+            }
+            s.push_str("</table>");
+            grid.push_str(&card("", &s));
+        }
+    }
+
+    // Surging this period.
     if !surging.is_empty() {
         let mut s = String::from(
             "<h3>Surging this period</h3>\
@@ -79,92 +121,17 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             ));
         }
         s.push_str("</table>");
-        overview.push_str(&card("", &s));
+        grid.push_str(&card("", &s));
     }
 
-    // ── Key sites: hubs, launch/destinations, authorities, bridges ───────────
-    {
-        let mut s = String::from(
-            "<h3>Top hubs (by weighted degree)</h3>\
-             <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Degree</th>\
-             <th class=\"num\">Time spent</th></tr>",
-        );
-        for (k, d) in &hubs {
-            let t = dwell.get(k.as_str()).copied().unwrap_or(0);
-            let tcell = if t >= 1000 {
-                fmt_dwell(t)
-            } else {
-                "—".to_string()
-            };
-            s.push_str(&format!(
-                "<tr>{}<td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
-                host_td(k),
-                d,
-                esc(&tcell)
-            ));
-        }
-        s.push_str("</table>");
-        key_sites.push_str(&card("", &s));
-    }
-
-    key_sites.push_str(&degree_table(
-        "Launch pads",
-        "where journeys start (outbound)",
-        &pads,
-    ));
-    key_sites.push_str(&degree_table(
-        "Destinations",
-        "where journeys end (inbound)",
-        &dests,
-    ));
-
-    if !a.proj.edges.is_empty() {
-        if let Some((_, top)) = authorities.first().filter(|(_, r)| *r > 0.0) {
-            let top = *top;
-            let mut s = String::from(
-                "<h3>Authorities (PageRank)</h3>\
-                 <p class=\"muted tbl-sub\">sites your meaningful paths converge on</p>\
-                 <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
-            );
-            for (k, r) in authorities.iter().take(15) {
-                let rel = (r / top * 100.0).round() as u32;
-                s.push_str(&format!(
-                    "<tr>{}<td class=\"num\">{rel}</td></tr>",
-                    host_td(k)
-                ));
-            }
-            s.push_str("</table>");
-            key_sites.push_str(&card("", &s));
-        }
-    }
-
-    if !bridges.is_empty() {
-        if let Some((_, top)) = bridges.first() {
-            let top = top.max(1.0);
-            let mut s = String::from(
-                "<h3>Bridge sites</h3>\
-                 <p class=\"muted tbl-sub\">gateways between your browsing communities</p>\
-                 <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
-            );
-            for (k, b) in &bridges {
-                let rel = (b / top * 100.0).round() as u32;
-                s.push_str(&format!(
-                    "<tr>{}<td class=\"num\">{rel}</td></tr>",
-                    host_td(k)
-                ));
-            }
-            s.push_str("</table>");
-            key_sites.push_str(&card("", &s));
-        }
-    }
-
-    // ── Patterns: journeys, next-hop, back-and-forth, searches ───────────────
-    // The journeys block keeps its id so spawn_journeys fills it asynchronously.
-    patterns.push_str(&card(
+    // Common journeys (wide; the #bg-journeys div is filled asynchronously).
+    grid.push_str(&card(
         "wide",
         "<div id=\"bg-journeys\"><h3>Your common journeys</h3>\
          <p class=\"muted\">Finding the multi-step paths you take most…</p></div>",
     ));
+
+    // Where you usually go next (wide).
     if !next_hops.is_empty() {
         let mut s = String::from(
             "<h3>Where you usually go next</h3>\
@@ -180,132 +147,27 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             ));
         }
         s.push_str("</table>");
-        patterns.push_str(&card("wide", &s));
-    }
-    if !reciprocal.is_empty() {
-        let mut s = String::from(
-            "<h3>Back-and-forth</h3>\
-             <p class=\"muted tbl-sub\">sites you bounce between (both directions)</p>\
-             <table class=\"tbl\"><tr><th>Pair</th><th class=\"num\">→</th><th class=\"num\">←</th></tr>",
-        );
-        for r in &reciprocal {
-            s.push_str(&format!(
-                "<tr><td>{} ⇄ {}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
-                host_span(&r.a),
-                host_span(&r.b),
-                r.ab,
-                r.ba
-            ));
-        }
-        s.push_str("</table>");
-        patterns.push_str(&card("wide", &s));
-    }
-    if !search_dest.is_empty() {
-        let mut s = String::from(
-            "<h3>Where your searches went</h3>\
-             <table class=\"tbl\"><tr><th>Destination</th><th class=\"num\">From searches</th></tr>",
-        );
-        for (k, c) in &search_dest {
-            s.push_str(&format!(
-                "<tr>{}<td class=\"num\">{}</td></tr>",
-                host_td(k),
-                c
-            ));
-        }
-        s.push_str("</table>");
-        patterns.push_str(&card("", &s));
-    }
-    // Opt-in only (default off): the actual search terms, parsed from already-
-    // captured result URLs. Achromatic text — search terms get no data hue.
-    if a.show_searches && !a.searches.is_empty() {
-        let mut s = String::from(
-            "<h3>Top search terms</h3>\
-             <p class=\"muted tbl-sub\">parsed from your search-result URLs (opt-in)</p>\
-             <table class=\"tbl\"><tr><th>Query</th><th>Engine</th><th class=\"num\">Times</th></tr>",
-        );
-        for sc in &a.searches {
-            s.push_str(&format!(
-                "<tr><td>{}</td><td>{}</td><td class=\"num\">{}</td></tr>",
-                esc(&sc.terms),
-                esc(&sc.engine),
-                sc.count
-            ));
-        }
-        s.push_str("</table>");
-        patterns.push_str(&card("wide", &s));
+        grid.push_str(&card("wide", &s));
     }
 
-    // ── Communities (its own group; may be empty) ────────────────────────────
+    // Browsing communities (wide).
     let communities_inner = communities_html(&a);
-    let communities = if communities_inner.is_empty() {
-        String::new()
-    } else {
-        card("wide", &communities_inner)
-    };
-
-    // ── Reference: top edges, origination ────────────────────────────────────
-    {
-        let mut s = String::from("<h3>Top edges (by weight)</h3>\
-            <table class=\"tbl\"><tr><th>From</th><th>To</th><th class=\"num\">Weight</th><th>Kind</th></tr>");
-        for e in &edges {
-            s.push_str(&format!(
-                "<tr>{}{}<td class=\"num\">{}</td><td>{:?}</td></tr>",
-                host_td(&e.from),
-                host_td(&e.to),
-                e.weight,
-                e.kinds.dominant()
-            ));
-        }
-        s.push_str("</table>");
-        reference.push_str(&card("wide", &s));
-    }
-    {
-        let mut s = String::from(
-            "<h3>Origination (how pages were reached)</h3>\
-            <table class=\"tbl\"><tr><th>Provenance</th><th class=\"num\">Count</th></tr>",
-        );
-        for (name, count) in [
-            ("Link", prov.link),
-            ("Form", prov.form),
-            ("Typed URL", prov.typed_url),
-            ("Search origin", prov.search_origin),
-            ("Bookmark", prov.bookmark),
-            ("External", prov.start),
-            ("Reload", prov.reload),
-            ("Other", prov.other),
-        ] {
-            s.push_str(&format!(
-                "<tr><td>{name}</td><td class=\"num\">{count}</td></tr>"
-            ));
-        }
-        s.push_str("</table>");
-        reference.push_str(&card("", &s));
+    if !communities_inner.is_empty() {
+        grid.push_str(&card("wide", &communities_inner));
     }
 
-    // Assemble inside a centered wrapper; each non-empty category renders under
-    // its divider with its cards tiled into a responsive multi-column grid.
-    let mut html = String::from("<div class=\"tbl-wrap\">");
+    // Assemble: KPI banner at the top of the centered wrapper, then the single
+    // curated card grid — one screen, no tabs, no long scroll.
+    let mut html = String::from("<div class=\"tbl-wrap dash\">");
     html.push_str(&stats_html(&stats, a.time_range, delta, &series));
-    for (title, body_html) in [
-        ("Overview", &overview),
-        ("Key sites", &key_sites),
-        ("Patterns", &patterns),
-        ("Communities", &communities),
-        ("Reference", &reference),
-    ] {
-        if !body_html.is_empty() {
-            html.push_str(&group(title));
-            html.push_str("<div class=\"tbl-grid\">");
-            html.push_str(body_html);
-            html.push_str("</div>");
-        }
-    }
-    html.push_str("</div>");
+    html.push_str("<div class=\"tbl-grid\">");
+    html.push_str(&grid);
+    html.push_str("</div></div>");
 
     body.set_inner_html(&html);
     drop(a);
 
-    // Mine frequent journeys off the raw events for the in-range sessions.
+    // The journeys card is always present; mine the paths lazily.
     spawn_journeys(shared);
     Ok(())
 }
@@ -392,11 +254,6 @@ fn sparkline_html(series: &[(String, u32)]) -> String {
     )
 }
 
-/// A category divider between groups of sections in the Tables view.
-fn group(title: &str) -> String {
-    format!("<h2 class=\"tbl-group\">{title}</h2>")
-}
-
 /// Wrap one analytic section as a grid card. `span` is "" (one column), "wide"
 /// (two columns, for tables with long rows like journeys/edges), or "full" (the
 /// whole row, for the activity summary).
@@ -431,26 +288,6 @@ fn range_label(range: TimeRange) -> &'static str {
         TimeRange::Month => "This month",
         TimeRange::Year => "This year",
     }
-}
-
-/// A small "Host / Weight" table (launch pads / destinations), wrapped as a card.
-fn degree_table(title: &str, sub: &str, rows: &[(String, u32)]) -> String {
-    let mut h = format!(
-        "<h3>{title}</h3><p class=\"muted tbl-sub\">{sub}</p>\
-         <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Weight</th></tr>"
-    );
-    if rows.is_empty() {
-        h.push_str("<tr><td class=\"muted\" colspan=\"2\">—</td></tr>");
-    }
-    for (k, d) in rows {
-        h.push_str(&format!(
-            "<tr>{}<td class=\"num\">{}</td></tr>",
-            host_td(k),
-            d
-        ));
-    }
-    h.push_str("</table>");
-    card("", &h)
 }
 
 /// Louvain communities as a table: each multi-host cluster, its size, and its
