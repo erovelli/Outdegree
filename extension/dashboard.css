@@ -420,6 +420,15 @@ a { color: var(--text-primary); }
 @media (max-width: 760px) {
   .tbl-card.wide { grid-column: auto; }
 }
+
+/* Tables dashboard: a pinned KPI banner that stays in view across tabs, and a
+ * segmented sub-tab bar (reusing .seg styling) that swaps the category grid so
+ * each view fits one screen. */
+.tbl-kpi { padding-bottom: 14px; border-bottom: 1px solid var(--toolbar-divider); }
+.tbl-tabs { margin: 14px 0 6px; gap: 4px; }
+.tbl-tabs button { padding: 7px 16px; }
+.dash-empty { padding: 28px 2px; }
+
 /* Host cells jump to the graph focused on that site. */
 .host-cell { cursor: pointer; }
 td.host-cell:hover, span.host-cell:hover {

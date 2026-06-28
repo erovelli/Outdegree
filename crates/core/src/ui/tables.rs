@@ -3,13 +3,17 @@
 //! destinations, browsing communities (Louvain), where-searches-went, top edges,
 //! origination, and a raw event stream (M1).
 
-use super::{body_container, empty_body_html, esc, fmt_dwell, plural, App, Shared};
+use super::{body_container, empty_body_html, esc, fmt_dwell, plural, App, Shared, TablesTab};
 use crate::export::csv_line;
 use crate::graph;
 use crate::model::Event;
 use crate::project::{self, TimeRange};
 use crate::rollup::SessionRec;
 use std::collections::HashMap;
+
+/// Per-card row cap so each dashboard tab fits one screen without scrolling. Full
+/// data remains available via Export tables (CSV) and the Graph view.
+const TOP: usize = 6;
 
 pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let Some(body) = body_container(shared) else {
@@ -23,19 +27,19 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     }
 
     let g = graph::build(&a.proj);
-    let hubs = graph::hubs(&g, 20);
-    let (pads, dests) = graph::directional_hubs(&g, 12);
-    let edges = graph::top_edges(&a.proj, 20);
+    let hubs = graph::hubs(&g, TOP);
+    let (pads, dests) = graph::directional_hubs(&g, TOP);
+    let edges = graph::top_edges(&a.proj, TOP + 2);
     let prov = project::origination(&a.buckets);
     let stats = project::range_stats(&a.buckets, a.time_range);
     let delta = project::period_delta(&a.buckets, a.time_range);
     let series = project::daily_series(&a.buckets, a.time_range);
-    let surging = project::surging_hosts(&a.buckets, a.time_range, 3, 10);
-    let search_dest = graph::search_destinations(&a.proj, 12);
-    let next_hops = graph::next_hops(&a.proj, 4, 12);
+    let surging = project::surging_hosts(&a.buckets, a.time_range, 3, TOP);
+    let search_dest = graph::search_destinations(&a.proj, TOP);
+    let next_hops = graph::next_hops(&a.proj, 4, TOP);
     let authorities = graph::pagerank(&a.proj, 0.85, 40);
-    let reciprocal = graph::reciprocal_pairs(&a.proj, 12);
-    let bridges = graph::bridges(&a.proj, 12);
+    let reciprocal = graph::reciprocal_pairs(&a.proj, TOP);
+    let bridges = graph::bridges(&a.proj, TOP);
     let dwell: HashMap<&str, u64> = a
         .proj
         .nodes
@@ -126,7 +130,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
                  <p class=\"muted tbl-sub\">sites your meaningful paths converge on</p>\
                  <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
             );
-            for (k, r) in authorities.iter().take(15) {
+            for (k, r) in authorities.iter().take(TOP) {
                 let rel = (r / top * 100.0).round() as u32;
                 s.push_str(&format!(
                     "<tr>{}<td class=\"num\">{rel}</td></tr>",
@@ -223,7 +227,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
              <p class=\"muted tbl-sub\">parsed from your search-result URLs (opt-in)</p>\
              <table class=\"tbl\"><tr><th>Query</th><th>Engine</th><th class=\"num\">Times</th></tr>",
         );
-        for sc in &a.searches {
+        for sc in a.searches.iter().take(TOP + 2) {
             s.push_str(&format!(
                 "<tr><td>{}</td><td>{}</td><td class=\"num\">{}</td></tr>",
                 esc(&sc.terms),
@@ -282,32 +286,58 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         reference.push_str(&card("", &s));
     }
 
-    // Assemble inside a centered wrapper; each non-empty category renders under
-    // its divider with its cards tiled into a responsive multi-column grid.
-    let mut html = String::from("<div class=\"tbl-wrap\">");
+    // Dashboard assembly: a pinned KPI banner that stays in view across tabs, a
+    // segmented toggle, and only the active category's card grid below — so each
+    // view fits one screen instead of one long scroll. Network folds the
+    // Communities + Reference groups together.
+    let active = a.tables_tab;
+    let network = format!("{communities}{reference}");
+    let body_html = match active {
+        TablesTab::Overview => &overview,
+        TablesTab::Sites => &key_sites,
+        TablesTab::Patterns => &patterns,
+        TablesTab::Network => &network,
+    };
+
+    let mut html = String::from("<div class=\"tbl-wrap dash\">");
+    html.push_str("<div class=\"tbl-kpi\">");
     html.push_str(&stats_html(&stats, a.time_range, delta, &series));
-    for (title, body_html) in [
-        ("Overview", &overview),
-        ("Key sites", &key_sites),
-        ("Patterns", &patterns),
-        ("Communities", &communities),
-        ("Reference", &reference),
-    ] {
-        if !body_html.is_empty() {
-            html.push_str(&group(title));
-            html.push_str("<div class=\"tbl-grid\">");
-            html.push_str(body_html);
-            html.push_str("</div>");
-        }
+    html.push_str("</div>");
+    html.push_str(&subtabs_html(active));
+    if body_html.is_empty() {
+        html.push_str("<p class=\"muted dash-empty\">Nothing to show in this view for the selected range.</p>");
+    } else {
+        html.push_str("<div class=\"tbl-grid\">");
+        html.push_str(body_html);
+        html.push_str("</div>");
     }
     html.push_str("</div>");
 
     body.set_inner_html(&html);
     drop(a);
 
-    // Mine frequent journeys off the raw events for the in-range sessions.
-    spawn_journeys(shared);
+    // The journeys card only exists on the Patterns tab; mine them lazily then.
+    if active == TablesTab::Patterns {
+        spawn_journeys(shared);
+    }
     Ok(())
+}
+
+/// The Tables dashboard's segmented sub-tab bar. The active tab's `active` class
+/// is baked into the markup (re-rendered each switch); a delegated `[data-tab]`
+/// listener on `#bg-body` handles the clicks.
+fn subtabs_html(active: TablesTab) -> String {
+    let tab = |val: &str, label: &str, t: TablesTab| {
+        let cls = if active == t { "active" } else { "" };
+        format!("<button class=\"{cls}\" data-tab=\"{val}\">{label}</button>")
+    };
+    format!(
+        "<div class=\"seg seg-ghost tbl-tabs\">{}{}{}{}</div>",
+        tab("overview", "Overview", TablesTab::Overview),
+        tab("sites", "Sites", TablesTab::Sites),
+        tab("patterns", "Patterns", TablesTab::Patterns),
+        tab("network", "Network", TablesTab::Network),
+    )
 }
 
 /// The range-stats summary cards (sites, visits, new sites discovered, revisits),
@@ -393,10 +423,6 @@ fn sparkline_html(series: &[(String, u32)]) -> String {
 }
 
 /// A category divider between groups of sections in the Tables view.
-fn group(title: &str) -> String {
-    format!("<h2 class=\"tbl-group\">{title}</h2>")
-}
-
 /// Wrap one analytic section as a grid card. `span` is "" (one column), "wide"
 /// (two columns, for tables with long rows like journeys/edges), or "full" (the
 /// whole row, for the activity summary).
@@ -484,7 +510,7 @@ fn communities_html(a: &super::App) -> String {
          <p class=\"muted tbl-sub\">clusters of sites you move between (Louvain)</p>\
          <table class=\"tbl\"><tr><th>Size</th><th>Top sites</th></tr>",
     );
-    for m in clusters.iter().take(10) {
+    for m in clusters.iter().take(TOP) {
         let top = m
             .iter()
             .take(5)

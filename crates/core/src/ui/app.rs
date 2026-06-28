@@ -34,10 +34,24 @@ pub(crate) fn build_shell(shared: &Shared) -> Result<(), JsValue> {
     {
         let s = shared.clone();
         on(&body, "click", move |ev| {
-            let host = ev
-                .target()
-                .and_then(|t| t.dyn_into::<Element>().ok())
-                .and_then(|e| e.closest("[data-host]").ok().flatten())
+            let Some(target) = ev.target().and_then(|t| t.dyn_into::<Element>().ok()) else {
+                return;
+            };
+            // Tables sub-tab switch: swap the active category and re-render.
+            if let Ok(Some(tabel)) = target.closest("[data-tab]") {
+                if let Some(tab) = tabel
+                    .get_attribute("data-tab")
+                    .and_then(|t| super::TablesTab::from_str(&t))
+                {
+                    s.borrow_mut().tables_tab = tab;
+                    let _ = super::rerender(&s);
+                }
+                return;
+            }
+            let host = target
+                .closest("[data-host]")
+                .ok()
+                .flatten()
                 .and_then(|h| h.get_attribute("data-host"));
             let Some(host) = host else { return };
             {
