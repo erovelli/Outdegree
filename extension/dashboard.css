@@ -132,7 +132,15 @@ body {
   50% { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
+  /* Honor the OS "reduce motion" setting: stop the REC pulse and neutralize the
+     UI's hover/fade transitions. (The graph's camera tweens are driven in the
+     WASM renderer and already settle quickly.) */
   .rec-dot { animation: none; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 /* 2./3. segmented controls */

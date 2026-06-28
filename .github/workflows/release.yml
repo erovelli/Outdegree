@@ -7,7 +7,9 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: write # create the release + upload assets
+  id-token: write # OIDC token for build-provenance attestation
+  attestations: write # write the provenance attestation
 
 jobs:
   release:
@@ -39,6 +41,16 @@ jobs:
       - name: Install JS deps
         run: npm ci
 
+      # Fail fast if the release tag and the single-source version disagree (the
+      # store requires monotonic versions, and the manifest derives from this).
+      - name: Assert tag matches package.json version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          [ "$TAG" = "$PKG" ] || { echo "::error::tag v$TAG != package.json version $PKG"; exit 1; }
+          echo "Releasing version $PKG"
+
       - name: Build WASM
         run: npm run build:wasm
 
@@ -68,12 +80,22 @@ jobs:
             exit 1
           fi
 
-      - name: Package dist/ → zip
+      - name: Package dist/ → zip (reproducible)
         run: |
           set -euo pipefail
           ZIP="outdegree-${{ github.ref_name }}.zip"
-          (cd dist && zip -r "../$ZIP" .)
+          # Reproducible archive so a reviewer can rebuild and byte-diff: normalize
+          # mtimes to the tagged commit, UTC, sorted entries, strip extra metadata.
+          export TZ=UTC
+          SDE="$(git log -1 --pretty=%ct)"
+          find dist -exec touch -d "@$SDE" {} +
+          (cd dist && find . -type f | sort | zip -X "../$ZIP" -@)
           echo "Built $ZIP ($(wc -c < "$ZIP") bytes)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: outdegree-${{ github.ref_name }}.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3

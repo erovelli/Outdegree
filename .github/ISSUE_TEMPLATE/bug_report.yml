@@ -1,0 +1,59 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! ⚠️ **Do not paste or attach your exported browsing
+        data** — describe what happened instead. All your data stays on your
+        device; we never need it to debug.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I ..., I expected ..., but instead ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce it? Reference rows of docs/M0-CHECKLIST.md if relevant.
+      placeholder: |
+        1. Build & load the extension
+        2. Browse to ...
+        3. Open the dashboard, click ...
+        4. See ...
+    validations:
+      required: true
+  - type: input
+    id: chrome-version
+    attributes:
+      label: Browser & version
+      placeholder: "Chrome 138 (or Edge / Firefox build)"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15 / Windows 11 / Ubuntu 24.04"
+    validations:
+      required: true
+  - type: input
+    id: ext-version
+    attributes:
+      label: Outdegree version
+      placeholder: "0.1.0 (or commit SHA if built from source)"
+    validations:
+      required: false
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output (optional)
+      description: Any errors from the dashboard page console or the service-worker console. Redact any URLs you don't want to share.
+      render: shell
+    validations:
+      required: false

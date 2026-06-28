@@ -48,11 +48,27 @@ pub fn download_data_url(name: &str, data_url: &str) {
 /// Dashboard entry point (called from `dashboard.ts` after the SW readiness ack).
 #[wasm_bindgen]
 pub fn mount(root_id: &str) {
+    // `panic = abort` still runs the panic hook before aborting, so a panic in the
+    // analysis core surfaces a readable trace in the page console.
     console_error_panic_hook::set_once();
     let root = root_id.to_string();
     wasm_bindgen_futures::spawn_local(async move {
         if let Err(e) = crate::ui::run(&root).await {
             web_sys::console::error_1(&format!("Outdegree: {e:?}").into());
+            // Replace the "Loading…" placeholder with a user-facing failure
+            // message (styled via the existing .bg-empty class — the page CSP
+            // forbids inline styles) so the dashboard never hangs silently if
+            // local storage or WASM init is unavailable.
+            if let Some(el) = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.get_element_by_id(&root))
+            {
+                el.set_inner_html(
+                    "<div class=\"bg-empty\">Outdegree couldn't load your data — \
+                     your browser's local storage may be unavailable (e.g. a \
+                     private window or blocked site data). Reopen this tab to retry.</div>",
+                );
+            }
         }
     });
 }

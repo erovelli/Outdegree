@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an idea or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Note: Outdegree is **local-only by construction**.
+        Proposals must preserve the non-negotiable guarantees — no network egress,
+        no telemetry, and no widening of permissions. See
+        [AGENTS.md](../blob/main/AGENTS.md#non-negotiable-invariants).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: The motivation / use case, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you'd like to see happen.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: invariants
+    attributes:
+      label: Privacy invariants
+      options:
+        - label: This proposal does not require any network request, telemetry, or new permission.
+          required: true

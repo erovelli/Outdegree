@@ -1,0 +1,20 @@
+# EditorConfig — https://editorconfig.org
+# Editor-agnostic formatting baseline. rustfmt owns .rs files (see rustfmt.toml).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.rs]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false  # two trailing spaces are a hard line break
+
+[Makefile]
+indent_style = tab

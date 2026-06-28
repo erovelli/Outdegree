@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & discussion
+    url: https://github.com/erovelli/Outdegree/discussions
+    about: Ask questions or share how you're using Outdegree.
+  - name: 🔒 Privacy policy
+    url: https://erovelli.github.io/Outdegree/privacy-policy.html
+    about: How your data is handled (short answer — it never leaves your device).
+  - name: 🛡️ Report a security issue
+    url: https://github.com/erovelli/Outdegree/security/advisories/new
+    about: Please report vulnerabilities privately, not as a public issue.
