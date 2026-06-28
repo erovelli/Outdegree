@@ -53,9 +53,12 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     let mut reference = String::new();
 
     // ── Overview: activity + surging ─────────────────────────────────────────
-    overview.push_str(&activity_html(&a.sessions, a.time_range));
+    let activity = activity_html(&a.sessions, a.time_range);
+    if !activity.is_empty() {
+        overview.push_str(&card("full", &activity));
+    }
     if !surging.is_empty() {
-        overview.push_str(
+        let mut s = String::from(
             "<h3>Surging this period</h3>\
              <p class=\"muted tbl-sub\">sites you're visiting more than before</p>\
              <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Now</th>\
@@ -67,7 +70,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             } else {
                 format!("{:.0}×", sg.ratio())
             };
-            overview.push_str(&format!(
+            s.push_str(&format!(
                 "<tr>{}<td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
                 host_td(&sg.host),
                 sg.now,
@@ -75,32 +78,35 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
                 esc(&mult)
             ));
         }
-        overview.push_str("</table>");
+        s.push_str("</table>");
+        overview.push_str(&card("", &s));
     }
 
     // ── Key sites: hubs, launch/destinations, authorities, bridges ───────────
-    key_sites.push_str(
-        "<h3>Top hubs (by weighted degree)</h3>\
-         <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Degree</th>\
-         <th class=\"num\">Time spent</th></tr>",
-    );
-    for (k, d) in &hubs {
-        let t = dwell.get(k.as_str()).copied().unwrap_or(0);
-        let tcell = if t >= 1000 {
-            fmt_dwell(t)
-        } else {
-            "—".to_string()
-        };
-        key_sites.push_str(&format!(
-            "<tr>{}<td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
-            host_td(k),
-            d,
-            esc(&tcell)
-        ));
+    {
+        let mut s = String::from(
+            "<h3>Top hubs (by weighted degree)</h3>\
+             <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Degree</th>\
+             <th class=\"num\">Time spent</th></tr>",
+        );
+        for (k, d) in &hubs {
+            let t = dwell.get(k.as_str()).copied().unwrap_or(0);
+            let tcell = if t >= 1000 {
+                fmt_dwell(t)
+            } else {
+                "—".to_string()
+            };
+            s.push_str(&format!(
+                "<tr>{}<td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
+                host_td(k),
+                d,
+                esc(&tcell)
+            ));
+        }
+        s.push_str("</table>");
+        key_sites.push_str(&card("", &s));
     }
-    key_sites.push_str("</table>");
 
-    key_sites.push_str("<div class=\"tbl-pair\">");
     key_sites.push_str(&degree_table(
         "Launch pads",
         "where journeys start (outbound)",
@@ -111,76 +117,79 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         "where journeys end (inbound)",
         &dests,
     ));
-    key_sites.push_str("</div>");
 
     if !a.proj.edges.is_empty() {
         if let Some((_, top)) = authorities.first().filter(|(_, r)| *r > 0.0) {
             let top = *top;
-            key_sites.push_str(
+            let mut s = String::from(
                 "<h3>Authorities (PageRank)</h3>\
                  <p class=\"muted tbl-sub\">sites your meaningful paths converge on</p>\
                  <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
             );
             for (k, r) in authorities.iter().take(15) {
                 let rel = (r / top * 100.0).round() as u32;
-                key_sites.push_str(&format!(
+                s.push_str(&format!(
                     "<tr>{}<td class=\"num\">{rel}</td></tr>",
                     host_td(k)
                 ));
             }
-            key_sites.push_str("</table>");
+            s.push_str("</table>");
+            key_sites.push_str(&card("", &s));
         }
     }
 
     if !bridges.is_empty() {
         if let Some((_, top)) = bridges.first() {
             let top = top.max(1.0);
-            key_sites.push_str(
+            let mut s = String::from(
                 "<h3>Bridge sites</h3>\
                  <p class=\"muted tbl-sub\">gateways between your browsing communities</p>\
                  <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Score</th></tr>",
             );
             for (k, b) in &bridges {
                 let rel = (b / top * 100.0).round() as u32;
-                key_sites.push_str(&format!(
+                s.push_str(&format!(
                     "<tr>{}<td class=\"num\">{rel}</td></tr>",
                     host_td(k)
                 ));
             }
-            key_sites.push_str("</table>");
+            s.push_str("</table>");
+            key_sites.push_str(&card("", &s));
         }
     }
 
     // ── Patterns: journeys, next-hop, back-and-forth, searches ───────────────
     // The journeys block keeps its id so spawn_journeys fills it asynchronously.
-    patterns.push_str(
+    patterns.push_str(&card(
+        "wide",
         "<div id=\"bg-journeys\"><h3>Your common journeys</h3>\
          <p class=\"muted\">Finding the multi-step paths you take most…</p></div>",
-    );
+    ));
     if !next_hops.is_empty() {
-        patterns.push_str(
+        let mut s = String::from(
             "<h3>Where you usually go next</h3>\
              <p class=\"muted tbl-sub\">your most predictable next step from a site</p>\
              <table class=\"tbl\"><tr><th>From</th><th>Usually →</th><th class=\"num\">Share</th></tr>",
         );
         for h in &next_hops {
             let pct = (h.share * 100.0).round() as u32;
-            patterns.push_str(&format!(
+            s.push_str(&format!(
                 "<tr>{}{}<td class=\"num\">{pct}%</td></tr>",
                 host_td(&h.from),
                 host_td(&h.to)
             ));
         }
-        patterns.push_str("</table>");
+        s.push_str("</table>");
+        patterns.push_str(&card("wide", &s));
     }
     if !reciprocal.is_empty() {
-        patterns.push_str(
+        let mut s = String::from(
             "<h3>Back-and-forth</h3>\
              <p class=\"muted tbl-sub\">sites you bounce between (both directions)</p>\
              <table class=\"tbl\"><tr><th>Pair</th><th class=\"num\">→</th><th class=\"num\">←</th></tr>",
         );
         for r in &reciprocal {
-            patterns.push_str(&format!(
+            s.push_str(&format!(
                 "<tr><td>{} ⇄ {}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
                 host_span(&r.a),
                 host_span(&r.b),
@@ -188,79 +197,94 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
                 r.ba
             ));
         }
-        patterns.push_str("</table>");
+        s.push_str("</table>");
+        patterns.push_str(&card("wide", &s));
     }
     if !search_dest.is_empty() {
-        patterns.push_str(
+        let mut s = String::from(
             "<h3>Where your searches went</h3>\
              <table class=\"tbl\"><tr><th>Destination</th><th class=\"num\">From searches</th></tr>",
         );
         for (k, c) in &search_dest {
-            patterns.push_str(&format!(
+            s.push_str(&format!(
                 "<tr>{}<td class=\"num\">{}</td></tr>",
                 host_td(k),
                 c
             ));
         }
-        patterns.push_str("</table>");
+        s.push_str("</table>");
+        patterns.push_str(&card("", &s));
     }
     // Opt-in only (default off): the actual search terms, parsed from already-
     // captured result URLs. Achromatic text — search terms get no data hue.
     if a.show_searches && !a.searches.is_empty() {
-        patterns.push_str(
+        let mut s = String::from(
             "<h3>Top search terms</h3>\
              <p class=\"muted tbl-sub\">parsed from your search-result URLs (opt-in)</p>\
              <table class=\"tbl\"><tr><th>Query</th><th>Engine</th><th class=\"num\">Times</th></tr>",
         );
         for sc in &a.searches {
-            patterns.push_str(&format!(
+            s.push_str(&format!(
                 "<tr><td>{}</td><td>{}</td><td class=\"num\">{}</td></tr>",
                 esc(&sc.terms),
                 esc(&sc.engine),
                 sc.count
             ));
         }
-        patterns.push_str("</table>");
+        s.push_str("</table>");
+        patterns.push_str(&card("wide", &s));
     }
 
     // ── Communities (its own group; may be empty) ────────────────────────────
-    let communities = communities_html(&a);
+    let communities_inner = communities_html(&a);
+    let communities = if communities_inner.is_empty() {
+        String::new()
+    } else {
+        card("wide", &communities_inner)
+    };
 
     // ── Reference: top edges, origination ────────────────────────────────────
-    reference.push_str("<h3>Top edges (by weight)</h3>\
-        <table class=\"tbl\"><tr><th>From</th><th>To</th><th class=\"num\">Weight</th><th>Kind</th></tr>");
-    for e in &edges {
-        reference.push_str(&format!(
-            "<tr>{}{}<td class=\"num\">{}</td><td>{:?}</td></tr>",
-            host_td(&e.from),
-            host_td(&e.to),
-            e.weight,
-            e.kinds.dominant()
-        ));
+    {
+        let mut s = String::from("<h3>Top edges (by weight)</h3>\
+            <table class=\"tbl\"><tr><th>From</th><th>To</th><th class=\"num\">Weight</th><th>Kind</th></tr>");
+        for e in &edges {
+            s.push_str(&format!(
+                "<tr>{}{}<td class=\"num\">{}</td><td>{:?}</td></tr>",
+                host_td(&e.from),
+                host_td(&e.to),
+                e.weight,
+                e.kinds.dominant()
+            ));
+        }
+        s.push_str("</table>");
+        reference.push_str(&card("wide", &s));
     }
-    reference.push_str("</table>");
-    reference.push_str(
-        "<h3>Origination (how pages were reached)</h3>\
-        <table class=\"tbl\"><tr><th>Provenance</th><th class=\"num\">Count</th></tr>",
-    );
-    for (name, count) in [
-        ("Link", prov.link),
-        ("Form", prov.form),
-        ("Typed URL", prov.typed_url),
-        ("Search origin", prov.search_origin),
-        ("Bookmark", prov.bookmark),
-        ("External", prov.start),
-        ("Reload", prov.reload),
-        ("Other", prov.other),
-    ] {
-        reference.push_str(&format!(
-            "<tr><td>{name}</td><td class=\"num\">{count}</td></tr>"
-        ));
+    {
+        let mut s = String::from(
+            "<h3>Origination (how pages were reached)</h3>\
+            <table class=\"tbl\"><tr><th>Provenance</th><th class=\"num\">Count</th></tr>",
+        );
+        for (name, count) in [
+            ("Link", prov.link),
+            ("Form", prov.form),
+            ("Typed URL", prov.typed_url),
+            ("Search origin", prov.search_origin),
+            ("Bookmark", prov.bookmark),
+            ("External", prov.start),
+            ("Reload", prov.reload),
+            ("Other", prov.other),
+        ] {
+            s.push_str(&format!(
+                "<tr><td>{name}</td><td class=\"num\">{count}</td></tr>"
+            ));
+        }
+        s.push_str("</table>");
+        reference.push_str(&card("", &s));
     }
-    reference.push_str("</table>");
 
-    // Assemble: page header, then each non-empty category under its divider.
-    let mut html = String::new();
+    // Assemble inside a centered wrapper; each non-empty category renders under
+    // its divider with its cards tiled into a responsive multi-column grid.
+    let mut html = String::from("<div class=\"tbl-wrap\">");
     html.push_str(&stats_html(&stats, a.time_range, delta, &series));
     for (title, body_html) in [
         ("Overview", &overview),
@@ -271,9 +295,12 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     ] {
         if !body_html.is_empty() {
             html.push_str(&group(title));
+            html.push_str("<div class=\"tbl-grid\">");
             html.push_str(body_html);
+            html.push_str("</div>");
         }
     }
+    html.push_str("</div>");
 
     body.set_inner_html(&html);
     drop(a);
@@ -370,6 +397,18 @@ fn group(title: &str) -> String {
     format!("<h2 class=\"tbl-group\">{title}</h2>")
 }
 
+/// Wrap one analytic section as a grid card. `span` is "" (one column), "wide"
+/// (two columns, for tables with long rows like journeys/edges), or "full" (the
+/// whole row, for the activity summary).
+fn card(span: &str, inner: &str) -> String {
+    let cls = if span.is_empty() {
+        "tbl-card".to_string()
+    } else {
+        format!("tbl-card {span}")
+    };
+    format!("<section class=\"{cls}\">{inner}</section>")
+}
+
 /// A host table cell tagged for click-to-focus: clicking it jumps to the Graph
 /// view focused on that host (a delegated listener on #bg-body reads `data-host`).
 fn host_td(host: &str) -> String {
@@ -394,10 +433,10 @@ fn range_label(range: TimeRange) -> &'static str {
     }
 }
 
-/// A small "Host / Degree" table used for launch pads and destinations.
+/// A small "Host / Weight" table (launch pads / destinations), wrapped as a card.
 fn degree_table(title: &str, sub: &str, rows: &[(String, u32)]) -> String {
     let mut h = format!(
-        "<div class=\"tbl-col\"><h3>{title}</h3><p class=\"muted tbl-sub\">{sub}</p>\
+        "<h3>{title}</h3><p class=\"muted tbl-sub\">{sub}</p>\
          <table class=\"tbl\"><tr><th>Host</th><th class=\"num\">Weight</th></tr>"
     );
     if rows.is_empty() {
@@ -405,13 +444,13 @@ fn degree_table(title: &str, sub: &str, rows: &[(String, u32)]) -> String {
     }
     for (k, d) in rows {
         h.push_str(&format!(
-            "<tr><td>{}</td><td class=\"num\">{}</td></tr>",
-            esc(k),
+            "<tr>{}<td class=\"num\">{}</td></tr>",
+            host_td(k),
             d
         ));
     }
-    h.push_str("</table></div>");
-    h
+    h.push_str("</table>");
+    card("", &h)
 }
 
 /// Louvain communities as a table: each multi-host cluster, its size, and its
