@@ -34,6 +34,28 @@ pub(crate) enum View {
     Raw,
 }
 
+/// Sub-view of the Tables dashboard, switched by the in-page segmented toggle so
+/// each category fits on one screen instead of one long scroll.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TablesTab {
+    Overview,
+    Sites,
+    Patterns,
+    Network,
+}
+
+impl TablesTab {
+    pub(crate) fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "overview" => Some(TablesTab::Overview),
+            "sites" => Some(TablesTab::Sites),
+            "patterns" => Some(TablesTab::Patterns),
+            "network" => Some(TablesTab::Network),
+            _ => None,
+        }
+    }
+}
+
 /// Whole-dashboard state. `db` is an `Rc<Db>` so async handlers can clone it out
 /// of a short borrow and `.await` without holding a `RefCell` borrow.
 pub(crate) struct App {
@@ -51,6 +73,9 @@ pub(crate) struct App {
     pub filters: Filters,
     pub time_range: TimeRange,
     pub view: View,
+    /// Active sub-tab of the Tables dashboard (in-memory; resets to Overview on
+    /// reload). Drives which category grid the Tables view renders.
+    pub tables_tab: TablesTab,
     pub camera: Camera,
     pub paused: bool,
     /// "Lock" the layout: re-project on filter changes but keep node positions
@@ -167,6 +192,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         filters: Filters::default(),
         time_range: TimeRange::default(),
         view: View::Graph,
+        tables_tab: TablesTab::Overview,
         camera: Camera::default(),
         paused,
         locked: false,
