@@ -25,5 +25,14 @@ node_modules
 dist
 *.tsbuildinfo
 
+# Vitest coverage output
+coverage
+
 # Generated WASM (wasm-pack output)
 extension/src/wasm/
+
+# OS / editor / local env
+.DS_Store
+*.log
+.env
+.env.*

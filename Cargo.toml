@@ -2,6 +2,11 @@
 members = ["crates/core"]
 resolver = "2"
 
+# Single source of truth for the crate version (kept in step with package.json,
+# which the extension manifest derives from).
+[workspace.package]
+version = "0.1.0"
+
 [profile.release]
 opt-level = "s"
 lto = true

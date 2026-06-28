@@ -1,10 +1,13 @@
+# The crate is named `browsing-graph-core` for historical reasons; the product and
+# npm package are `outdegree`. The crate name is load-bearing in build/CI scripts,
+# so it is kept as-is.
 [package]
 name = "browsing-graph-core"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 license = "MIT"
 description = "Pure read-time derivation core for the Outdegree extension (Rust -> WASM)."
-repository = "https://github.com/erovelli/outdegree"
+repository = "https://github.com/erovelli/Outdegree"
 publish = false
 
 [lib]
@@ -58,17 +61,11 @@ web-sys = { version = "0.3", features = [
     "console",
 ] }
 
-# Optional GPU escape hatch (decision: only if a real profile needs it).
-[target.'cfg(target_arch = "wasm32")'.dependencies.wgpu]
-version = "29"
-optional = true
-
-[target.'cfg(target_arch = "wasm32")'.dependencies.bytemuck]
-version = "1"
-optional = true
-
-[features]
-webgpu = ["dep:wgpu", "dep:bytemuck"]
+# A GPU (wgpu) renderer was scoped as an escape hatch but is unneeded for v1
+# (host count, not event volume, bounds the rendered node set), so the dependency
+# and feature were removed rather than shipped uncompiled. canvas2d is the
+# renderer; reintroduce a `webgpu` feature behind a measured need. See
+# docs/adr/ for the rendering decision.
 
 [lints.clippy]
 # The derive pass intentionally carries many fields; allow a few ergonomic patterns.

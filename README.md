@@ -1,6 +1,16 @@
-# Outdegree
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="Outdegree — a local-only map of how you browse" width="760">
+</p>
 
-**100% local · no network · open source.**
+<p align="center">
+  <a href="https://github.com/erovelli/Outdegree/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/erovelli/Outdegree/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Chrome Manifest V3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white">
+  <img alt="Core: Rust → WASM" src="https://img.shields.io/badge/core-Rust%20%E2%86%92%20WASM-dea584?logo=rust&logoColor=white">
+  <img alt="Data: 100% local" src="https://img.shields.io/badge/data-100%25%20local-2ea44f">
+</p>
+
+<p align="center"><strong>100% local · no network · open source.</strong></p>
 
 A Chrome MV3 extension that records your web navigations as a directed graph you
 can explore over time (session → day → week → month → year). The capture layer is
@@ -30,12 +40,12 @@ See [`docs/privacy-policy.md`](docs/privacy-policy.md).
 
 ```
 Service Worker (TypeScript, append-only)        Dashboard page (Rust → WASM)
-  onCommitted  → append "nav"   ┐                  derive   global-order read-time pass
-  onCreatedNavigationTarget → "link"  │ ONE id      rollup   UTC-day buckets + sessions
-  tabs.onRemoved → "close"           │ sequence     project  range merge + filters
-  onStartup    → "start"      ┘  (store: events)    graph    Louvain · hubs · PrefixSpan
-  onHistoryStateUpdated → "spa" (separate store)    layout   Fruchterman–Reingold
-                                                     render   canvas2d   ui   store(rexie)
+  onCommitted               → "nav"   ┐            derive   global-order read-time pass
+  onCreatedNavigationTarget → "link"  │ ONE id     rollup   UTC-day buckets + sessions
+  tabs.onRemoved            → "close" │ sequence   project  range merge + display filters
+  onStartup                 → "start" ┘ (events)   graph    Louvain · hubs · PrefixSpan
+  onHistoryStateUpdated     → "nav"   ┐ (spa        layout   Fruchterman–Reingold
+  onReferenceFragmentUpdated→ "nav"   ┘  store)     render   canvas2d · svg · flow · ui · store(rexie)
 ```
 
 Key commitments:
@@ -67,25 +77,42 @@ crates/core/src/
   project.rs      bucket merge, granularity regroup, display filters
   graph.rs        petgraph build, Louvain, hubs, top_edges, frequent_sequences
   layout.rs       Fruchterman–Reingold with warm-start
+  flow.rs         per-session Sankey flow-graph construction
+  search.rs       opt-in search-term extraction from result URLs
+  svg.rs          SVG export of the graph view
+  export.rs       CSV export of the analytics tables
+  views.rs        saved view presets (named range/filter/granularity)
   store.rs        rexie reads/writes, privacy deletes, export/import   [wasm]
   render/canvas2d.rs  graph renderer                                   [wasm]
   ui/             shell, filters, graph view, tables, sankey, picker   [wasm]
   bridge.rs       externs → chromeBridge; mount() entry                [wasm]
 extension/src/
-  service-worker.ts  append-only capture
+  service-worker.ts  append-only capture (Chrome wiring + serialized queue)
+  capture.ts         pure event-shaping helpers (unit-tested)
   idb.ts             sole IndexedDB schema owner
   chrome-bridge.ts   storage + local download surface
   dashboard.ts       readiness ping → init WASM → mount
-extension/{dashboard.html, manifest.config.ts, icons/}
-vite.config.ts · package.json · build.sh · docs/privacy-policy.md
+extension/{dashboard.html, dashboard.css, manifest.config.ts, icons/}
+vite.config.ts · package.json · build.sh · docs/{privacy-policy.md, adr/}
 ```
 
 ---
 
-## Build & install
+## Install
+
+**From the Chrome Web Store:** _coming soon_ — the listing is in preparation
+(see [`docs/STORE-LISTING.md`](docs/STORE-LISTING.md)).
+
+**From a release build:** download the latest `outdegree-*.zip` from
+[Releases](https://github.com/erovelli/Outdegree/releases), unzip it, then open
+`chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and
+select the unzipped folder. Edge works the same; Firefox needs a small manifest
+overlay — see [`docs/PORTING.md`](docs/PORTING.md).
+
+## Build from source
 
 Prerequisites: a recent **Rust** toolchain with the `wasm32-unknown-unknown`
-target, **wasm-pack**, and **Node 18+**.
+target, **wasm-pack**, and **Node 20+** (see [`.nvmrc`](.nvmrc)).
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -105,7 +132,8 @@ Scripts:
 | `npm run build` | `build:wasm` + `build:ext` → `dist/` |
 | `npm run dev` | dev WASM build + Vite dev server |
 | `npm run typecheck` | `tsc --noEmit` over the TypeScript layer |
-| `npm run test:core` / `cargo test` | run the pure-core test suite |
+| `npm run test:ts` | Vitest unit tests for the capture layer |
+| `npm run test:core` / `cargo test` | run the pure-core Rust test suite |
 
 ---
 
@@ -126,8 +154,14 @@ The load-bearing logic is pure Rust and fully covered by `cargo test`:
   drop, Louvain on two cliques, PrefixSpan support, deterministic warm-start.
 
 ```bash
-cargo test          # ~30 tests, all pure, no browser required
+cargo test          # ~100 pure-core tests, no browser required
+npm run test:ts     # Vitest: capture-layer event-shaping + IndexedDB schema
 ```
+
+Two further suites run in CI: the **wasm-bindgen browser tests**
+(`wasm-pack test --headless --chrome crates/core`) exercise the rexie store and
+JS bridge in real Chrome, and the **manifest + network-surface audits** assert
+the shipped `dist/` bundle has zero network egress.
 
 ---
 
@@ -143,12 +177,30 @@ cargo test          # ~30 tests, all pure, no browser required
 
 ## Documentation
 
-- [`docs/M0-CHECKLIST.md`](docs/M0-CHECKLIST.md) — the manual capture-verification
-  gate (load unpacked, run the navigation scenarios, tune the constants).
+- [`AGENTS.md`](AGENTS.md) — build/test/lint commands, the architecture map, and
+  the non-negotiable privacy invariants (for contributors **and** AI agents).
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`SECURITY.md`](SECURITY.md) (threat
+  model) · [`CHANGELOG.md`](CHANGELOG.md).
+- [`docs/adr/`](docs/adr/) — Architecture Decision Records: the *why* behind
+  WASM-on-dashboard, the append-only fold, base64-inlined WASM, and compile-time
+  PSL embedding.
 - [`docs/privacy-policy.md`](docs/privacy-policy.md) — hosted via GitHub Pages.
 - [`docs/STORE-LISTING.md`](docs/STORE-LISTING.md) — Chrome Web Store submission
   material + pre-submit checklist.
+- [`docs/PORTING.md`](docs/PORTING.md) — Firefox/Edge port assessment + manifest
+  variant.
+- [`docs/M0-CHECKLIST.md`](docs/M0-CHECKLIST.md) — the manual capture-verification
+  gate (load unpacked, run the navigation scenarios, tune the constants).
 - [`docs/SCREENSHOTS.md`](docs/SCREENSHOTS.md) — capturing the store hero shot.
+
+---
+
+## Contributing
+
+Issues and PRs welcome — start with [`CONTRIBUTING.md`](CONTRIBUTING.md) and
+[`AGENTS.md`](AGENTS.md). Every change must keep the build green and the
+local-only privacy invariants intact (both are enforced in CI). Be kind: see the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ---
 

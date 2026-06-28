@@ -1,4 +1,8 @@
 import { defineManifest } from "@crxjs/vite-plugin";
+// Single source of truth for the version: derive it from package.json so the
+// manifest and the npm package can never disagree (the store requires monotonic
+// versions). Vite/esbuild inlines this JSON at config-build time.
+import pkg from "../package.json";
 
 // Manifest (§5). The privacy guarantees are browser-enforced here:
 //  • host_permissions: []          → no granted ability to contact any origin
@@ -8,7 +12,7 @@ import { defineManifest } from "@crxjs/vite-plugin";
 export default defineManifest({
   manifest_version: 3,
   name: "Outdegree",
-  version: "0.1.0",
+  version: pkg.version,
   description:
     "Records your navigations as a directed graph you can explore over time.",
   permissions: ["webNavigation", "storage", "unlimitedStorage"],

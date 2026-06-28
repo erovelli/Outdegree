@@ -7,16 +7,23 @@
 // Each handler returns its queued promise so Chrome keeps the worker alive until
 // the IndexedDB commit. No per-tab or derived state is kept (the queue tail is a
 // single promise, reset harmlessly on restart).
+//
+// Event records are shaped by the pure helpers in capture.ts (unit-tested); this
+// file owns only the Chrome wiring, the pause gate, and the serialized queue.
 
 import { ensureCreated, idbAdd } from "./idb";
+import {
+  closeRecord,
+  flagOn,
+  linkRecord,
+  navRecord,
+  startRecord,
+  type NavDetail,
+} from "./capture";
 
 // The pause flag is SW-owned and lives in chrome.storage.local (§4.5). The
-// dashboard writes it as the STRING "true"/"false" (chromeBridge.storageLocalSet
-// only takes strings), so parse it the same way the dashboard reads it — a plain
-// `!!value` would treat the string "false" as truthy and wedge capture off.
-function flagOn(v: unknown): boolean {
-  return v === true || v === "true" || v === "1";
-}
+// dashboard writes it as the STRING "true"/"false", so parse it via the shared
+// flagOn helper (a plain `!!value` would treat "false" as truthy).
 let paused = false;
 chrome.storage.local.get("paused").then((o) => {
   paused = flagOn(o.paused);
@@ -52,13 +59,25 @@ async function resolveWindowId(tabId: number): Promise<number> {
   }
 }
 
+// Shared top-level-frame nav handler for onCommitted (→ events) and the two SPA
+// triggers (→ spa). Skips subframes, paused capture, and the extension's own
+// pages, then appends the shaped record in firing order.
+function handleNav(store: "events" | "spa", d: NavDetail & { frameId: number }) {
+  if (d.frameId !== 0 || paused) return;
+  if (d.url.startsWith(OWN_URL_PREFIX)) return;
+  const now = Date.now();
+  return enqueue(async () =>
+    idbAdd(store, navRecord(d, await resolveWindowId(d.tabId), now))
+  );
+}
+
 // ── Schema lifecycle ──────────────────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
   void ensureCreated();
 });
 
 chrome.runtime.onStartup.addListener(() =>
-  enqueue(() => idbAdd("events", { kind: "start", ts: Date.now() }))
+  enqueue(() => idbAdd("events", startRecord(Date.now())))
 );
 
 // Readiness handshake: ensure-create the DB, then ack so the dashboard opens
@@ -75,80 +94,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 // ── Capture ─────────────────────────────────────────────────────────────────
-chrome.webNavigation.onCommitted.addListener((d) => {
-  if (d.frameId !== 0 || paused) return;
-  if (d.url.startsWith(OWN_URL_PREFIX)) return;
-  const ts = d.timeStamp ?? Date.now();
-  return enqueue(async () =>
-    idbAdd("events", {
-      kind: "nav",
-      ts,
-      tabId: d.tabId,
-      windowId: await resolveWindowId(d.tabId),
-      toUrl: d.url,
-      transitionType: d.transitionType,
-      qualifiers: d.transitionQualifiers,
-    })
-  );
-});
+chrome.webNavigation.onCommitted.addListener((d) => handleNav("events", d));
 
 // In-page (history.pushState) navigations go to the separate high-volume store,
 // never read by the default pass (§4.2).
-chrome.webNavigation.onHistoryStateUpdated.addListener((d) => {
-  if (d.frameId !== 0 || paused) return;
-  if (d.url.startsWith(OWN_URL_PREFIX)) return;
-  const ts = d.timeStamp ?? Date.now();
-  return enqueue(async () =>
-    idbAdd("spa", {
-      kind: "nav",
-      ts,
-      tabId: d.tabId,
-      windowId: await resolveWindowId(d.tabId),
-      toUrl: d.url,
-      transitionType: d.transitionType,
-      qualifiers: d.transitionQualifiers,
-    })
-  );
-});
+chrome.webNavigation.onHistoryStateUpdated.addListener((d) => handleNav("spa", d));
 
 // Hash-route (#/...) SPA navigations — same opt-in `spa` store as pushState, so
 // hash-routed apps (older SPAs, docs sites) aren't invisible to the in-app view.
-chrome.webNavigation.onReferenceFragmentUpdated.addListener((d) => {
-  if (d.frameId !== 0 || paused) return;
-  if (d.url.startsWith(OWN_URL_PREFIX)) return;
-  const ts = d.timeStamp ?? Date.now();
-  return enqueue(async () =>
-    idbAdd("spa", {
-      kind: "nav",
-      ts,
-      tabId: d.tabId,
-      windowId: await resolveWindowId(d.tabId),
-      toUrl: d.url,
-      transitionType: d.transitionType,
-      qualifiers: d.transitionQualifiers,
-    })
-  );
-});
+chrome.webNavigation.onReferenceFragmentUpdated.addListener((d) =>
+  handleNav("spa", d)
+);
 
 // Open-link-in-new-tab: the link's source becomes the child's origin (§7.3).
 chrome.webNavigation.onCreatedNavigationTarget.addListener((d) => {
   if (paused) return;
-  const ts = d.timeStamp ?? Date.now();
-  return enqueue(() =>
-    idbAdd("events", {
-      kind: "link",
-      ts,
-      newTabId: d.tabId,
-      sourceTabId: d.sourceTabId,
-    })
-  );
+  const now = Date.now();
+  return enqueue(() => idbAdd("events", linkRecord(d, now)));
 });
 
 // Tab close: lets the read-time pass evict per-tab state precisely (§7.3).
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (paused) return;
-  const ts = Date.now();
-  return enqueue(() => idbAdd("events", { kind: "close", ts, tabId }));
+  return enqueue(() => idbAdd("events", closeRecord(tabId, Date.now())));
 });
 
 // Toolbar click opens the dashboard.

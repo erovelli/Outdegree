@@ -10,6 +10,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: CI only reads the repo (no job here writes back). Narrow the
+# default GITHUB_TOKEN so a compromised step can't push, comment, or release.
+permissions:
+  contents: read
+
 jobs:
   # ── Pure Rust core: tests + clippy + a wasm32 compile check ──────────────────
   rust:
@@ -94,6 +99,9 @@ jobs:
       - name: Typecheck (tsc)
         run: npm run typecheck
 
+      - name: Unit tests (TypeScript / Vitest)
+        run: npm run test:ts
+
       - name: Build extension (wasm-pack + vite)
         run: npm run build
 
@@ -151,3 +159,28 @@ jobs:
             exit 1
           fi
           echo "Bundle is clean: zero network surface."
+
+      # Visibility + a runaway-growth guard on the inlined dashboard bundle. The
+      # CI build runs without wasm-opt, so this is the *unoptimized* size; the
+      # release workflow shrinks it with `wasm-opt -Os`. Ceiling is generous.
+      - name: Bundle size budget
+        run: |
+          set -euo pipefail
+          BUNDLE=$(wc -c < "$(ls dist/assets/dashboard-*.js)")
+          BUDGET=$((5 * 1024 * 1024))
+          echo "Dashboard bundle (pre-wasm-opt): $BUNDLE bytes / budget $BUDGET" >> "$GITHUB_STEP_SUMMARY"
+          [ "$BUNDLE" -le "$BUDGET" ] || { echo "::error::dashboard bundle $BUNDLE exceeds budget $BUDGET"; exit 1; }
+
+  # ── Supply-chain: RustSec advisory + license/source gate over Cargo.lock ──────
+  # Dependabot proposes bumps; this fails the build on a known advisory in the
+  # *current* committed lockfile, which a bump alone does not catch. Policy lives
+  # in deny.toml.
+  deny:
+    name: Supply-chain (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: cargo-deny (advisories · bans · sources · licenses)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans sources licenses

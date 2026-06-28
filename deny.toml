@@ -1,0 +1,40 @@
+# cargo-deny configuration — https://embarkstudios.github.io/cargo-deny/
+# Backs the CI advisory gate (`cargo deny check advisories`). The committed
+# Cargo.lock makes this deterministic: it fails the build on a known RUSTSEC
+# advisory in the current dependency tree, which Dependabot bumps alone do not do.
+
+[advisories]
+# Use the default RustSec advisory DB. Yanked crates and unmaintained/unsound
+# advisories warn; security vulnerabilities deny (cargo-deny defaults).
+yanked = "warn"
+ignore = []
+
+[bans]
+# Lean toward signal over noise for a small dependency tree.
+multiple-versions = "warn"
+wildcards = "warn"
+
+[licenses]
+# The dependency tree is permissively licensed; allow the usual OSI set. Add to
+# this list (rather than lowering the bar) if a new permissive license appears.
+# Allow listing licenses not currently in the tree (forward-compatible headroom).
+unused-allowed-license = "allow"
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Zlib",
+  "MPL-2.0",
+  "CC0-1.0",
+]
+confidence-threshold = 0.9
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

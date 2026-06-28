@@ -41,3 +41,8 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+      # Surface the exact (case-sensitive) Pages URL for the Web Store listing.
+      - name: Record published URLs
+        run: |
+          echo "Site: ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Privacy policy: ${{ steps.deployment.outputs.page_url }}privacy-policy.html" >> "$GITHUB_STEP_SUMMARY"
