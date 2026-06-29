@@ -59,7 +59,13 @@ jobs:
           set -euo pipefail
           WASM=extension/src/wasm/browsing_graph_core_bg.wasm
           before=$(wc -c < "$WASM")
-          wasm-opt -Os "$WASM" -o "$WASM"
+          # --all-features is REQUIRED: wasm-bindgen emits an externref table that
+          # its init grows at startup. A bare `wasm-opt -Os` mangles that table's
+          # bounds, so the shipped dashboard dies with "WebAssembly.Table.grow():
+          # failed to grow table" before it can render. --all-features preserves
+          # the reference-types table (it never adds unsupported feature usage; -Os
+          # only optimizes what's already present).
+          wasm-opt -Os --all-features "$WASM" -o "$WASM"
           after=$(wc -c < "$WASM")
           echo "wasm-opt: $before -> $after bytes" >> "$GITHUB_STEP_SUMMARY"
 
