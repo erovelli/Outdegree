@@ -3,6 +3,10 @@
 The Web Store listing needs **≥1 screenshot** (1280×800 or 640×400). The
 full-screen graph is the hero shot.
 
+> Current assets live in [`docs/assets/`](assets/): `graph.png` (README hero +
+> store hero), `sankey.png`, and `tables.png` — all 1280×800. Re-capture with the
+> steps below when the UI changes.
+
 ## The look
 
 The dashboard is a Palantir-AIP–style workspace: a pure-black, full-bleed graph

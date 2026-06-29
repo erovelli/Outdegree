@@ -19,6 +19,10 @@ deriving origins, collapsing redirects, rolling up days, detecting communities,
 laying out the graph — runs as a **Rust → WebAssembly** core on the dashboard
 page.
 
+<p align="center">
+  <img src="docs/assets/graph.png" width="900" alt="The Outdegree dashboard: a year of browsing rendered as a directed graph — hosts sized by visits, colored by how you arrived, edges by navigation kind.">
+</p>
+
 ---
 
 ## Why it's private by construction
@@ -63,6 +67,19 @@ The pure core (`interpret` / `derive` / `rollup` / `project` / `graph` / `layout
 depends only on `url`, `psl`, and `petgraph`, and runs under `cargo test`. Only
 `store` / `render` / `ui` / `bridge` are WASM-only (gated behind
 `cfg(target_arch = "wasm32")`).
+
+---
+
+## Screenshots
+
+Two more views over the same local data — follow a single session as a
+left-to-right flow, or read the analytics directly.
+
+| Per-session flow (Sankey) | Analytics (Tables) |
+|---|---|
+| <img src="docs/assets/sankey.png" width="430" alt="Sankey view: one browsing session as a left-to-right flow, starting hosts on the left fanning out to where they led."> | <img src="docs/assets/tables.png" width="430" alt="Tables view: a curated dashboard of top hubs, bridge sites, and which sites are surging this period."> |
+
+More on capturing these (and the store hero shot): [`docs/SCREENSHOTS.md`](docs/SCREENSHOTS.md).
 
 ---
 
