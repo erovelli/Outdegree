@@ -9,6 +9,15 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-06-29
+
+### Fixed
+- Dashboard failed to start on Web Store / release builds with
+  `RangeError: WebAssembly.Table.grow(): failed to grow table` — the release
+  `wasm-opt -Os` step mangled wasm-bindgen's externref table. It now runs
+  `wasm-opt -Os --all-features`, which preserves the reference-types table.
+  (Local `./build.sh` builds were never affected, since they skip `wasm-opt`.)
+
 ## [1.0.0] — 2026-06-29
 
 First public release — published to the Chrome Web Store.
@@ -49,5 +58,6 @@ First public release — published to the Chrome Web Store.
   artifact. The unused, never-compiled `webgpu` feature was removed (canvas2d
   remains the renderer).
 
-[Unreleased]: https://github.com/erovelli/Outdegree/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/erovelli/Outdegree/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/erovelli/Outdegree/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/erovelli/Outdegree/releases/tag/v1.0.0
