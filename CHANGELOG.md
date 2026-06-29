@@ -9,6 +9,23 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-06-29
+
+### Fixed
+- Release builds still crashed at startup with
+  `WebAssembly.Table.grow(): failed to grow table` — the binaryen that
+  `apt-get install binaryen` puts on the CI runner is old enough to mangle
+  wasm-bindgen's externref table even with `--all-features`. The release workflow
+  now installs a **pinned** binaryen (`version_119`), which optimizes the table
+  correctly. (1.0.1 shipped the same crash; 1.0.0/1.0.1 GitHub Release zips are
+  not launchable — use 1.0.2.)
+
+### Added
+- A release **smoke test** (`scripts/smoke-extension.mjs`): instantiates the
+  optimized WASM through the real wasm-bindgen glue (running the externref-table
+  init) and fails the release if it traps — so a non-launchable bundle can never
+  be published again.
+
 ## [1.0.1] — 2026-06-29
 
 ### Fixed
@@ -58,6 +75,7 @@ First public release — published to the Chrome Web Store.
   artifact. The unused, never-compiled `webgpu` feature was removed (canvas2d
   remains the renderer).
 
-[Unreleased]: https://github.com/erovelli/Outdegree/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/erovelli/Outdegree/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/erovelli/Outdegree/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/erovelli/Outdegree/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/erovelli/Outdegree/releases/tag/v1.0.0

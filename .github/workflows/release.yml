@@ -28,10 +28,17 @@ jobs:
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      # binaryen provides wasm-opt; the runner has network so this is safe here
-      # (the default build keeps wasm-opt disabled for offline reproducibility).
-      - name: Install binaryen (wasm-opt)
-        run: sudo apt-get update && sudo apt-get install -y binaryen
+      # Pin a known-good binaryen. The version apt ships on the runner is old
+      # enough to mangle wasm-bindgen's externref table during `wasm-opt`, which
+      # made the optimized dashboard crash at startup ("WebAssembly.Table.grow():
+      # failed to grow table"). A pinned recent release optimizes it correctly.
+      - name: Install binaryen (wasm-opt) — pinned
+        run: |
+          set -euo pipefail
+          VER=version_119
+          curl -fsSL "https://github.com/WebAssembly/binaryen/releases/download/${VER}/binaryen-${VER}-x86_64-linux.tar.gz" | tar xz
+          echo "$PWD/binaryen-${VER}/bin" >> "$GITHUB_PATH"
+          "$PWD/binaryen-${VER}/bin/wasm-opt" --version
 
       - uses: actions/setup-node@v6
         with:
@@ -59,15 +66,20 @@ jobs:
           set -euo pipefail
           WASM=extension/src/wasm/browsing_graph_core_bg.wasm
           before=$(wc -c < "$WASM")
-          # --all-features is REQUIRED: wasm-bindgen emits an externref table that
-          # its init grows at startup. A bare `wasm-opt -Os` mangles that table's
-          # bounds, so the shipped dashboard dies with "WebAssembly.Table.grow():
-          # failed to grow table" before it can render. --all-features preserves
-          # the reference-types table (it never adds unsupported feature usage; -Os
-          # only optimizes what's already present).
+          # --all-features tells wasm-opt to preserve every feature already present
+          # (notably the reference-types externref table); it never introduces
+          # unsupported feature usage, and -Os only optimizes what's there. The
+          # pinned binaryen above is what actually keeps the table growable.
           wasm-opt -Os --all-features "$WASM" -o "$WASM"
           after=$(wc -c < "$WASM")
           echo "wasm-opt: $before -> $after bytes" >> "$GITHUB_STEP_SUMMARY"
+
+      # Guard against ever shipping a non-launchable optimized bundle again:
+      # instantiate the optimized WASM through the real wasm-bindgen glue, which
+      # runs the externref-table init. If wasm-opt broke it, this traps and the
+      # release fails here instead of publishing a dashboard that dies on open.
+      - name: Smoke-test optimized WASM (init must not trap)
+        run: node scripts/smoke-extension.mjs
 
       - name: Build extension (inlines the optimized WASM)
         run: npm run build:ext
