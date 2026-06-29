@@ -66,11 +66,13 @@ jobs:
           set -euo pipefail
           WASM=extension/src/wasm/browsing_graph_core_bg.wasm
           before=$(wc -c < "$WASM")
-          # --all-features tells wasm-opt to preserve every feature already present
-          # (notably the reference-types externref table); it never introduces
-          # unsupported feature usage, and -Os only optimizes what's there. The
-          # pinned binaryen above is what actually keeps the table growable.
-          wasm-opt -Os --all-features "$WASM" -o "$WASM"
+          # Plain -Os: binaryen reads wasm-bindgen's `target_features` section and
+          # enables exactly those (reference-types etc.), preserving the externref
+          # table. Do NOT add --all-features: it makes binaryen emit newer GC heap
+          # types that older Chrome / Node reject ("Unknown heap type"). The pinned
+          # binaryen above is what keeps the externref table growable. The smoke
+          # test below guards both failure modes.
+          wasm-opt -Os "$WASM" -o "$WASM"
           after=$(wc -c < "$WASM")
           echo "wasm-opt: $before -> $after bytes" >> "$GITHUB_STEP_SUMMARY"
 

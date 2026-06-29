@@ -9,6 +9,18 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-06-29
+
+### Fixed
+- The `--all-features` added in 1.0.2 made `wasm-opt` emit a newer GC heap type
+  that older Chrome / Node reject (`Unknown heap type -14`) — so the optimized
+  bundle could fail to instantiate on anything but the very latest engines, and
+  the 1.0.2 release build failed its own smoke test. Reverted to a plain
+  `wasm-opt -Os`: with the pinned binaryen, binaryen reads wasm-bindgen's
+  `target_features` and enables exactly the needed features (preserving the
+  externref table) without enabling GC. Verified launchable on Node 20, Node 22,
+  and a real Chromium. (1.0.2 has no published artifact; use 1.0.3.)
+
 ## [1.0.2] — 2026-06-29
 
 ### Fixed
@@ -75,7 +87,8 @@ First public release — published to the Chrome Web Store.
   artifact. The unused, never-compiled `webgpu` feature was removed (canvas2d
   remains the renderer).
 
-[Unreleased]: https://github.com/erovelli/Outdegree/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/erovelli/Outdegree/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/erovelli/Outdegree/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/erovelli/Outdegree/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/erovelli/Outdegree/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/erovelli/Outdegree/releases/tag/v1.0.0
