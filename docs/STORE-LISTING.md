@@ -1,5 +1,8 @@
 # Chrome Web Store submission material (§12)
 
+> **Published:** https://chromewebstore.google.com/detail/outdegree/kjmjfehjgbcgibkbekgacfgibfmglmod
+> — this doc is kept for reference and for future listing updates.
+
 Everything an agent/maintainer needs to fill the Web Store listing for the
 **Outdegree** extension. The architecture makes the privacy story
 *verifiable*, which de-risks the (stricter-than-usual) review that any
