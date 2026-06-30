@@ -123,3 +123,75 @@ jobs:
           files: outdegree-${{ github.ref_name }}.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+      # Hand the packaged zip to the store-publish job.
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-zip
+          path: outdegree-${{ github.ref_name }}.zip
+          if-no-files-found: error
+
+  # ── Submit the released zip to the Chrome Web Store ──────────────────────────
+  # Talks to the Web Store API directly (no third-party action — keeps the
+  # supply-chain surface small). Requires four repo secrets:
+  #   CWS_EXTENSION_ID, CWS_CLIENT_ID, CWS_CLIENT_SECRET, CWS_REFRESH_TOKEN
+  # If they're absent it skips cleanly, so tagging still produces a GitHub Release.
+  # The API "publish" still goes through Google's normal review.
+  #
+  # Manual approval (optional): this job targets the `chrome-web-store`
+  # environment. Add a required reviewer to that environment (repo Settings →
+  # Environments) to make every release pause for a one-click approval before the
+  # public store is touched. With no reviewer configured, it submits on tag.
+  publish-store:
+    name: Publish to Chrome Web Store
+    needs: release
+    runs-on: ubuntu-latest
+    environment: chrome-web-store
+    permissions: {}
+    steps:
+      - name: Download release zip
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-zip
+
+      - name: Upload + submit to the Chrome Web Store
+        env:
+          EXT_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          ZIP: outdegree-${{ github.ref_name }}.zip
+        run: |
+          set -euo pipefail
+          if [ -z "${REFRESH_TOKEN:-}" ] || [ -z "${EXT_ID:-}" ]; then
+            echo "::warning::Chrome Web Store secrets not configured — skipping publish."
+            exit 0
+          fi
+
+          echo "Requesting access token…"
+          TOK=$(curl -s -X POST https://oauth2.googleapis.com/token \
+            -d client_id="$CLIENT_ID" -d client_secret="$CLIENT_SECRET" \
+            -d refresh_token="$REFRESH_TOKEN" -d grant_type=refresh_token)
+          ACCESS_TOKEN=$(echo "$TOK" | jq -r '.access_token // empty')
+          [ -n "$ACCESS_TOKEN" ] || { echo "::error::token request failed: $(echo "$TOK" | jq -rc '.error_description // .error // .')"; exit 1; }
+
+          echo "Uploading $ZIP…"
+          UP=$(curl -s -X PUT \
+            -H "Authorization: Bearer $ACCESS_TOKEN" -H "x-goog-api-version: 2" \
+            -T "$ZIP" \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXT_ID")
+          STATE=$(echo "$UP" | jq -r '.uploadState // "UNKNOWN"')
+          echo "upload state: $STATE"
+          [ "$STATE" = "SUCCESS" ] || { echo "::error::upload failed: $(echo "$UP" | jq -c '.itemError // .')"; exit 1; }
+
+          echo "Submitting for review…"
+          PUB=$(curl -s -X POST \
+            -H "Authorization: Bearer $ACCESS_TOKEN" -H "x-goog-api-version: 2" -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXT_ID/publish")
+          if echo "$PUB" | jq -e '.status | index("OK")' >/dev/null 2>&1; then
+            echo "✓ Submitted $ZIP to the Chrome Web Store for review." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::publish failed: $(echo "$PUB" | jq -c '.')"
+            exit 1
+          fi

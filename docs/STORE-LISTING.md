@@ -97,3 +97,24 @@ Re-run the bundle audit any time with:
 grep -rIoE "fetch\(|XMLHttpRequest|WebSocket|EventSource|sendBeacon|https?://" dist
 # (expected: no matches)
 ```
+
+## Automated publishing (CI → Web Store)
+
+The `release.yml` workflow can submit each tagged release to the Web Store
+automatically (Web Store API, no third-party action). Configure once:
+
+1. Google Cloud → enable **Chrome Web Store API**; set the OAuth consent screen to
+   **In production** (otherwise the refresh token expires after 7 days).
+2. Create OAuth credentials (Desktop app is simplest) and mint a **refresh token**
+   for scope `https://www.googleapis.com/auth/chromewebstore`.
+3. Add four repo secrets (Settings → Secrets and variables → Actions):
+   `CWS_EXTENSION_ID`, `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, `CWS_REFRESH_TOKEN`.
+
+Then `git tag vX.Y.Z && git push origin vX.Y.Z` builds, smoke-tests, releases, and
+submits to the store. The publish still goes through Google's normal review. If
+the secrets are absent the publish step skips (the GitHub Release still happens).
+
+**Optional approval gate:** the `publish-store` job targets a `chrome-web-store`
+GitHub Environment. Add a required reviewer to it (Settings → Environments) to
+make each release pause for a one-click approval before the public store is
+touched; with no reviewer it submits automatically on tag.
