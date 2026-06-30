@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://chromewebstore.google.com/detail/outdegree/kjmjfehjgbcgibkbekgacfgibfmglmod"><img alt="Chrome Web Store" src="https://img.shields.io/chrome-web-store/v/kjmjfehjgbcgibkbekgacfgibfmglmod?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white"></a>
   <a href="https://github.com/erovelli/Outdegree/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/erovelli/Outdegree/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Chrome Manifest V3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4?logo=googlechrome&logoColor=white">
@@ -117,10 +118,9 @@ vite.config.ts · package.json · build.sh · docs/{privacy-policy.md, adr/}
 
 ## Install
 
-**From the Chrome Web Store:** _coming soon_ — the listing is in preparation
-(see [`docs/STORE-LISTING.md`](docs/STORE-LISTING.md)).
+**[➜ Install from the Chrome Web Store](https://chromewebstore.google.com/detail/outdegree/kjmjfehjgbcgibkbekgacfgibfmglmod)** — one click, then click the toolbar icon to open the dashboard.
 
-**From a release build:** download the latest `outdegree-*.zip` from
+**From a release build (manual):** download the latest `outdegree-*.zip` from
 [Releases](https://github.com/erovelli/Outdegree/releases), unzip it, then open
 `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and
 select the unzipped folder. Edge works the same; Firefox needs a small manifest
