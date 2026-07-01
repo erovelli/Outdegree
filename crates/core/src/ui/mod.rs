@@ -79,6 +79,11 @@ pub(crate) struct App {
     pub anim_gen: u64,
     pub last_mouse: (f64, f64),
     pub selected_session: Option<f64>,
+    /// Selected day in the Sankey session picker's activity heatmap, as a local
+    /// calendar-day key (`year*10000 + month0*100 + date`, see [`local_day_key`]).
+    /// The session list is scoped to this day so months of sessions stay
+    /// navigable; `None` until the picker defaults it to the latest session's day.
+    pub selected_day: Option<i64>,
     /// The participating flow graph currently drawn in the Sankey, cached so a
     /// click can re-render with a focus highlight without re-reading the session's
     /// events. `sankey_focus` is the clicked `(seed_up, seed_down)` (equal for a
@@ -183,6 +188,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         anim_gen: 0,
         last_mouse: (0.0, 0.0),
         selected_session: None,
+        selected_day: None,
         sankey_flow: None,
         sankey_focus: None,
         sankey_vw: 0.0,
@@ -698,6 +704,19 @@ pub(crate) fn plural(n: u64, noun: &str) -> String {
     } else {
         format!("{n} {noun}s")
     }
+}
+
+/// Local calendar-day key for a `Date`: `year*10000 + month0*100 + date`. This is
+/// monotonic (ordering matches the calendar), unique per local day, and — unlike a
+/// UTC-epoch day index — free of timezone/DST reversal ambiguity, so it's the key
+/// the Sankey activity heatmap buckets sessions into and highlights on.
+pub(crate) fn day_key_of(d: &js_sys::Date) -> i64 {
+    d.get_full_year() as i64 * 10_000 + d.get_month() as i64 * 100 + d.get_date() as i64
+}
+
+/// [`day_key_of`] for an epoch-ms timestamp, read in the browser's local timezone.
+pub(crate) fn local_day_key(ts: f64) -> i64 {
+    day_key_of(&js_sys::Date::new(&JsValue::from_f64(ts)))
 }
 
 /// A relative day prefix for a session date — `Today`, `Yesterday`, the weekday

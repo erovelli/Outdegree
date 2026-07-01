@@ -515,6 +515,56 @@ td.host-cell:hover, span.host-cell:hover {
 }
 .sp-toggle input { accent-color: var(--text-secondary); }
 
+/*
+ * Activity heatmap (GitHub-style contribution grid) atop the session picker: a
+ * 53-week × 7-day calendar for jumping straight to a day instead of scrolling
+ * months of sessions. Intensity uses the single data hue (periwinkle 264) at
+ * rising opacity — empty days stay achromatic so only real activity carries color.
+ */
+.sp-wrap { display: flex; flex-direction: column; height: 100%; gap: 16px; }
+/* The two-pane list+flow takes the height left below the heatmap and scrolls
+ * internally (overriding .sp-row's fixed height:100%). */
+.sp-wrap .sp-row { height: auto; flex: 1 1 auto; min-height: 0; }
+
+.cal { --cal-cell: 11px; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+.cal-grid {
+  display: grid;
+  grid-template-columns: auto repeat(53, var(--cal-cell));
+  grid-template-rows: auto repeat(7, var(--cal-cell));
+  gap: 3px; width: max-content; align-items: center;
+}
+.cal-month {
+  font: 10px var(--mono); color: var(--text-muted);
+  white-space: nowrap; overflow: visible; align-self: end;
+}
+.cal-wday {
+  font: 9px var(--mono); color: var(--text-muted);
+  padding-right: 6px; justify-self: end; white-space: nowrap;
+}
+.cal-cell {
+  width: var(--cal-cell); height: var(--cal-cell);
+  border-radius: 2px; background: oklch(1 0 0 / 0.05);
+}
+.cal-future { background: transparent; }
+.cal-l0 { background: oklch(1 0 0 / 0.05); }
+.cal-l1 { background: oklch(0.64 0.205 264 / 0.28); }
+.cal-l2 { background: oklch(0.64 0.205 264 / 0.5); }
+.cal-l3 { background: oklch(0.64 0.205 264 / 0.72); }
+.cal-l4 { background: oklch(0.64 0.205 264 / 1); }
+.cal-cell.is-hit { cursor: pointer; }
+.cal-cell.is-hit:hover { outline: 1px solid oklch(1 0 0 / 0.35); outline-offset: 1px; }
+.cal-cell.is-sel { outline: 1.5px solid var(--text-primary); outline-offset: 1px; }
+.cal-scale {
+  display: flex; align-items: center; gap: 4px; margin-top: 8px;
+  font: 10px var(--mono); color: var(--text-muted);
+}
+.cal-scale .cal-cell { cursor: default; }
+/* the scoped-day header above the session list */
+.sp-daylabel {
+  font: 11.5px var(--mono); color: var(--text-secondary); margin: 2px 0 8px;
+}
+.sp-daylabel:empty { display: none; }
+
 /* validating confirmation modal (replaces window.prompt) */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 100;
