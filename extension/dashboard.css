@@ -515,6 +515,69 @@ td.host-cell:hover, span.host-cell:hover {
 }
 .sp-toggle input { accent-color: var(--text-secondary); }
 
+/*
+ * Activity heatmap (GitHub-style contribution grid) atop the session picker, for
+ * jumping straight to a day instead of scrolling months of sessions: a full
+ * rolling year, centered in the available width. Intensity uses the single data
+ * hue (periwinkle 264) at rising opacity — empty days stay achromatic and
+ * near-invisible so only real activity carries weight. Structure is a flex row
+ * of week columns.
+ */
+.sp-wrap { display: flex; flex-direction: column; height: 100%; gap: 14px; }
+/* The two-pane list+flow takes the height left below the heatmap and scrolls
+ * internally (overriding .sp-row's fixed height:100%). */
+.sp-wrap .sp-row { height: auto; flex: 1 1 auto; min-height: 0; }
+
+/* flex:none pins the grid + key at natural height: .sp-wrap is a fixed-height
+ * flex column, and a long session list would otherwise distribute shrinkage
+ * here too — overflow-y:hidden would then clip the bottom rows and the key. */
+.cal { --cal-cell: 10px; flex: none; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+/* Centered while it fits; margin auto (not justify-content) keeps the left edge
+ * reachable when a narrow window forces the horizontal scroll. */
+.cal-inner {
+  width: max-content; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.cal-body { display: flex; gap: 3px; }
+.cal-wdays, .cal-week { display: flex; flex-direction: column; gap: 3px; }
+.cal-week { width: var(--cal-cell); }
+/* Month labels overflow their 10px column to the right; the ≥3-column label
+ * spacing enforced in Rust keeps neighbours from colliding. */
+.cal-month {
+  height: 12px; font: 9.5px var(--mono); color: var(--text-muted);
+  white-space: nowrap; overflow: visible;
+}
+.cal-wday {
+  height: var(--cal-cell); display: flex; align-items: center; justify-content: flex-end;
+  padding-right: 6px; font: 9px var(--mono); color: var(--text-faint); white-space: nowrap;
+}
+.cal-cell {
+  width: var(--cal-cell); height: var(--cal-cell);
+  border-radius: 2px; background: oklch(1 0 0 / 0.04);
+}
+.cal-future { background: transparent; }
+.cal-l0 { background: oklch(1 0 0 / 0.04); }
+.cal-l1 { background: oklch(0.64 0.205 264 / 0.3); }
+.cal-l2 { background: oklch(0.64 0.205 264 / 0.5); }
+.cal-l3 { background: oklch(0.64 0.205 264 / 0.72); }
+.cal-l4 { background: oklch(0.64 0.205 264 / 1); }
+.cal-cell.is-hit { cursor: pointer; }
+.cal-cell.is-hit:hover { outline: 1px solid oklch(1 0 0 / 0.35); outline-offset: 1px; }
+.cal-cell.is-sel { outline: 1.5px solid var(--text-primary); outline-offset: 1px; }
+/* Micro intensity key, tucked under the grid's right edge (single series →
+ * tooltips carry the exact counts; this is just the ramp direction). */
+.cal-scale {
+  display: flex; align-items: center; gap: 3px; align-self: flex-end;
+  font: 9px var(--mono); color: var(--text-faint);
+}
+.cal-scale span { padding: 0 3px; }
+.cal-scale .cal-cell { width: 8px; height: 8px; cursor: default; }
+/* The scoped-day header above the session list — the single date anchor for the
+ * items below (which carry only their time range). */
+.sp-daylabel { font: 12px var(--grotesque); color: var(--text-muted); margin: 2px 0 8px; }
+.sp-daylabel b { color: var(--text-primary); font-weight: 600; }
+.sp-daylabel:empty { display: none; }
+
 /* validating confirmation modal (replaces window.prompt) */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 100;

@@ -79,6 +79,11 @@ pub(crate) struct App {
     pub anim_gen: u64,
     pub last_mouse: (f64, f64),
     pub selected_session: Option<f64>,
+    /// Selected day in the Sankey session picker's activity heatmap, as a local
+    /// calendar-day key (`year*10000 + month0*100 + date`, see [`local_day_key`]).
+    /// The session list is scoped to this day so months of sessions stay
+    /// navigable; `None` until the picker defaults it to the latest session's day.
+    pub selected_day: Option<i64>,
     /// The participating flow graph currently drawn in the Sankey, cached so a
     /// click can re-render with a focus highlight without re-reading the session's
     /// events. `sankey_focus` is the clicked `(seed_up, seed_down)` (equal for a
@@ -183,6 +188,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         anim_gen: 0,
         last_mouse: (0.0, 0.0),
         selected_session: None,
+        selected_day: None,
         sankey_flow: None,
         sankey_focus: None,
         sankey_vw: 0.0,
@@ -700,56 +706,42 @@ pub(crate) fn plural(n: u64, noun: &str) -> String {
     }
 }
 
-/// A relative day prefix for a session date — `Today`, `Yesterday`, the weekday
-/// (within the last week), else the `M/D` date. Uses the browser's local clock.
-pub(crate) fn session_day_label(start_ts: f64) -> String {
-    let now = js_sys::Date::new_0();
-    let d = js_sys::Date::new(&JsValue::from_f64(start_ts));
-    // Local-calendar day index = (UTC epoch − timezone offset) floored to days.
-    let day_of = |x: &js_sys::Date| -> i64 {
-        let off_ms = x.get_timezone_offset() * 60_000.0; // minutes → ms (UTC − local)
-        ((x.get_time() - off_ms) / 86_400_000.0).floor() as i64
+/// Local calendar-day key for a `Date`: `year*10000 + month0*100 + date`. This is
+/// monotonic (ordering matches the calendar), unique per local day, and — unlike a
+/// UTC-epoch day index — free of timezone/DST reversal ambiguity, so it's the key
+/// the Sankey activity heatmap buckets sessions into and highlights on.
+pub(crate) fn day_key_of(d: &js_sys::Date) -> i64 {
+    d.get_full_year() as i64 * 10_000 + d.get_month() as i64 * 100 + d.get_date() as i64
+}
+
+/// [`day_key_of`] for an epoch-ms timestamp, read in the browser's local timezone.
+pub(crate) fn local_day_key(ts: f64) -> i64 {
+    day_key_of(&js_sys::Date::new(&JsValue::from_f64(ts)))
+}
+
+/// 12-hour local clock (`11:23 AM`) for session time labels.
+fn clock(d: &js_sys::Date) -> String {
+    let h = d.get_hours(); // u32, 0–23, local
+    let m = d.get_minutes();
+    let (h12, ap) = match h {
+        0 => (12, "AM"),
+        12 => (12, "PM"),
+        1..=11 => (h, "AM"),
+        _ => (h - 12, "PM"),
     };
-    let diff = day_of(&now) - day_of(&d);
-    match diff {
-        0 => "Today".to_string(),
-        1 => "Yesterday".to_string(),
-        2..=6 => [
-            "Sunday",
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-        ]
-        .get(d.get_day() as usize)
-        .copied()
-        .unwrap_or("")
-        .to_string(),
-        _ => format!("{}/{}", d.get_month() + 1, d.get_date()),
-    }
+    format!("{h12}:{m:02} {ap}")
+}
+
+/// Short local `M/D` date.
+fn md(d: &js_sys::Date) -> String {
+    format!("{}/{}", d.get_month() + 1, d.get_date())
 }
 
 /// Human, local-time label for a session: `"6/21 · 11:23 AM – 4:22 PM"` (and
 /// `"6/21 11:50 PM – 6/22 12:30 AM"` when it crosses midnight). Replaces the
-/// opaque Chrome window id in the picker list + Sankey header. Reads in the user's
-/// own timezone via the browser's local `Date`.
+/// opaque Chrome window id in the Sankey header. Reads in the user's own
+/// timezone via the browser's local `Date`.
 pub(crate) fn session_when(start_ts: f64, end_ts: f64) -> String {
-    fn clock(d: &js_sys::Date) -> String {
-        let h = d.get_hours(); // u32, 0–23, local
-        let m = d.get_minutes();
-        let (h12, ap) = match h {
-            0 => (12, "AM"),
-            12 => (12, "PM"),
-            1..=11 => (h, "AM"),
-            _ => (h - 12, "PM"),
-        };
-        format!("{h12}:{m:02} {ap}")
-    }
-    fn md(d: &js_sys::Date) -> String {
-        format!("{}/{}", d.get_month() + 1, d.get_date())
-    }
     let a = js_sys::Date::new(&JsValue::from_f64(start_ts));
     let b = js_sys::Date::new(&JsValue::from_f64(end_ts));
     let same_day = a.get_full_year() == b.get_full_year()
@@ -759,5 +751,21 @@ pub(crate) fn session_when(start_ts: f64, end_ts: f64) -> String {
         format!("{} · {} – {}", md(&a), clock(&a), clock(&b))
     } else {
         format!("{} {} – {} {}", md(&a), clock(&a), md(&b), clock(&b))
+    }
+}
+
+/// Time-of-day range without the date (`"11:23 AM – 4:22 PM"`), for session list
+/// items already scoped under a day header — repeating the date on every item is
+/// noise. Falls back to the dated form when the session crosses midnight.
+pub(crate) fn session_clock_range(start_ts: f64, end_ts: f64) -> String {
+    let a = js_sys::Date::new(&JsValue::from_f64(start_ts));
+    let b = js_sys::Date::new(&JsValue::from_f64(end_ts));
+    let same_day = a.get_full_year() == b.get_full_year()
+        && a.get_month() == b.get_month()
+        && a.get_date() == b.get_date();
+    if same_day {
+        format!("{} – {}", clock(&a), clock(&b))
+    } else {
+        session_when(start_ts, end_ts)
     }
 }
