@@ -528,7 +528,10 @@ td.host-cell:hover, span.host-cell:hover {
  * internally (overriding .sp-row's fixed height:100%). */
 .sp-wrap .sp-row { height: auto; flex: 1 1 auto; min-height: 0; }
 
-.cal { --cal-cell: 10px; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+/* flex:none pins the grid + key at natural height: .sp-wrap is a fixed-height
+ * flex column, and a long session list would otherwise distribute shrinkage
+ * here too — overflow-y:hidden would then clip the bottom rows and the key. */
+.cal { --cal-cell: 10px; flex: none; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
 /* Centered while it fits; margin auto (not justify-content) keeps the left edge
  * reachable when a narrow window forces the horizontal scroll. */
 .cal-inner {
