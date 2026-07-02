@@ -1,7 +1,7 @@
 {
   "name": "outdegree",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.1.0",
   "type": "module",
   "description": "Records your navigations as a directed graph you can explore over time. Local-only, no network, open source.",
   "keywords": [
