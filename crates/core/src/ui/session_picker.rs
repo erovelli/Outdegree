@@ -1,11 +1,10 @@
 //! Session picker (§7.7): lists closed + provisional-open sessions; selecting one
-//! renders its per-tab flow (§4.4, sankey.rs). A GitHub-style activity heatmap
-//! sits atop the list so a day can be picked directly instead of scrolling months
-//! of sessions; the list is then scoped to that day. The grid spans only the weeks
-//! that actually hold data (clamped to [`MIN_WEEKS`]..[`MAX_WEEKS`]), so a young
-//! install shows a small quiet block instead of a year of empty cells. Also
-//! supports a host-substring filter, a "hide 1-visit sessions" toggle, and
-//! auto-selection of the most recent session so the flow pane is never blank.
+//! renders its per-tab flow (§4.4, sankey.rs). A GitHub-style activity heatmap —
+//! a full rolling year, centered — sits atop the list so a day can be picked
+//! directly instead of scrolling months of sessions; the list is then scoped to
+//! that day. Also supports a host-substring filter, a "hide 1-visit sessions"
+//! toggle, and auto-selection of the most recent session so the flow pane is
+//! never blank on open.
 
 use super::{
     body_container, day_key_of, el, esc, local_day_key, on, persist_positions, plural,
@@ -16,10 +15,9 @@ use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element, HtmlInputElement};
 
-/// Heatmap week-span clamp: at least a quarter of context, at most a rolling year
-/// (53 aligned weeks, à la GitHub). Within that, the span adapts to the data.
-const MIN_WEEKS: i32 = 13;
-const MAX_WEEKS: i32 = 53;
+/// Weeks (columns) in the heatmap: a full rolling year with week alignment
+/// (52×7 = 364 days plus the partial current/leading weeks), à la GitHub.
+const WEEKS: i32 = 53;
 const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
@@ -357,23 +355,21 @@ fn date_of_key(key: i64) -> js_sys::Date {
     )
 }
 
-/// Build the GitHub-style activity heatmap: one column per week, each cell an
-/// intensity-shaded day. The span adapts to the data — from the week of the first
-/// recorded session through this week, clamped to `MIN_WEEKS..=MAX_WEEKS` — so the
-/// grid never opens as a year of empty cells. Clicking a day with sessions scopes
-/// the list to it. Intensity is the day's visit total binned into quartiles of the
-/// busiest day, so the ramp adapts to the user's own volume (§7.7).
+/// Build the GitHub-style activity heatmap: a full rolling year ([`WEEKS`] × 7),
+/// one column per week, each cell an intensity-shaded day, centered in the
+/// available width. Clicking a day with sessions scopes the list to it. Intensity
+/// is the day's visit total binned into quartiles of the busiest day, so the ramp
+/// adapts to the user's own volume (§7.7).
 ///
-/// The DOM is a flex row of per-week columns (not one CSS grid): the strict CSP
-/// forbids inline styles, so a data-dependent column count can't be expressed as
-/// `grid-template-columns` — but a flex row simply grows per appended column.
+/// The DOM is a flex row of per-week columns (not one CSS grid): columns are
+/// self-contained, and the count stays a Rust-side constant instead of being
+/// duplicated in a `grid-template-columns` rule.
 fn build_heatmap(shared: &Shared) -> Element {
     let doc = shared.borrow().doc.clone();
 
-    // Per-day (sessions, visits), the current selection, the busiest day's visit
-    // total (the quartile scale), and the earliest session (the span anchor) —
-    // all read under one short borrow.
-    let (counts, selected_day, max_visits, earliest_ts) = {
+    // Per-day (sessions, visits), the current selection, and the busiest day's
+    // visit total (the quartile scale) — all read under one short borrow.
+    let (counts, selected_day, max_visits) = {
         let a = shared.borrow();
         let mut counts: HashMap<i64, (u32, u32)> = HashMap::new();
         for s in &a.sessions {
@@ -382,41 +378,19 @@ fn build_heatmap(shared: &Shared) -> Element {
             e.1 += s.nav_count;
         }
         let max = counts.values().map(|(_, v)| *v).max().unwrap_or(0).max(1);
-        let earliest = a
-            .sessions
-            .iter()
-            .map(|s| s.start_ts)
-            .fold(None, |acc: Option<f64>, ts| match acc {
-                Some(b) if b <= ts => Some(b),
-                _ => Some(ts),
-            });
-        (counts, a.selected_day, max, earliest)
+        (counts, a.selected_day, max)
     };
 
     let now = js_sys::Date::new_0();
     let today_key = day_key_of(&now);
+    let weeks = WEEKS;
     // `Date`'s year/month/day constructor normalizes out-of-range day arithmetic
     // (and DST) for us — no fragile epoch-offset math.
-    let sunday_of = |d: &js_sys::Date| {
-        js_sys::Date::new_with_year_month_day(
-            d.get_full_year(),
-            d.get_month() as i32,
-            d.get_date() as i32 - d.get_day() as i32,
-        )
-    };
-    let this_sunday = sunday_of(&now);
-    // Weeks between the first session's week and this week (inclusive), clamped.
-    // Rounding absorbs the ±1h DST skew between the two Sunday midnights.
-    let weeks = earliest_ts
-        .map(|ts| {
-            let first = sunday_of(&js_sys::Date::new(&JsValue::from_f64(ts)));
-            let w = ((this_sunday.get_time() - first.get_time()) / (7.0 * 86_400_000.0)).round()
-                as i32
-                + 1;
-            w.clamp(MIN_WEEKS, MAX_WEEKS)
-        })
-        .unwrap_or(MIN_WEEKS);
-
+    let this_sunday = js_sys::Date::new_with_year_month_day(
+        now.get_full_year(),
+        now.get_month() as i32,
+        now.get_date() as i32 - now.get_day() as i32,
+    );
     let (sy, sm, sd) = (
         this_sunday.get_full_year(),
         this_sunday.get_month() as i32,

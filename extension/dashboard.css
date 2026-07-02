@@ -517,13 +517,11 @@ td.host-cell:hover, span.host-cell:hover {
 
 /*
  * Activity heatmap (GitHub-style contribution grid) atop the session picker, for
- * jumping straight to a day instead of scrolling months of sessions. The span
- * adapts to the data (weeks with sessions, clamped — see session_picker.rs), so
- * it opens as a small quiet block, not a year of empty cells. Intensity uses the
- * single data hue (periwinkle 264) at rising opacity — empty days stay achromatic
- * and near-invisible so only real activity carries weight. Structure is a flex
- * row of week columns (the CSP forbids the inline style a dynamic
- * grid-template-columns would need).
+ * jumping straight to a day instead of scrolling months of sessions: a full
+ * rolling year, centered in the available width. Intensity uses the single data
+ * hue (periwinkle 264) at rising opacity — empty days stay achromatic and
+ * near-invisible so only real activity carries weight. Structure is a flex row
+ * of week columns.
  */
 .sp-wrap { display: flex; flex-direction: column; height: 100%; gap: 14px; }
 /* The two-pane list+flow takes the height left below the heatmap and scrolls
@@ -531,7 +529,12 @@ td.host-cell:hover, span.host-cell:hover {
 .sp-wrap .sp-row { height: auto; flex: 1 1 auto; min-height: 0; }
 
 .cal { --cal-cell: 10px; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
-.cal-inner { width: max-content; display: flex; flex-direction: column; gap: 4px; }
+/* Centered while it fits; margin auto (not justify-content) keeps the left edge
+ * reachable when a narrow window forces the horizontal scroll. */
+.cal-inner {
+  width: max-content; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 4px;
+}
 .cal-body { display: flex; gap: 3px; }
 .cal-wdays, .cal-week { display: flex; flex-direction: column; gap: 3px; }
 .cal-week { width: var(--cal-cell); }
