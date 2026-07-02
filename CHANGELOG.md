@@ -9,6 +9,24 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-07-02
+
+### Added
+- **Activity heatmap in the Sankey session picker.** A GitHub-style contribution
+  grid (a full rolling year, 53 weeks × 7 days) now sits atop the session list, so
+  a day can be picked directly instead of scrolling months of sessions. Days are
+  shaded by that day's visit total, binned into quartiles of the busiest day, using
+  the single provenance hue at rising opacity (empty days stay achromatic). Picking
+  a day scopes the list to it and auto-selects that day's most recent session. Days
+  bucket on a DST-safe local calendar-day key; all shading is CSS-class-driven to
+  preserve the strict `connect-src 'none'` CSP.
+
+### Changed
+- Decluttered the session list: a single date header ("Today · Wed, Jul 1 · N
+  sessions") now anchors the scoped day, and each session card shows only its time
+  range instead of repeating the date. The heatmap is pinned at its natural height
+  so a session-heavy day can no longer clip its bottom rows or intensity key.
+
 ## [1.0.3] — 2026-06-29
 
 ### Fixed
