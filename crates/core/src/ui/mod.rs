@@ -719,56 +719,29 @@ pub(crate) fn local_day_key(ts: f64) -> i64 {
     day_key_of(&js_sys::Date::new(&JsValue::from_f64(ts)))
 }
 
-/// A relative day prefix for a session date — `Today`, `Yesterday`, the weekday
-/// (within the last week), else the `M/D` date. Uses the browser's local clock.
-pub(crate) fn session_day_label(start_ts: f64) -> String {
-    let now = js_sys::Date::new_0();
-    let d = js_sys::Date::new(&JsValue::from_f64(start_ts));
-    // Local-calendar day index = (UTC epoch − timezone offset) floored to days.
-    let day_of = |x: &js_sys::Date| -> i64 {
-        let off_ms = x.get_timezone_offset() * 60_000.0; // minutes → ms (UTC − local)
-        ((x.get_time() - off_ms) / 86_400_000.0).floor() as i64
+/// 12-hour local clock (`11:23 AM`) for session time labels.
+fn clock(d: &js_sys::Date) -> String {
+    let h = d.get_hours(); // u32, 0–23, local
+    let m = d.get_minutes();
+    let (h12, ap) = match h {
+        0 => (12, "AM"),
+        12 => (12, "PM"),
+        1..=11 => (h, "AM"),
+        _ => (h - 12, "PM"),
     };
-    let diff = day_of(&now) - day_of(&d);
-    match diff {
-        0 => "Today".to_string(),
-        1 => "Yesterday".to_string(),
-        2..=6 => [
-            "Sunday",
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-        ]
-        .get(d.get_day() as usize)
-        .copied()
-        .unwrap_or("")
-        .to_string(),
-        _ => format!("{}/{}", d.get_month() + 1, d.get_date()),
-    }
+    format!("{h12}:{m:02} {ap}")
+}
+
+/// Short local `M/D` date.
+fn md(d: &js_sys::Date) -> String {
+    format!("{}/{}", d.get_month() + 1, d.get_date())
 }
 
 /// Human, local-time label for a session: `"6/21 · 11:23 AM – 4:22 PM"` (and
 /// `"6/21 11:50 PM – 6/22 12:30 AM"` when it crosses midnight). Replaces the
-/// opaque Chrome window id in the picker list + Sankey header. Reads in the user's
-/// own timezone via the browser's local `Date`.
+/// opaque Chrome window id in the Sankey header. Reads in the user's own
+/// timezone via the browser's local `Date`.
 pub(crate) fn session_when(start_ts: f64, end_ts: f64) -> String {
-    fn clock(d: &js_sys::Date) -> String {
-        let h = d.get_hours(); // u32, 0–23, local
-        let m = d.get_minutes();
-        let (h12, ap) = match h {
-            0 => (12, "AM"),
-            12 => (12, "PM"),
-            1..=11 => (h, "AM"),
-            _ => (h - 12, "PM"),
-        };
-        format!("{h12}:{m:02} {ap}")
-    }
-    fn md(d: &js_sys::Date) -> String {
-        format!("{}/{}", d.get_month() + 1, d.get_date())
-    }
     let a = js_sys::Date::new(&JsValue::from_f64(start_ts));
     let b = js_sys::Date::new(&JsValue::from_f64(end_ts));
     let same_day = a.get_full_year() == b.get_full_year()
@@ -778,5 +751,21 @@ pub(crate) fn session_when(start_ts: f64, end_ts: f64) -> String {
         format!("{} · {} – {}", md(&a), clock(&a), clock(&b))
     } else {
         format!("{} {} – {} {}", md(&a), clock(&a), md(&b), clock(&b))
+    }
+}
+
+/// Time-of-day range without the date (`"11:23 AM – 4:22 PM"`), for session list
+/// items already scoped under a day header — repeating the date on every item is
+/// noise. Falls back to the dated form when the session crosses midnight.
+pub(crate) fn session_clock_range(start_ts: f64, end_ts: f64) -> String {
+    let a = js_sys::Date::new(&JsValue::from_f64(start_ts));
+    let b = js_sys::Date::new(&JsValue::from_f64(end_ts));
+    let same_day = a.get_full_year() == b.get_full_year()
+        && a.get_month() == b.get_month()
+        && a.get_date() == b.get_date();
+    if same_day {
+        format!("{} – {}", clock(&a), clock(&b))
+    } else {
+        session_when(start_ts, end_ts)
     }
 }

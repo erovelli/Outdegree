@@ -1,23 +1,25 @@
 //! Session picker (§7.7): lists closed + provisional-open sessions; selecting one
 //! renders its per-tab flow (§4.4, sankey.rs). A GitHub-style activity heatmap
-//! (53 weeks × 7 days) sits atop the list so a day can be picked directly instead
-//! of scrolling months of sessions; the list is then scoped to that day. Also
-//! supports a host-substring filter, a "hide 1-visit sessions" toggle, relative
-//! day labels, and auto-selection of the most recent session so the flow pane is
-//! never blank on open.
+//! sits atop the list so a day can be picked directly instead of scrolling months
+//! of sessions; the list is then scoped to that day. The grid spans only the weeks
+//! that actually hold data (clamped to [`MIN_WEEKS`]..[`MAX_WEEKS`]), so a young
+//! install shows a small quiet block instead of a year of empty cells. Also
+//! supports a host-substring filter, a "hide 1-visit sessions" toggle, and
+//! auto-selection of the most recent session so the flow pane is never blank.
 
 use super::{
     body_container, day_key_of, el, esc, local_day_key, on, persist_positions, plural,
-    recompute_projection, session_day_label, session_when, Shared,
+    recompute_projection, session_clock_range, Shared,
 };
 use crate::model::Granularity;
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Document, Element, HtmlInputElement};
 
-/// Weeks (columns) in the heatmap; 53 covers a full rolling year with week
-/// alignment (52×7 = 364 days plus the partial current/leading weeks), à la GitHub.
-const WEEKS: i32 = 53;
+/// Heatmap week-span clamp: at least a quarter of context, at most a rolling year
+/// (53 aligned weeks, à la GitHub). Within that, the span adapts to the data.
+const MIN_WEEKS: i32 = 13;
+const MAX_WEEKS: i32 = 53;
 const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
@@ -243,17 +245,34 @@ fn fill_items(shared: &Shared) {
         })
         .collect();
 
-    // Header naming the browsed day + its session count (e.g. "Mon, Jul 1 · 3 sessions").
+    // Header naming the browsed day + its session count ("Today · Wed, Jul 1 ·
+    // 3 sessions"). This is the single date anchor for the list — the items below
+    // carry only their time range, so the date isn't repeated on every card.
     if let Some(lbl) = doc.get_element_by_id("sp-day-label") {
-        let text = match selected_day {
-            Some(_) if !shown.is_empty() => format!(
-                "{} · {}",
-                day_full_label(shown[0].start_ts),
-                plural(shown.len() as u64, "session")
-            ),
-            _ => String::new(),
-        };
-        lbl.set_text_content(Some(&text));
+        match selected_day {
+            Some(k) => {
+                let now = js_sys::Date::new_0();
+                let yesterday = js_sys::Date::new_with_year_month_day(
+                    now.get_full_year(),
+                    now.get_month() as i32,
+                    now.get_date() as i32 - 1,
+                );
+                let rel = if k == day_key_of(&now) {
+                    "Today · "
+                } else if k == day_key_of(&yesterday) {
+                    "Yesterday · "
+                } else {
+                    ""
+                };
+                // Self-generated strings only (weekday/month tables + digits).
+                lbl.set_inner_html(&format!(
+                    "<b>{rel}{}</b><span class=\"muted\"> · {}</span>",
+                    day_full_label(&date_of_key(k)),
+                    plural(shown.len() as u64, "session")
+                ));
+            }
+            None => lbl.set_text_content(Some("")),
+        }
     }
 
     if shown.is_empty() {
@@ -307,20 +326,20 @@ fn build_item(doc: &Document, sess: &crate::rollup::SessionRec, selected: Option
     } else {
         format!("{visits} · {}", esc(&top))
     };
+    // Time range only — the scoped-list header above already carries the date
+    // once, so items don't each repeat "Today · 7/1 ·".
     item.set_inner_html(&format!(
-        "<b>{} · {}</b><br><span class=\"muted\">{}</span>",
-        esc(&session_day_label(sess.start_ts)),
-        session_when(sess.start_ts, sess.end_ts),
+        "<b>{}</b><br><span class=\"muted\">{}</span>",
+        session_clock_range(sess.start_ts, sess.end_ts),
         meta
     ));
     item
 }
 
-/// Full, unambiguous day label for a timestamp: `"Mon, Jul 1"` (local time). Used
-/// in the scoped-list header and the heatmap cell tooltips, where the relative
-/// `Today`/weekday label of [`session_day_label`] would be ambiguous a year back.
-fn day_full_label(ts: f64) -> String {
-    let d = js_sys::Date::new(&JsValue::from_f64(ts));
+/// Full, unambiguous day label: `"Mon, Jul 1"` (local time). Used in the
+/// scoped-list header and the heatmap cell tooltips, where a relative
+/// `Today`/weekday label would be ambiguous a year back.
+fn day_full_label(d: &js_sys::Date) -> String {
     format!(
         "{}, {} {}",
         WDAYS[d.get_day() as usize],
@@ -329,16 +348,32 @@ fn day_full_label(ts: f64) -> String {
     )
 }
 
-/// Build the GitHub-style activity heatmap: a `WEEKS × 7` grid of the trailing
-/// year, each cell an intensity-shaded day. Clicking a day with sessions scopes
+/// Reconstruct the local `Date` a [`local_day_key`] was derived from.
+fn date_of_key(key: i64) -> js_sys::Date {
+    js_sys::Date::new_with_year_month_day(
+        (key / 10_000) as u32,
+        ((key / 100) % 100) as i32,
+        (key % 100) as i32,
+    )
+}
+
+/// Build the GitHub-style activity heatmap: one column per week, each cell an
+/// intensity-shaded day. The span adapts to the data — from the week of the first
+/// recorded session through this week, clamped to `MIN_WEEKS..=MAX_WEEKS` — so the
+/// grid never opens as a year of empty cells. Clicking a day with sessions scopes
 /// the list to it. Intensity is the day's visit total binned into quartiles of the
 /// busiest day, so the ramp adapts to the user's own volume (§7.7).
+///
+/// The DOM is a flex row of per-week columns (not one CSS grid): the strict CSP
+/// forbids inline styles, so a data-dependent column count can't be expressed as
+/// `grid-template-columns` — but a flex row simply grows per appended column.
 fn build_heatmap(shared: &Shared) -> Element {
     let doc = shared.borrow().doc.clone();
 
-    // Per-day (sessions, visits), the current selection, and the busiest day's
-    // visit total (the quartile scale) — all read under one short borrow.
-    let (counts, selected_day, max_visits) = {
+    // Per-day (sessions, visits), the current selection, the busiest day's visit
+    // total (the quartile scale), and the earliest session (the span anchor) —
+    // all read under one short borrow.
+    let (counts, selected_day, max_visits, earliest_ts) = {
         let a = shared.borrow();
         let mut counts: HashMap<i64, (u32, u32)> = HashMap::new();
         for s in &a.sessions {
@@ -347,67 +382,106 @@ fn build_heatmap(shared: &Shared) -> Element {
             e.1 += s.nav_count;
         }
         let max = counts.values().map(|(_, v)| *v).max().unwrap_or(0).max(1);
-        (counts, a.selected_day, max)
+        let earliest = a
+            .sessions
+            .iter()
+            .map(|s| s.start_ts)
+            .fold(None, |acc: Option<f64>, ts| match acc {
+                Some(b) if b <= ts => Some(b),
+                _ => Some(ts),
+            });
+        (counts, a.selected_day, max, earliest)
+    };
+
+    let now = js_sys::Date::new_0();
+    let today_key = day_key_of(&now);
+    // `Date`'s year/month/day constructor normalizes out-of-range day arithmetic
+    // (and DST) for us — no fragile epoch-offset math.
+    let sunday_of = |d: &js_sys::Date| {
+        js_sys::Date::new_with_year_month_day(
+            d.get_full_year(),
+            d.get_month() as i32,
+            d.get_date() as i32 - d.get_day() as i32,
+        )
+    };
+    let this_sunday = sunday_of(&now);
+    // Weeks between the first session's week and this week (inclusive), clamped.
+    // Rounding absorbs the ±1h DST skew between the two Sunday midnights.
+    let weeks = earliest_ts
+        .map(|ts| {
+            let first = sunday_of(&js_sys::Date::new(&JsValue::from_f64(ts)));
+            let w = ((this_sunday.get_time() - first.get_time()) / (7.0 * 86_400_000.0)).round()
+                as i32
+                + 1;
+            w.clamp(MIN_WEEKS, MAX_WEEKS)
+        })
+        .unwrap_or(MIN_WEEKS);
+
+    let (sy, sm, sd) = (
+        this_sunday.get_full_year(),
+        this_sunday.get_month() as i32,
+        this_sunday.get_date() as i32,
+    );
+    let first_col_offset = -(weeks - 1) * 7; // days from this week's Sunday
+    let cell_date = |col: i32, row: i32| {
+        js_sys::Date::new_with_year_month_day(sy, sm, sd + first_col_offset + col * 7 + row)
+    };
+
+    // Month label per column: where the month of the week's Sunday changes. The
+    // leading (usually partial) month is labelled only if the next change is ≥3
+    // columns away, so two labels never collide at the left edge.
+    let col_months: Vec<usize> = (0..weeks)
+        .map(|c| cell_date(c, 0).get_month() as usize)
+        .collect();
+    let labelled = |c: usize| {
+        if c == 0 {
+            col_months.iter().take(3).all(|m| *m == col_months[0])
+        } else {
+            col_months[c] != col_months[c - 1]
+        }
     };
 
     let cal = el(&doc, "div");
     let _ = cal.set_attribute("class", "cal");
-    let grid = el(&doc, "div");
-    let _ = grid.set_attribute("class", "cal-grid");
+    let inner = el(&doc, "div");
+    let _ = inner.set_attribute("class", "cal-inner");
+    let body = el(&doc, "div");
+    let _ = body.set_attribute("class", "cal-body");
 
-    // The grid is one CSS row of month labels, then 7 weekday rows, each row
-    // led by a weekday-label cell. Cells are appended row-major to match the
-    // grid's default (row) auto-placement over `repeat(WEEKS, …)` columns.
-    let now = js_sys::Date::new_0();
-    let today_key = day_key_of(&now);
-    // Start at the Sunday `WEEKS-1` weeks before this week's Sunday. `Date`'s
-    // year/month/day constructor normalizes the out-of-range day arithmetic
-    // (and DST) for us — no fragile epoch-offset math.
-    let start = js_sys::Date::new_with_year_month_day(
-        now.get_full_year(),
-        now.get_month() as i32,
-        now.get_date() as i32 - now.get_day() as i32 - (WEEKS - 1) * 7,
-    );
-    let (sy, sm, sd) = (
-        start.get_full_year(),
-        start.get_month() as i32,
-        start.get_date() as i32,
-    );
-    let cell_date = |offset: i32| js_sys::Date::new_with_year_month_day(sy, sm, sd + offset);
-
-    // Month-label row: a leading corner spacer, then one cell per week carrying
-    // the month name only where the month changes (labels overflow to the right).
-    let corner = el(&doc, "div");
-    let _ = corner.set_attribute("class", "cal-corner");
-    let _ = grid.append_child(&corner);
-    let mut prev_month = -1i32;
-    for c in 0..WEEKS {
-        let d = cell_date(c * 7); // Sunday (row 0) of this week
-        let cell = el(&doc, "div");
-        let _ = cell.set_attribute("class", "cal-month");
-        let m = d.get_month() as i32;
-        if m != prev_month {
-            cell.set_text_content(Some(MONTHS[m as usize]));
-            prev_month = m;
-        }
-        let _ = grid.append_child(&cell);
+    // Leading weekday-label column (a month-row spacer keeps rows aligned).
+    let wdays = el(&doc, "div");
+    let _ = wdays.set_attribute("class", "cal-wdays");
+    let spacer = el(&doc, "div");
+    let _ = spacer.set_attribute("class", "cal-month");
+    let _ = wdays.append_child(&spacer);
+    for lbl in WDAY_LABELS {
+        let w = el(&doc, "div");
+        let _ = w.set_attribute("class", "cal-wday");
+        w.set_text_content(Some(lbl));
+        let _ = wdays.append_child(&w);
     }
+    let _ = body.append_child(&wdays);
 
-    for r in 0..7 {
-        let lbl = el(&doc, "div");
-        let _ = lbl.set_attribute("class", "cal-wday");
-        lbl.set_text_content(Some(WDAY_LABELS[r as usize]));
-        let _ = grid.append_child(&lbl);
+    for c in 0..weeks {
+        let week = el(&doc, "div");
+        let _ = week.set_attribute("class", "cal-week");
 
-        for c in 0..WEEKS {
-            let d = cell_date(c * 7 + r);
+        let month = el(&doc, "div");
+        let _ = month.set_attribute("class", "cal-month");
+        if labelled(c as usize) {
+            month.set_text_content(Some(MONTHS[col_months[c as usize]]));
+        }
+        let _ = week.append_child(&month);
+
+        for r in 0..7 {
+            let d = cell_date(c, r);
             let key = day_key_of(&d);
             let cell = el(&doc, "div");
 
             if key > today_key {
-                // Future days in the current/leading weeks: keep the slot, no dot.
+                // Trailing days of the current week: keep the slot, no dot.
                 let _ = cell.set_attribute("class", "cal-cell cal-future");
-                let _ = grid.append_child(&cell);
+                let _ = week.append_child(&cell);
                 continue;
             }
 
@@ -422,7 +496,7 @@ fn build_heatmap(shared: &Shared) -> Element {
             }
             let _ = cell.set_attribute("class", &cls);
 
-            let day = day_full_label(d.get_time());
+            let day = day_full_label(&d);
             let tip = if sess_n > 0 {
                 format!(
                     "{day} · {} · {}",
@@ -438,12 +512,14 @@ fn build_heatmap(shared: &Shared) -> Element {
                 let s = shared.clone();
                 on(cell.as_ref(), "click", move |_| select_day(&s, key));
             }
-            let _ = grid.append_child(&cell);
+            let _ = week.append_child(&cell);
         }
+        let _ = body.append_child(&week);
     }
 
-    let _ = cal.append_child(&grid);
-    let _ = cal.append_child(&build_scale(&doc));
+    let _ = inner.append_child(&body);
+    let _ = inner.append_child(&build_scale(&doc));
+    let _ = cal.append_child(&inner);
     cal
 }
 
