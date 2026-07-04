@@ -151,7 +151,7 @@ jobs:
     permissions: {}
     steps:
       - name: Download release zip
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: extension-zip
 
