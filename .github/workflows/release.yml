@@ -126,7 +126,7 @@ jobs:
 
       # Hand the packaged zip to the store-publish job.
       - name: Upload zip artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: extension-zip
           path: outdegree-${{ github.ref_name }}.zip
