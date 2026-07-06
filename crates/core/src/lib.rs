@@ -23,6 +23,7 @@ pub mod project;
 pub mod rollup;
 pub mod search;
 pub mod svg;
+pub mod ui_prefs;
 pub mod views;
 
 // ── WASM-only shell (dashboard page) ───────────────────────────────────────────

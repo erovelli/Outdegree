@@ -7,8 +7,8 @@
 //! never blank on open.
 
 use super::{
-    body_container, day_key_of, el, esc, local_day_key, on, persist_positions, plural,
-    recompute_projection, session_clock_range, Shared,
+    body_container, day_key_of, el, esc, local_day_key, on, persist_positions, persist_ui_prefs,
+    plural, recompute_projection, session_clock_range, Shared,
 };
 use crate::model::Granularity;
 use std::collections::HashMap;
@@ -168,6 +168,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
             s.borrow_mut().gran = gran;
             recompute_projection(&s);
             persist_positions(&s);
+            persist_ui_prefs(&s);
             for (v, active) in [
                 ("hostname", gran == Granularity::Hostname),
                 ("registrable", gran == Granularity::Registrable),
