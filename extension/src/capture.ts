@@ -101,3 +101,91 @@ export function closeRecord(tabId: number, ts: number): CloseRecord {
 export function startRecord(ts: number): StartRecord {
   return { kind: "start", ts };
 }
+
+// ── Toolbar affordances (§ pure helpers for service-worker.ts) ────────────────
+
+/**
+ * Glyph shown on the toolbar badge while capture is paused. `⏸` (U+23F8) reads
+ * unambiguously as "pause"; if it renders illegibly at badge size on some
+ * platform, swap it for the ASCII fallback `"II"` — this is the single point of
+ * change and `badgeStateFor` stays otherwise identical.
+ */
+const PAUSED_BADGE_TEXT = "⏸";
+
+/** The toolbar badge text + hover title derived purely from the pause flag. */
+export interface BadgeState {
+  /** `chrome.action.setBadgeText` value ("" clears the badge). */
+  text: string;
+  /** `chrome.action.setTitle` value. */
+  title: string;
+}
+
+/**
+ * Map the (already-parsed) pause flag to the toolbar badge text and hover title.
+ * Paused → a visible glyph + a "capture paused" title; running → an empty badge
+ * (cleared) + the default "Open Outdegree" title. The neutral-gray badge
+ * background is applied by the caller (it is chrome, not data, so it stays
+ * achromatic — off the single provenance hue). Kept pure so it is unit-testable
+ * without the service worker's `chrome.*` listeners.
+ */
+export function badgeStateFor(paused: boolean): BadgeState {
+  return paused
+    ? { text: PAUSED_BADGE_TEXT, title: "Outdegree — capture paused" }
+    : { text: "", title: "Open Outdegree" };
+}
+
+/** A resolved dashboard tab: enough to activate it and focus its window. */
+export interface DashboardTabRef {
+  tabId: number;
+  windowId: number;
+}
+
+/**
+ * The subset of a `chrome.runtime.ExtensionContext` the dashboard-tab picker
+ * reads. Declared structurally so the real `getContexts` result is assignable
+ * without coupling the pure helper to the full Chrome type.
+ */
+export interface TabContext {
+  contextType: string;
+  documentUrl?: string;
+  tabId: number;
+  windowId: number;
+}
+
+/**
+ * True when `documentUrl` is the dashboard page — exact match, or the dashboard
+ * URL followed by a `#`fragment or `?`query. A bare `startsWith` would also
+ * accept a `dashboard.html2` lookalike, so the separator is required.
+ */
+function isDashboardUrl(documentUrl: string | undefined, dashboardUrl: string): boolean {
+  if (!documentUrl) return false;
+  return (
+    documentUrl === dashboardUrl ||
+    documentUrl.startsWith(`${dashboardUrl}#`) ||
+    documentUrl.startsWith(`${dashboardUrl}?`)
+  );
+}
+
+/**
+ * Find the first already-open dashboard tab among extension contexts, so a
+ * toolbar click can focus it instead of duplicating it. Only `TAB` contexts
+ * count; the caller passes the URL from `chrome.runtime.getURL("dashboard.html")`.
+ * Returns `null` when none match (the caller then opens a fresh tab). Pure:
+ * matching against `getContexts` avoids `tabs.query({url})`, which would require
+ * the "tabs" permission the extension deliberately never requests.
+ */
+export function findDashboardTab(
+  contexts: readonly TabContext[],
+  dashboardUrl: string
+): DashboardTabRef | null {
+  for (const c of contexts) {
+    if (
+      c.contextType === "TAB" &&
+      c.tabId >= 0 &&
+      isDashboardUrl(c.documentUrl, dashboardUrl)
+    ) {
+      return { tabId: c.tabId, windowId: c.windowId };
+    }
+  }
+  return null;
+}

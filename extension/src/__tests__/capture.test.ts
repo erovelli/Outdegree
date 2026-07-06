@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  badgeStateFor,
   closeRecord,
+  findDashboardTab,
   flagOn,
   linkRecord,
   navRecord,
@@ -72,5 +74,65 @@ describe("linkRecord / closeRecord / startRecord", () => {
   it("shapes close and start markers", () => {
     expect(closeRecord(5, 200)).toEqual({ kind: "close", ts: 200, tabId: 5 });
     expect(startRecord(300)).toEqual({ kind: "start", ts: 300 });
+  });
+});
+
+describe("badgeStateFor (paused toolbar indicator)", () => {
+  it("shows a visible glyph and the paused title while capture is off", () => {
+    const s = badgeStateFor(true);
+    expect(s.text).not.toBe("");
+    expect(s.title).toBe("Outdegree — capture paused");
+  });
+
+  it("clears the badge and restores the default title while capture runs", () => {
+    expect(badgeStateFor(false)).toEqual({ text: "", title: "Open Outdegree" });
+  });
+});
+
+describe("findDashboardTab (focus-existing-tab, no \"tabs\" permission)", () => {
+  const DASH = "chrome-extension://abcdefghijklmnop/dashboard.html";
+
+  it("returns the first open dashboard TAB, skipping unrelated tabs", () => {
+    const contexts = [
+      { contextType: "BACKGROUND", tabId: -1, windowId: -1 },
+      { contextType: "TAB", documentUrl: "https://example.com/", tabId: 3, windowId: 1 },
+      { contextType: "TAB", documentUrl: DASH, tabId: 7, windowId: 2 },
+      { contextType: "TAB", documentUrl: DASH, tabId: 9, windowId: 5 },
+    ];
+    expect(findDashboardTab(contexts, DASH)).toEqual({ tabId: 7, windowId: 2 });
+  });
+
+  it("matches the dashboard even with a trailing #fragment or ?query", () => {
+    expect(
+      findDashboardTab(
+        [{ contextType: "TAB", documentUrl: `${DASH}#graph`, tabId: 4, windowId: 1 }],
+        DASH
+      )
+    ).toEqual({ tabId: 4, windowId: 1 });
+    expect(
+      findDashboardTab(
+        [{ contextType: "TAB", documentUrl: `${DASH}?range=day`, tabId: 5, windowId: 1 }],
+        DASH
+      )
+    ).toEqual({ tabId: 5, windowId: 1 });
+  });
+
+  it("returns null when no dashboard tab is open", () => {
+    expect(
+      findDashboardTab(
+        [{ contextType: "TAB", documentUrl: "https://example.com/", tabId: 3, windowId: 1 }],
+        DASH
+      )
+    ).toBeNull();
+  });
+
+  it("ignores non-TAB contexts and prefix-only lookalikes", () => {
+    const contexts = [
+      // Same URL, but a POPUP context — must not be treated as a tab.
+      { contextType: "POPUP", documentUrl: DASH, tabId: 2, windowId: 1 },
+      // dashboard.html2 shares a prefix but is a different page — must not match.
+      { contextType: "TAB", documentUrl: `${DASH}2`, tabId: 8, windowId: 1 },
+    ];
+    expect(findDashboardTab(contexts, DASH)).toBeNull();
   });
 });
