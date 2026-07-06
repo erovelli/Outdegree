@@ -622,7 +622,9 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
     let pop = panel(doc, "popover at-pop");
     let _ = pop.set_attribute("id", "bg-settings");
 
-    let (spa_row, spa_input) = menu_toggle(doc, "In-app navigations", false);
+    // Reflect the restored in-app-navigations mode (§7.7) so the checkbox matches
+    // the graph it produced on first open, rather than a stale default.
+    let (spa_row, spa_input) = menu_toggle(doc, "In-app navigations", shared.borrow().spa_mode);
     {
         let s = shared.clone();
         on(&spa_input, "change", move |ev| {

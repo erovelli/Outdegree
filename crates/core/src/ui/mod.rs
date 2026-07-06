@@ -243,7 +243,11 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         sankey_vw: 0.0,
         session_query: String::new(),
         hide_trivial_sessions: false,
-        spa_mode: false,
+        // Restore the persisted in-app-navigations mode (§7.7): the SPA-aware
+        // buckets were already folded above from `prefs.spa_mode`, so the state
+        // flag must agree — otherwise the settings toggle and the next
+        // `reload_buckets` would silently revert to the plain rollups.
+        spa_mode: prefs.spa_mode,
         focus: None,
         legend_filter: None,
         resize_hooked: false,
