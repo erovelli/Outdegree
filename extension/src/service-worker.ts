@@ -13,23 +13,49 @@
 
 import { ensureCreated, idbAdd } from "./idb";
 import {
+  badgeStateFor,
   closeRecord,
+  findDashboardTab,
   flagOn,
   linkRecord,
   navRecord,
   startRecord,
+  type DashboardTabRef,
   type NavDetail,
 } from "./capture";
 
+// Neutral, achromatic gray for the paused badge background. The badge is chrome,
+// not data, so it deliberately stays off the single provenance hue (design
+// constraint); ~Chrome's own disabled-gray.
+const PAUSED_BADGE_COLOR = "#5f6368";
+
+// Reflect the pause flag onto the toolbar icon so capture-off is visible without
+// opening the dashboard (§4.5). Text/title come from the pure badgeStateFor;
+// setBadgeText("") clears it when running.
+function applyBadge(isPaused: boolean): void {
+  const { text, title } = badgeStateFor(isPaused);
+  void chrome.action.setBadgeText({ text });
+  void chrome.action.setTitle({ title });
+  if (isPaused) {
+    void chrome.action.setBadgeBackgroundColor({ color: PAUSED_BADGE_COLOR });
+  }
+}
+
 // The pause flag is SW-owned and lives in chrome.storage.local (§4.5). The
 // dashboard writes it as the STRING "true"/"false", so parse it via the shared
-// flagOn helper (a plain `!!value` would treat "false" as truthy).
+// flagOn helper (a plain `!!value` would treat "false" as truthy). This
+// top-level read runs on every worker start — including onStartup after a
+// browser restart, which resets the badge — so it re-applies the badge there.
 let paused = false;
 chrome.storage.local.get("paused").then((o) => {
   paused = flagOn(o.paused);
+  applyBadge(paused);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && changes.paused) paused = flagOn(changes.paused.newValue);
+  if (area === "local" && changes.paused) {
+    paused = flagOn(changes.paused.newValue);
+    applyBadge(paused);
+  }
 });
 
 // Skip the extension's own pages (e.g. the dashboard) so opening it is not
@@ -119,7 +145,38 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   return enqueue(() => idbAdd("events", closeRecord(tabId, Date.now())));
 });
 
-// Toolbar click opens the dashboard.
+// Toolbar click focuses an already-open dashboard tab, else opens one — so
+// clicking repeatedly doesn't pile up duplicate tabs. The open tab is found via
+// runtime.getContexts (MV3, Chrome 116+) rather than tabs.query({url:...}):
+// URL-matching queries require the "tabs" permission, which must never be added.
 chrome.action.onClicked.addListener(() => {
-  void chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
+  void openOrFocusDashboard();
 });
+
+// Look up an open dashboard tab through getContexts, degrading gracefully if the
+// API is unavailable (older Chrome) or throws — the caller then opens a new tab.
+async function findOpenDashboardTab(
+  dashboardUrl: string
+): Promise<DashboardTabRef | null> {
+  if (typeof chrome.runtime.getContexts !== "function") return null;
+  try {
+    const contexts = await chrome.runtime.getContexts({ contextTypes: ["TAB"] });
+    return findDashboardTab(contexts, dashboardUrl);
+  } catch {
+    return null;
+  }
+}
+
+async function openOrFocusDashboard(): Promise<void> {
+  const dashboardUrl = chrome.runtime.getURL("dashboard.html");
+  const existing = await findOpenDashboardTab(dashboardUrl);
+  if (existing) {
+    // Activating a tab by id and focusing a window need no "tabs" permission.
+    await chrome.tabs.update(existing.tabId, { active: true });
+    if (existing.windowId >= 0) {
+      await chrome.windows.update(existing.windowId, { focused: true });
+    }
+    return;
+  }
+  await chrome.tabs.create({ url: dashboardUrl });
+}

@@ -10,6 +10,17 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **Toolbar affordances: focus, don't duplicate; and a visible paused badge.**
+  Clicking the toolbar icon now focuses an already-open dashboard tab (activating
+  it and raising its window, even across windows) instead of piling up a new tab
+  on every click; it opens a fresh tab only when none is open. The open tab is
+  located via `runtime.getContexts` (MV3, Chrome 116+), never a URL-matching
+  `tabs.query`, so no new permission is needed — it degrades to opening a new tab
+  on older Chrome. While capture is paused, the icon shows a neutral-gray "⏸"
+  badge and a "capture paused" tooltip, so capture-off is visible without opening
+  the dashboard; the badge is applied on worker start (covering browser restart)
+  and on every change to the pause flag, and cleared when capture resumes. Stays
+  100% local: no new permission, no manifest change, no network.
 - **Persistent dashboard preferences.** The dashboard now reopens the way you
   left it: the active view, time range, node granularity, min-visits threshold,
   hide-search-hubs / hide-singletons toggles, in-app-navigations mode, and the
