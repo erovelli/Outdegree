@@ -171,12 +171,16 @@ async function openOrFocusDashboard(): Promise<void> {
   const dashboardUrl = chrome.runtime.getURL("dashboard.html");
   const existing = await findOpenDashboardTab(dashboardUrl);
   if (existing) {
-    // Activating a tab by id and focusing a window need no "tabs" permission.
-    await chrome.tabs.update(existing.tabId, { active: true });
-    if (existing.windowId >= 0) {
-      await chrome.windows.update(existing.windowId, { focused: true });
+    try {
+      // Activating a tab by id and focusing a window need no "tabs" permission.
+      await chrome.tabs.update(existing.tabId, { active: true });
+      if (existing.windowId >= 0) {
+        await chrome.windows.update(existing.windowId, { focused: true });
+      }
+      return;
+    } catch {
+      // The tab/window vanished between lookup and focus — open a fresh one.
     }
-    return;
   }
   await chrome.tabs.create({ url: dashboardUrl });
 }
