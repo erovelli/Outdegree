@@ -9,6 +9,23 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 
 ## [Unreleased]
 
+### Added
+- **Persistent dashboard preferences.** The dashboard now reopens the way you
+  left it: the active view, time range, node granularity, min-visits threshold,
+  hide-search-hubs / hide-singletons toggles, in-app-navigations mode, and the
+  layout lock are written through to `chrome.storage.local` (a single `uiPrefs`
+  JSON document) on every change and restored before the first render, so there's
+  no flash of default state. Applying a saved view updates these too. Transient
+  state (drill-down focus, camera, hover, the legend filter, the selected
+  session/day, and the raw-events view) is intentionally not persisted. Restore is
+  fully lenient — a missing, corrupt, or forward-dated value silently falls back to
+  the defaults. Stays 100% local: no new permission, no network.
+
+### Changed
+- Renamed the view-switcher's **Sankey** segment to **Sessions** — the button
+  opens the session picker, and the Sankey flow diagram lives inside it, so the
+  label now names what the button does.
+
 ## [1.1.0] — 2026-07-02
 
 ### Added

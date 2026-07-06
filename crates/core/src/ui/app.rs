@@ -7,8 +7,8 @@
 
 use super::filters::{chip, icon, icon_btn, menu_btn, menu_toggle, panel, seg};
 use super::{
-    el, graph_view, on, persist_positions, plural, recompute_projection, reload_and_rerender,
-    reload_buckets, rerender, Shared, View,
+    el, graph_view, on, persist_positions, persist_ui_prefs, plural, recompute_projection,
+    reload_and_rerender, reload_buckets, rerender, Shared, View,
 };
 use crate::model::{Granularity, KindBreakdown, ProvBreakdown, Provenance};
 use crate::project::TimeRange;
@@ -163,6 +163,7 @@ fn range_panel(doc: &Document, shared: &Shared) -> Element {
             s.borrow_mut().time_range = range;
             recompute_projection(&s);
             persist_positions(&s);
+            persist_ui_prefs(&s);
             let _ = rerender(&s);
             // The Session range needs buckets scoped to the latest session's
             // events; load them (async) so it isn't just the latest UTC day.
@@ -178,12 +179,15 @@ fn range_panel(doc: &Document, shared: &Shared) -> Element {
 // ── 3. view + settings gear (top-right) ──────────────────────────────────────
 fn view_panel(doc: &Document, shared: &Shared) -> Element {
     let p = panel(doc, "viewbar at-tr");
+    // The "Sessions" segment opens the session picker; the actual Sankey diagram
+    // lives inside it. The internal value stays "sankey" (enum/CSS unchanged) — the
+    // user-facing label is what matters.
     let (wrap, btns) = seg(
         doc,
         "ghost",
         &[
             ("graph", "Graph"),
-            ("sankey", "Sankey"),
+            ("sankey", "Sessions"),
             ("tables", "Tables"),
         ],
     );
@@ -197,6 +201,7 @@ fn view_panel(doc: &Document, shared: &Shared) -> Element {
         let s = shared.clone();
         on(btn, "click", move |_| {
             s.borrow_mut().view = view;
+            persist_ui_prefs(&s);
             let _ = rerender(&s);
         });
     }
@@ -427,6 +432,7 @@ fn zoom_panel(doc: &Document, shared: &Shared) -> Element {
         let s = shared.clone();
         on(&lock, "click", move |_| {
             s.borrow_mut().locked ^= true;
+            persist_ui_prefs(&s);
             sync_chrome(&s);
         });
     }
@@ -521,6 +527,7 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
             s.borrow_mut().gran = gran;
             recompute_projection(&s);
             persist_positions(&s);
+            persist_ui_prefs(&s);
             let _ = rerender(&s);
         });
     }
@@ -558,6 +565,7 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
                 .unwrap_or_default();
             s.borrow_mut().filters.min_visits = v.parse().unwrap_or(0);
             recompute_projection(&s);
+            persist_ui_prefs(&s);
             let _ = rerender(&s);
         });
     }
@@ -569,6 +577,7 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
                 a.filters.hide_search_hubs ^= true;
             }
             recompute_projection(&s);
+            persist_ui_prefs(&s);
             let _ = rerender(&s);
         });
     }
@@ -580,6 +589,7 @@ fn search_panel(doc: &Document, shared: &Shared) -> Element {
                 a.filters.hide_isolated ^= true;
             }
             recompute_projection(&s);
+            persist_ui_prefs(&s);
             let _ = rerender(&s);
         });
     }
@@ -612,7 +622,9 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
     let pop = panel(doc, "popover at-pop");
     let _ = pop.set_attribute("id", "bg-settings");
 
-    let (spa_row, spa_input) = menu_toggle(doc, "In-app navigations", false);
+    // Reflect the restored in-app-navigations mode (§7.7) so the checkbox matches
+    // the graph it produced on first open, rather than a stale default.
+    let (spa_row, spa_input) = menu_toggle(doc, "In-app navigations", shared.borrow().spa_mode);
     {
         let s = shared.clone();
         on(&spa_input, "change", move |ev| {
@@ -622,6 +634,7 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
                 .map(|i| i.checked())
                 .unwrap_or(false);
             s.borrow_mut().spa_mode = c;
+            persist_ui_prefs(&s);
             reload_buckets(&s);
         });
     }
@@ -1134,6 +1147,10 @@ fn apply_saved_view(shared: &Shared, v: &crate::views::SavedView) {
         a.filters = v.filters.clone();
         a.spa_mode = v.spa_mode;
     }
+    // Applying a saved view updates the live controls, so mirror it into the
+    // persisted UI prefs via the normal write-through path (§7.7, no savedViews
+    // schema change).
+    persist_ui_prefs(shared);
     // reload_buckets rebuilds buckets per spa_mode, recomputes the projection, and
     // rerenders (sync_chrome then reflects the new range/filters in the controls).
     reload_buckets(shared);

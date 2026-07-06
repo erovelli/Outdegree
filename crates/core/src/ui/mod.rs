@@ -34,6 +34,29 @@ pub(crate) enum View {
     Raw,
 }
 
+impl View {
+    /// The persistable projection of this view. `Raw` collapses to `Graph`: the
+    /// raw-events view is never persisted, so reopening after leaving it on Raw
+    /// lands on the graph (Raw stays reachable only from the settings menu, §7.7).
+    fn pref(self) -> crate::ui_prefs::PrefView {
+        match self {
+            View::Sankey => crate::ui_prefs::PrefView::Sankey,
+            View::Tables => crate::ui_prefs::PrefView::Tables,
+            View::Graph | View::Raw => crate::ui_prefs::PrefView::Graph,
+        }
+    }
+}
+
+impl From<crate::ui_prefs::PrefView> for View {
+    fn from(p: crate::ui_prefs::PrefView) -> Self {
+        match p {
+            crate::ui_prefs::PrefView::Graph => View::Graph,
+            crate::ui_prefs::PrefView::Sankey => View::Sankey,
+            crate::ui_prefs::PrefView::Tables => View::Tables,
+        }
+    }
+}
+
 /// Whole-dashboard state. `db` is an `Rc<Db>` so async handlers can clone it out
 /// of a short borrow and `.await` without holding a `RefCell` borrow.
 pub(crate) struct App {
@@ -141,7 +164,27 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         db.write_cursor(state.watermark, &state).await?;
     }
 
-    let buckets = {
+    // Restore persisted UI preferences (§7.7) before the first projection/render,
+    // so the dashboard reopens the way it was left with no flash of default state.
+    // A missing key, malformed JSON, or an unknown enum value falls back silently
+    // to the defaults (see `ui_prefs::parse`).
+    let prefs = crate::bridge::storage_local_get(crate::ui_prefs::STORAGE_KEY)
+        .await
+        .map(|json| crate::ui_prefs::parse(&json))
+        .unwrap_or_default();
+
+    // When the in-app-navigations mode was persisted on, the initial buckets must
+    // come from the SPA-aware fold (events + spa from scratch), mirroring
+    // `reload_buckets` — otherwise the first render would show the plain rollups.
+    let buckets = if prefs.spa_mode {
+        let events = db.read_events_after(0.0).await?;
+        let spa = db.read_spa().await?;
+        let merged = crate::rollup::merge_streams(&events, &spa);
+        let mut st = crate::rollup::DeriveState::default();
+        let mut b = crate::rollup::fold(&mut st, &merged).0;
+        b.extend(crate::derive::provisional_buckets(&st));
+        b
+    } else {
         let mut b = db.read_all_rollups().await?;
         b.extend(crate::derive::provisional_buckets(&state));
         b
@@ -168,13 +211,19 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         session_for: None,
         sessions,
         positions,
-        gran: Granularity::Hostname,
-        filters: Filters::default(),
-        time_range: TimeRange::default(),
-        view: View::Graph,
+        gran: prefs.granularity,
+        filters: Filters {
+            min_visits: prefs.min_visits,
+            hide_search_hubs: prefs.hide_search_hubs,
+            hide_isolated: prefs.hide_isolated,
+            // The legend provenance filter is transient and never persisted.
+            provenance_in: None,
+        },
+        time_range: prefs.time_range,
+        view: prefs.view.into(),
         camera: Camera::default(),
         paused,
-        locked: false,
+        locked: prefs.locked,
         doc,
         root,
         proj: GraphProjection::default(),
@@ -194,7 +243,11 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         sankey_vw: 0.0,
         session_query: String::new(),
         hide_trivial_sessions: false,
-        spa_mode: false,
+        // Restore the persisted in-app-navigations mode (§7.7): the SPA-aware
+        // buckets were already folded above from `prefs.spa_mode`, so the state
+        // flag must agree — otherwise the settings toggle and the next
+        // `reload_buckets` would silently revert to the plain rollups.
+        spa_mode: prefs.spa_mode,
         focus: None,
         legend_filter: None,
         resize_hooked: false,
@@ -517,6 +570,33 @@ pub(crate) fn persist_positions(shared: &Shared) {
     wasm_bindgen_futures::spawn_local(async move {
         let _ = db.write_positions(&pos).await;
     });
+}
+
+/// Write-through the persisted UI preferences (§7.7): snapshot the current view
+/// controls into one JSON document under `chrome.storage.local`, so the dashboard
+/// reopens the way it was left. Called from every control that changes one of the
+/// persisted knobs (view / range / granularity / min-visits / hide-search-hubs /
+/// hide-isolated / in-app-navigations / lock). A plain write per change is fine at
+/// this (human-paced) frequency; the value is small and the write is fire-and-
+/// forget through the JS bridge. Transient state (focus, camera, hover, legend
+/// filter, the selected session/day, the session-picker query, the Raw view) is
+/// deliberately excluded.
+pub(crate) fn persist_ui_prefs(shared: &Shared) {
+    let a = shared.borrow();
+    let prefs = crate::ui_prefs::UiPrefs {
+        view: a.view.pref(),
+        time_range: a.time_range,
+        granularity: a.gran,
+        min_visits: a.filters.min_visits,
+        hide_search_hubs: a.filters.hide_search_hubs,
+        hide_isolated: a.filters.hide_isolated,
+        spa_mode: a.spa_mode,
+        locked: a.locked,
+    };
+    crate::bridge::storage_local_set(
+        crate::ui_prefs::STORAGE_KEY,
+        &crate::ui_prefs::serialize(&prefs),
+    );
 }
 
 /// Recompute the in-memory buckets for the current `spa_mode` and re-render
