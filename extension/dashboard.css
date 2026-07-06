@@ -104,6 +104,9 @@ body {
 .at-bc { bottom: 22px; left: 50%; transform: translateX(-50%); }
 .at-pop { top: 72px; right: 22px; min-width: 210px; }
 .at-fc { top: 70px; left: 50%; transform: translateX(-50%); }
+/* backup nudge chip: under the settings gear, right edge shared with the popover
+   (which stacks above it when open — see .popover z-index). */
+.at-nudge { top: 72px; right: 22px; }
 
 /* 1. brand + REC */
 .panel.brand { gap: 11px; padding: 8px 14px; }
@@ -322,12 +325,46 @@ select:focus-visible {
 }
 .focus-x:hover { color: var(--text-primary); background: oklch(1 0 0 / 0.08); }
 
+/* backup nudge chip (top-right, under the settings gear) */
+.panel.nudge {
+  flex-direction: column; align-items: stretch; gap: 8px;
+  max-width: 210px; padding: 11px 12px; display: none;
+}
+.panel.nudge.show { display: flex; }
+.nudge-msg { font: 12px var(--grotesque); color: var(--text-secondary); line-height: 1.4; }
+.nudge-actions { display: flex; align-items: center; gap: 6px; }
+.nudge-btn {
+  appearance: none; cursor: pointer; font: 11.5px var(--grotesque);
+  padding: 5px 11px; border-radius: 6px; color: var(--text-secondary);
+  background: oklch(1 0 0 / 0.05); border: 1px solid var(--toolbar-divider);
+}
+.nudge-btn:hover { background: oklch(1 0 0 / 0.09); color: var(--text-primary); }
+.nudge-primary {
+  background: var(--text-primary); color: #0a0a0a;
+  border-color: transparent; font-weight: 600;
+}
+.nudge-primary:hover { background: #fff; }
+.nudge-x {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  color: var(--text-muted); font-size: 12px; line-height: 1;
+  padding: 4px 6px; border-radius: 4px; margin-left: auto;
+}
+.nudge-x:hover { color: var(--text-primary); background: oklch(1 0 0 / 0.08); }
+
 /* 8. settings popover */
 .popover {
   flex-direction: column; align-items: stretch; gap: 2px;
   min-width: 210px; padding: 8px; display: none;
+  /* Above the backup-nudge chip it shares a corner with, so opening the menu
+     cleanly covers the chip instead of half-overlapping it. */
+  z-index: 20;
 }
 .popover.open { display: flex; }
+/* Read-only storage usage readout atop the Data section. */
+.menu-readout {
+  font: 10.5px var(--mono); color: var(--text-muted);
+  padding: 6px 10px 8px; line-height: 1.45; white-space: normal;
+}
 .menu-item {
   appearance: none; border: 0; background: transparent; cursor: pointer;
   text-align: left; color: var(--text-secondary);
@@ -613,6 +650,9 @@ td.host-cell:hover, span.host-cell:hover {
 .modal-confirm:hover { background: #fff; }
 .modal-confirm.danger { background: oklch(0.58 0.19 18); color: #fff; }
 .modal-confirm.danger:hover { background: oklch(0.64 0.21 18); }
+/* A disabled Confirm (the "type DELETE" gate) reads as inert until the phrase
+   matches; the hover states above are neutralized by the dimming. */
+.modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* saved views manager */
 .modal-saverow { display: flex; gap: 8px; }
