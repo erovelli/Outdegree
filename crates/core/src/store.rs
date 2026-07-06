@@ -111,11 +111,30 @@ impl Db {
     }
 
     pub async fn count_events(&self) -> Result<u32, JsValue> {
+        self.count_store("events").await
+    }
+
+    /// Record count of the `spa` (history-state navigations) store.
+    pub async fn count_spa(&self) -> Result<u32, JsValue> {
+        self.count_store("spa").await
+    }
+
+    /// Record count of the derived `rollup_days` cache (one row per UTC day).
+    pub async fn count_rollup_days(&self) -> Result<u32, JsValue> {
+        self.count_store("rollup_days").await
+    }
+
+    /// Record count of the derived `sessions` index.
+    pub async fn count_sessions(&self) -> Result<u32, JsValue> {
+        self.count_store("sessions").await
+    }
+
+    async fn count_store(&self, store_name: &str) -> Result<u32, JsValue> {
         let tx = self
             .rexie
-            .transaction(&["events"], TransactionMode::ReadOnly)
+            .transaction(&[store_name], TransactionMode::ReadOnly)
             .map_err(je)?;
-        let store = tx.store("events").map_err(je)?;
+        let store = tx.store(store_name).map_err(je)?;
         let n = store.count(None).await.map_err(je)?;
         tx.done().await.map_err(je)?;
         Ok(n)
@@ -275,6 +294,42 @@ impl Db {
         Ok(())
     }
 
+    /// Read an epoch-ms timestamp from a `meta` row (a plain JSON number). Absent
+    /// or unparsable → `None`, so a missing/corrupt key just reads as "never".
+    async fn read_meta_f64(&self, key: &str) -> Result<Option<f64>, JsValue> {
+        match self.read_meta_json(key).await? {
+            Some(json) => Ok(serde_json::from_str(&json).ok()),
+            None => Ok(None),
+        }
+    }
+
+    async fn write_meta_f64(&self, key: &str, value: f64) -> Result<(), JsValue> {
+        let json = serde_json::to_string(&value).map_err(je)?;
+        self.write_meta_json(key, &json).await
+    }
+
+    // ── backup-nudge state (§8.4): timestamps in the `meta` store, no new store ──
+
+    /// Last successful JSON export (epoch ms), or `None` if never exported.
+    pub async fn read_last_export_ts(&self) -> Result<Option<f64>, JsValue> {
+        self.read_meta_f64("lastExportTs").await
+    }
+
+    /// Stamp a successful JSON export so the backup nudge resets (§8.4).
+    pub async fn write_last_export_ts(&self, ts: f64) -> Result<(), JsValue> {
+        self.write_meta_f64("lastExportTs", ts).await
+    }
+
+    /// Instant (epoch ms) until which the backup nudge is snoozed, or `None`.
+    pub async fn read_nudge_snoozed_until(&self) -> Result<Option<f64>, JsValue> {
+        self.read_meta_f64("nudgeSnoozedUntil").await
+    }
+
+    /// Snooze the backup nudge until `until` (epoch ms).
+    pub async fn write_nudge_snoozed_until(&self, until: f64) -> Result<(), JsValue> {
+        self.write_meta_f64("nudgeSnoozedUntil", until).await
+    }
+
     // ── privacy: forget / delete / export / import (§8) ─────────────────────────
 
     /// Delete every event/spa record whose URL host matches `domain` (hostname or
@@ -313,6 +368,27 @@ impl Db {
             }
             tx.done().await.map_err(je)?;
         }
+        Ok(())
+    }
+
+    /// Wipe **every** store — `events`, `spa`, `rollup_days`, `sessions`, and all
+    /// of `meta` (derive cursor, layout positions, `lastExportTs`, snooze) — for
+    /// the "Delete all data" control (§8). Preferences in `chrome.storage.local`
+    /// (pause / uiPrefs / savedViews) live outside IndexedDB and are deliberately
+    /// left intact. Still local-only: this only clears storage, it sends nothing.
+    pub async fn clear_all(&self) -> Result<(), JsValue> {
+        let tx = self
+            .rexie
+            .transaction(&STORES, TransactionMode::ReadWrite)
+            .map_err(je)?;
+        for store_name in STORES {
+            tx.store(store_name)
+                .map_err(je)?
+                .clear()
+                .await
+                .map_err(je)?;
+        }
+        tx.done().await.map_err(je)?;
         Ok(())
     }
 

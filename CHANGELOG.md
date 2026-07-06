@@ -10,6 +10,24 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **Data stewardship: storage readout, delete-all, import confirmation, and a
+  backup nudge.** The settings menu's Data section now opens with a read-only
+  **Storage** line — event / rollup / session record counts plus an approximate
+  size from `navigator.storage.estimate()` (a local StorageManager API; when it's
+  unavailable it shows counts only), refreshed each time the menu opens. A new
+  **Delete all data…** item wipes every IndexedDB store (events, spa, rollups,
+  sessions, and all meta) behind a type-**DELETE**-to-confirm gate, landing on a
+  working empty dashboard that captures anew; your preferences (pause, view
+  settings, saved views) are kept. **Import JSON** now asks first — a modal warns
+  that importing replaces your current data (with the current event count) and
+  suggests exporting first, so Cancel truly aborts with nothing touched. And a
+  small, dismissible **backup nudge** appears near the settings gear once the log
+  is large (> 5,000 events) and there's been no export in 60 days: "Export now"
+  runs the local JSON export and clears it; "Snooze" hides it for 30 days. The
+  export path stamps a `lastExportTs` in the meta store so the nudge resets. The
+  nudge decision is a pure, unit-tested function and never blocks interaction or
+  appears on the empty/no-data state. Stays 100% local: no new permission, no
+  network — the only data-out path remains a user-initiated file download.
 - **Toolbar affordances: focus, don't duplicate; and a visible paused badge.**
   Clicking the toolbar icon now focuses an already-open dashboard tab (activating
   it and raising its window, even across windows) instead of piling up a new tab

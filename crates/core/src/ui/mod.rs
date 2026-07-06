@@ -269,6 +269,10 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
     if shared.borrow().show_searches {
         reload_searches(&shared);
     }
+    // Decide whether the backup nudge should surface (§8.4): pure decision over
+    // the live event count + persisted backup/snooze timestamps. Its event-count
+    // gate keeps it off the empty/no-data state.
+    app::evaluate_backup_nudge(&shared);
     Ok(())
 }
 
