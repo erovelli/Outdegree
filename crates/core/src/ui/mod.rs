@@ -137,6 +137,11 @@ pub(crate) struct App {
     pub show_searches: bool,
     /// Aggregated top search terms, populated only while `show_searches` is on.
     pub searches: Vec<crate::search::SearchCount>,
+    /// Whether the loaded data is the onboarding sample dataset (§F4). Drives the
+    /// persistent "Sample data" chip and suppresses the backup nudge. Sourced from
+    /// the `demoData` meta flag on open; set on "Load sample data", cleared on
+    /// "Exit sample" (which wipes `meta` via `clear_all`).
+    pub demo_data: bool,
 }
 
 pub(crate) type Shared = Rc<RefCell<App>>;
@@ -203,6 +208,9 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         .await
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
+    // Whether the onboarding sample dataset is currently loaded (§F4): drives the
+    // "Sample data" chip and suppresses the backup nudge.
+    let demo_data = db.read_meta_bool("demoData").await.unwrap_or(false);
 
     let app = App {
         db,
@@ -255,6 +263,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         refreshing: false,
         show_searches,
         searches: Vec::new(),
+        demo_data,
     };
     let shared: Shared = Rc::new(RefCell::new(app));
 
@@ -273,6 +282,10 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
     // the live event count + persisted backup/snooze timestamps. Its event-count
     // gate keeps it off the empty/no-data state.
     app::evaluate_backup_nudge(&shared);
+    // First-run onboarding (§F4): show the welcome overlay on a truly empty,
+    // not-yet-onboarded log; otherwise the "Sample data" chip (if demo data is
+    // loaded) is already reflected by `sync_chrome`.
+    app::evaluate_first_run(&shared);
     Ok(())
 }
 

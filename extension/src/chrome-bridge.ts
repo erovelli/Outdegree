@@ -4,6 +4,14 @@
 // **local file download** for export. There is deliberately no network sink here
 // — see the local-only guarantee (§12.1) and store.rs's export comment.
 
+// The committed onboarding sample fixture, imported as a raw string so Vite
+// inlines it into the bundle at build time (no fetch — the CSP is
+// `connect-src 'none'`). The fixture stores URLs schemeless and timestamps as
+// offsets; the WASM core (crates/core/src/sample.rs) re-attaches the scheme and
+// shifts to absolute time on load. Keeping the scheme out of this inlined text is
+// what keeps the CI dist/ network-surface audit (`grep https?://`) clean (§F4).
+import sampleDataRaw from "./sample-data.json?raw";
+
 declare global {
   interface Window {
     chromeBridge: ChromeBridge;
@@ -15,6 +23,8 @@ export interface ChromeBridge {
   storageLocalSet: (k: string, v: string) => void;
   downloadText: (name: string, mime: string, body: string) => void;
   downloadDataUrl: (name: string, dataUrl: string) => void;
+  /** Raw text of the committed onboarding sample fixture (§F4). */
+  sampleData: () => string;
 }
 
 const chromeBridge: ChromeBridge = {
@@ -44,6 +54,10 @@ const chromeBridge: ChromeBridge = {
     a.download = name;
     a.click();
   },
+
+  // Hand the inlined fixture text to the WASM core, which materializes it
+  // (offset→absolute timestamps + scheme prepend) before importing (§F4).
+  sampleData: () => sampleDataRaw,
 };
 
 (globalThis as unknown as { chromeBridge: ChromeBridge }).chromeBridge = chromeBridge;

@@ -11,3 +11,10 @@ declare module "virtual:wasm-bytes" {
   const bytes: Uint8Array;
   export default bytes;
 }
+
+// Vite `?raw` imports: the file's contents as a string, inlined at build time.
+// Used to bundle the onboarding sample fixture without a fetch (§F4).
+declare module "*?raw" {
+  const content: string;
+  export default content;
+}

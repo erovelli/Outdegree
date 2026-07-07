@@ -133,6 +133,28 @@ fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     let _ = p.append_child(&name);
     let _ = p.append_child(&rule);
     let _ = p.append_child(&rec);
+
+    // Sample-data chip (§F4): built hidden inside the brand cluster so it sits
+    // right by the REC indicator, and revealed by `sync_chrome` while the demo
+    // dataset is loaded. "Exit sample" wipes it and returns to a clean, empty app.
+    let demo = el(doc, "div");
+    let _ = demo.set_attribute("class", "demo-chip");
+    let _ = demo.set_attribute("id", "bg-demochip");
+    let demo_rule = el(doc, "div");
+    let _ = demo_rule.set_attribute("class", "vrule");
+    let demo_label = span(doc, "demo-label", "Sample data");
+    let exit = el(doc, "button");
+    let _ = exit.set_attribute("type", "button");
+    let _ = exit.set_attribute("class", "demo-exit");
+    exit.set_text_content(Some("Exit sample"));
+    {
+        let s = shared.clone();
+        on(&exit, "click", move |_| exit_sample(&s));
+    }
+    let _ = demo.append_child(&demo_rule);
+    let _ = demo.append_child(&demo_label);
+    let _ = demo.append_child(&exit);
+    let _ = p.append_child(&demo);
     p
 }
 
@@ -936,6 +958,18 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
         });
     }
 
+    // Re-open the first-run welcome overlay on demand (§F4), so the "what/privacy/
+    // load sample data" intro (and the sample-data loader) stays reachable after
+    // the first run.
+    let welcome = menu_btn(doc, "Show welcome");
+    {
+        let s = shared.clone();
+        on(&welcome, "click", move |_| {
+            close_popover(&s);
+            show_welcome_overlay(&s);
+        });
+    }
+
     // Read-only storage usage readout atop the Data section — event/rollup/session
     // counts plus an approximate byte figure from navigator.storage.estimate()
     // (a local API, CSP-safe). Filled/refreshed each time the popover opens.
@@ -964,6 +998,10 @@ fn settings_popover(doc: &Document, shared: &Shared) -> Element {
     let _ = pop.append_child(&delete);
     let _ = pop.append_child(&delete_all);
     let _ = pop.append_child(&rebuild);
+    let sep3 = el(doc, "div");
+    let _ = sep3.set_attribute("class", "menu-sep");
+    let _ = pop.append_child(&sep3);
+    let _ = pop.append_child(&welcome);
     pop
 }
 
@@ -1083,6 +1121,13 @@ fn snooze_nudge(shared: &Shared) {
 /// enough real events, no recent backup, and no active snooze. The event-count
 /// gate keeps it off the empty/no-data state; it never blocks interaction.
 pub(crate) fn evaluate_backup_nudge(shared: &Shared) {
+    // Suppress the nudge entirely while the onboarding sample dataset is loaded:
+    // those synthetic events aren't the user's data to back up (§F4 owns this
+    // suppression, keeping the >5,000-event gate from tripping on the demo).
+    if shared.borrow().demo_data {
+        hide_nudge(shared);
+        return;
+    }
     let s = shared.clone();
     let db = shared.borrow().db.clone();
     wasm_bindgen_futures::spawn_local(async move {
@@ -1149,6 +1194,12 @@ fn install_palette_shortcut(shared: &Shared) {
             // A modal takes priority: dismiss it and stop (don't also clear focus).
             if let Some(m) = s.borrow().doc.get_element_by_id("bg-modal") {
                 m.remove();
+                return;
+            }
+            // The welcome overlay dismisses like its "Start recording" button:
+            // Esc onboards and closes it (§F4).
+            if s.borrow().doc.get_element_by_id("bg-welcome").is_some() {
+                dismiss_welcome_onboarded(&s);
                 return;
             }
             close_popover(&s);
@@ -1366,6 +1417,235 @@ pub(crate) fn confirm_dialog(
             }
         });
     }
+}
+
+// ── first-run onboarding + sample dataset (§F4) ───────────────────────────────
+
+/// Decide whether to greet a first-time user: show the welcome overlay only on a
+/// truly empty, not-yet-onboarded event log. When the sample dataset is loaded the
+/// "Sample data" chip (via `sync_chrome`) is the affordance instead, so the
+/// overlay is skipped. Runs once on dashboard load; never blocks interaction.
+pub(crate) fn evaluate_first_run(shared: &Shared) {
+    if shared.borrow().demo_data {
+        return; // demo mode: the chip is shown by sync_chrome; no welcome overlay
+    }
+    let s = shared.clone();
+    let db = shared.borrow().db.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        let onboarded = db.read_meta_bool("onboarded").await.unwrap_or(false);
+        let events = db.count_events().await.unwrap_or(0);
+        if !onboarded && events == 0 {
+            show_welcome_overlay(&s);
+        }
+    });
+}
+
+/// One `heading + body` block of the welcome overlay.
+fn welcome_section(doc: &Document, heading: &str, body: &str) -> Element {
+    let sec = el(doc, "div");
+    let _ = sec.set_attribute("class", "welcome-sec");
+    let _ = sec.append_child(&span(doc, "welcome-head", heading));
+    let _ = sec.append_child(&span(doc, "welcome-body", body));
+    sec
+}
+
+/// Build and show the first-run welcome overlay (§F4): a centered glass card in
+/// the dashboard's monochrome idiom with What / Privacy / Now-what sections, a
+/// "Start recording" primary (onboards + dismisses; Esc does the same), and a
+/// "Load sample data" secondary. Re-openable from the settings menu's
+/// "Show welcome".
+fn show_welcome_overlay(shared: &Shared) {
+    let (doc, root) = {
+        let a = shared.borrow();
+        (a.doc.clone(), a.root.clone())
+    };
+    if let Some(old) = doc.get_element_by_id("bg-welcome") {
+        old.remove();
+    }
+
+    let overlay = el(&doc, "div");
+    let _ = overlay.set_attribute("class", "modal-overlay welcome-overlay");
+    let _ = overlay.set_attribute("id", "bg-welcome");
+    let modal = panel(&doc, "modal welcome-modal");
+    let _ = modal.set_attribute("role", "dialog");
+    let _ = modal.set_attribute("aria-modal", "true");
+    let _ = modal.set_attribute("aria-label", "Welcome to Outdegree");
+
+    let _ = modal.append_child(&span(&doc, "welcome-brand", "Outdegree"));
+    let _ = modal.append_child(&welcome_section(
+        &doc,
+        "What",
+        "Outdegree records which sites you visit and how you move between them — \
+         as a graph you can explore.",
+    ));
+    let _ = modal.append_child(&welcome_section(
+        &doc,
+        "Privacy",
+        "100% local. No network. Never in incognito. Pause, export, or delete \
+         everything anytime from the gear menu.",
+    ));
+    let _ = modal.append_child(&welcome_section(
+        &doc,
+        "Now what",
+        "Browse normally and come back later — or load sample data to explore \
+         right away.",
+    ));
+
+    let actions = el(&doc, "div");
+    let _ = actions.set_attribute("class", "modal-actions welcome-actions");
+    let sample = el(&doc, "button");
+    let _ = sample.set_attribute("type", "button");
+    let _ = sample.set_attribute("class", "modal-btn");
+    sample.set_text_content(Some("Load sample data"));
+    {
+        let s = shared.clone();
+        on(&sample, "click", move |_| load_sample_data(&s));
+    }
+    let start = el(&doc, "button");
+    let _ = start.set_attribute("type", "button");
+    let _ = start.set_attribute("class", "modal-btn modal-confirm");
+    start.set_text_content(Some("Start recording"));
+    {
+        let s = shared.clone();
+        on(&start, "click", move |_| dismiss_welcome_onboarded(&s));
+    }
+    let _ = actions.append_child(&sample);
+    let _ = actions.append_child(&start);
+    let _ = modal.append_child(&actions);
+    let _ = overlay.append_child(&modal);
+    let _ = root.append_child(&overlay);
+}
+
+/// Remove the welcome overlay without persisting anything (used before loading
+/// sample data, which supersedes the overlay).
+fn remove_welcome(shared: &Shared) {
+    if let Some(o) = shared.borrow().doc.get_element_by_id("bg-welcome") {
+        o.remove();
+    }
+}
+
+/// Dismiss the welcome overlay as "onboarded": persist `onboarded=true` in `meta`
+/// so it doesn't reappear on the next empty-log open, and remove it. Shared by the
+/// "Start recording" button and Esc (§F4 step 1).
+fn dismiss_welcome_onboarded(shared: &Shared) {
+    remove_welcome(shared);
+    let db = shared.borrow().db.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        let _ = db.write_meta_bool("onboarded", true).await;
+    });
+}
+
+/// "Load sample data" (§F4 steps 3–4, 6). Loading replaces every store, so when
+/// real data is present it confirms first (mirroring the Import JSON replace
+/// gate); on an empty log it loads straight away.
+fn load_sample_data(shared: &Shared) {
+    remove_welcome(shared);
+    let s = shared.clone();
+    let db = shared.borrow().db.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        let events = db.count_events().await.unwrap_or(0) + db.count_spa().await.unwrap_or(0);
+        if events > 0 {
+            let msg = format!(
+                "Loading the sample dataset replaces your current data ({}). This can't be \
+                 undone — consider Export JSON first. You can remove the sample and get an \
+                 empty dashboard back with “Exit sample”.",
+                plural(events as u64, "event"),
+            );
+            let s2 = s.clone();
+            confirm_dialog(
+                &s,
+                "Load sample data",
+                &msg,
+                None,
+                "Load sample",
+                true,
+                None,
+                move |_| {
+                    do_load_sample(&s2);
+                    true
+                },
+            );
+        } else {
+            do_load_sample(&s);
+        }
+    });
+}
+
+/// Materialize the committed fixture and route it through the import path, then
+/// mark the demo, force capture paused, and re-render (§F4 steps 3–4).
+fn do_load_sample(shared: &Shared) {
+    remove_welcome(shared);
+    let s = shared.clone();
+    let db = shared.borrow().db.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        // The fixture ships schemeless with offset timestamps; materialize shifts
+        // them to absolute time (relative to now) and prepends the http(s) scheme —
+        // the audit-clean load path (see crate::sample).
+        let fixture = crate::bridge::sample_data();
+        let doc = match crate::sample::materialize(&fixture, js_sys::Date::now()) {
+            Ok(j) => j,
+            Err(e) => return super::log_err(&JsValue::from_str(&e)),
+        };
+        // Replace every store, then re-derive from the imported events.
+        if let Err(e) = db.import_json(&doc).await {
+            return super::log_err(&e);
+        }
+        if let Err(e) = db.reset_derivation().await {
+            return super::log_err(&e);
+        }
+        // Mark the demo and force the pause flag ON (string "true", flagOn
+        // convention) so real navigations don't interleave with the sample.
+        let _ = db.write_meta_bool("demoData", true).await;
+        crate::bridge::storage_local_set("paused", "true");
+        {
+            let mut a = s.borrow_mut();
+            a.paused = true;
+            a.demo_data = true;
+        }
+        // An already-visible backup nudge would otherwise linger beside the
+        // "Sample data" chip; demo mode suppresses it (see evaluate_backup_nudge).
+        hide_nudge(&s);
+        // Re-fold the imported events and re-render; sync_chrome then shows the
+        // PAUSED state and the "Sample data" chip.
+        reload_and_rerender(&s);
+    });
+}
+
+/// "Exit sample" (§F4 step 5): confirm, wipe every store (reusing the clear path,
+/// which also clears the `demoData`/`onboarded` meta flags), unpause, and
+/// re-surface the welcome overlay on the now-empty dashboard.
+fn exit_sample(shared: &Shared) {
+    let s = shared.clone();
+    confirm_dialog(
+        shared,
+        "Exit sample data",
+        "Remove the sample dataset and return to an empty Outdegree, ready to record your \
+         own browsing. Your preferences (view settings, saved views) are kept.",
+        None,
+        "Exit sample",
+        true,
+        None,
+        move |_| {
+            let db = s.borrow().db.clone();
+            let s2 = s.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                // clear_all wipes every store, including the `demoData` and
+                // `onboarded` meta flags, so the welcome overlay is eligible again.
+                if let Err(e) = db.clear_all().await {
+                    return super::log_err(&e);
+                }
+                crate::bridge::storage_local_set("paused", "false");
+                {
+                    let mut a = s2.borrow_mut();
+                    a.paused = false;
+                    a.demo_data = false;
+                }
+                reload_and_rerender(&s2);
+                show_welcome_overlay(&s2);
+            });
+            true
+        },
+    );
 }
 
 // ── saved / named views ───────────────────────────────────────────────────────
@@ -1727,6 +2007,15 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         "bg-rec-label",
         if a.paused { "PAUSED" } else { "REC" },
     );
+
+    // Sample-data chip: shown only while the onboarding demo dataset is loaded (§F4).
+    if let Some(chip) = doc.get_element_by_id("bg-demochip") {
+        chip.set_class_name(if a.demo_data {
+            "demo-chip show"
+        } else {
+            "demo-chip"
+        });
+    }
 
     // lock toggle
     if let Some(lock) = doc.get_element_by_id("bg-lock") {

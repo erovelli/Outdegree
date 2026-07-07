@@ -10,6 +10,25 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **First-run onboarding: a welcome overlay and an inlined sample dataset.** On a
+  fresh, empty install the dashboard now greets you with a centered glass welcome
+  overlay (in the app's monochrome idiom, the single provenance hue as the only
+  accent) explaining what Outdegree does, its 100%-local privacy stance, and how
+  to start — with **Start recording** (dismisses and remembers you're onboarded;
+  Esc does the same) and **Load sample data**. "Load sample data" imports a
+  committed, deterministic ~3-week synthetic browsing fixture (generic
+  news/docs/dev/mail/video host clusters with a realistic provenance mix) so the
+  Graph, Sessions, and Tables views are populated to explore immediately — its
+  offset timestamps are shifted to "now" on load so it always looks recent.
+  While the sample is loaded, capture is forced paused (so your real browsing
+  never interleaves) and a **Sample data · Exit sample** chip sits by the REC
+  indicator; **Exit sample** wipes the demo and returns to a clean, empty
+  dashboard with the welcome overlay. The overlay is re-openable anytime from the
+  settings menu's **Show welcome**, and the backup nudge is suppressed while the
+  demo is loaded. Stays 100% local and audit-clean: the fixture is inlined into
+  the bundle at build time (no fetch), and its URLs are stored schemeless — the
+  http(s) scheme is re-attached in the WASM core at load time — so the built
+  bundle carries zero network surface.
 - **Data stewardship: storage readout, delete-all, import confirmation, and a
   backup nudge.** The settings menu's Data section now opens with a read-only
   **Storage** line — event / rollup / session record counts plus an approximate

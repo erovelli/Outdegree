@@ -21,6 +21,7 @@ pub mod layout;
 pub mod model;
 pub mod project;
 pub mod rollup;
+pub mod sample;
 pub mod search;
 pub mod stewardship;
 pub mod svg;
