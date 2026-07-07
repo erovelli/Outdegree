@@ -76,14 +76,17 @@ pub(super) fn install_palette_shortcut(shared: &Shared) {
     });
 }
 
-/// Whether a key event targets an editable field (input / textarea / content-
-/// editable), so global shortcuts don't fire while the user is typing.
+/// Whether a key event targets an editable field (input / textarea / select /
+/// content-editable), so global shortcuts don't fire while the user is typing
+/// or operating a control that owns its own arrow keys.
 fn is_text_target(ke: &KeyboardEvent) -> bool {
     ke.target()
         .and_then(|t| t.dyn_into::<HtmlElement>().ok())
         .map(|el| {
             let tag = el.tag_name().to_ascii_lowercase();
-            tag == "input" || tag == "textarea" || el.is_content_editable()
+            // <select> included: a focused dropdown cycles options (or opens its
+            // popup) with arrows — those must not step the time window instead.
+            tag == "input" || tag == "textarea" || tag == "select" || el.is_content_editable()
         })
         .unwrap_or(false)
 }
