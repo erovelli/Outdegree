@@ -189,6 +189,17 @@ proptest! {
     fn fold_equals_recompute_at_every_split(events in stream()) {
         let (m_all, s_all, st_all) = run_all(&events);
         let st_all_v = serde_json::to_value(&st_all).unwrap();
+        // Hour-histogram consistency (§F9): each bucket's per-UTC-hour visit counts
+        // sum to its total node visits — the two are bumped at the same fold site,
+        // so the Rhythm heatmap's total always equals the visit KPI for a window.
+        // `DayBucket`'s derived `PartialEq` compares `visits_by_hour`, so the
+        // fold == recompute equalities below already cover the array bit-for-bit;
+        // this adds the invariant the histogram exists to uphold.
+        for b in m_all.values() {
+            let hist: u32 = b.visits_by_hour.iter().sum();
+            let visits: u32 = b.nodes.values().map(|n| n.visits).sum();
+            prop_assert_eq!(hist, visits, "hour histogram vs visits for {}", &b.date);
+        }
         for at in 0..=events.len() {
             let (m_sp, s_sp, st_sp) = run_split(&events, at);
             prop_assert_eq!(&m_all, &m_sp, "rollup mismatch at split {}", at);

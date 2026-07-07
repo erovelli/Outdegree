@@ -208,6 +208,17 @@ pub struct DayBucket {
     /// read as `false` ("no focus data").
     #[serde(default, rename = "hasFocusSignal")]
     pub has_focus_signal: bool,
+    /// Visits per **UTC hour** of this UTC day (§F9): index `h` counts the visit
+    /// events whose timestamp fell in `[h:00, h+1:00)` UTC. Incremented in lockstep
+    /// with the per-host [`NodeStat::visits`] — same [`Acc::node`] site, same
+    /// timestamp — so `visits_by_hour.iter().sum()` always equals this day's total
+    /// node visits. The window-level 7×24 Rhythm heatmap (`ui/tables.rs`) projects
+    /// these UTC histograms to local weekday/hour at render time. `#[serde(default)]`
+    /// so pre-F9 buckets deserialize (they read as all-zero; the
+    /// `DERIVED_SCHEMA_VERSION` bump rebuilds them from raw anyway, but mixed-vintage
+    /// exports/imports must not error).
+    #[serde(default, rename = "visitsByHour")]
+    pub visits_by_hour: [u32; 24],
 }
 
 /// A fold delta is shaped exactly like a stored bucket.
@@ -231,6 +242,9 @@ pub fn merge_bucket(into: &mut DayBucket, delta: &DayBucket) {
     }
     into.max_id = into.max_id.max(delta.max_id);
     into.has_focus_signal |= delta.has_focus_signal;
+    for (h, c) in delta.visits_by_hour.iter().enumerate() {
+        into.visits_by_hour[h] += c;
+    }
     for (k, n) in &delta.nodes {
         let e = into.nodes.entry(k.clone()).or_default();
         e.visits += n.visits;
@@ -280,8 +294,16 @@ impl Acc {
         b
     }
 
-    pub fn node(&mut self, date: &str, key: &str, prov: Provenance, dwell_ms: u64) {
+    /// Record one node visit. `ts_ms` is the visit's own timestamp (the buffered
+    /// nav's arrival time, §7.3), used both to derive nothing here directly and to
+    /// bin the visit into its UTC hour (§F9): the per-hour counter is bumped at the
+    /// *same site* as `visits`, so the two can never diverge — the Rhythm heatmap's
+    /// total always matches the visit count. `date` must be `utc_date(ts_ms)`; the
+    /// caller passes both so the hour and the day bucket stay in the same instant.
+    pub fn node(&mut self, date: &str, key: &str, prov: Provenance, dwell_ms: u64, ts_ms: f64) {
+        let hour = utc_hour(ts_ms) as usize;
         let b = self.bucket(date);
+        b.visits_by_hour[hour] += 1;
         let n = b.nodes.entry(key.to_string()).or_default();
         n.visits += 1;
         n.dwell_ms += dwell_ms;
@@ -385,6 +407,15 @@ pub fn utc_date(ts_ms: f64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// UTC hour-of-day (`0..=23`) for a millisecond epoch timestamp (§F9) — the hour
+/// the [`utc_date`] bucketing key places the same instant in. `rem_euclid` keeps
+/// it correct for pre-epoch (negative) timestamps, so a clock-skewed event still
+/// bins to a valid hour rather than panicking on an out-of-range index.
+pub fn utc_hour(ts_ms: f64) -> u32 {
+    let ms_in_day = ts_ms.rem_euclid(86_400_000.0);
+    (ms_in_day / 3_600_000.0).floor() as u32
+}
+
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
@@ -460,6 +491,42 @@ mod tests {
         assert_eq!(utc_date(1_609_459_200_000.0 + 86_400_000.0), "2021-01-02");
         // a known leap-year date: 2020-02-29
         assert_eq!(utc_date(1_582_934_400_000.0), "2020-02-29");
+    }
+
+    #[test]
+    fn utc_hour_bins_including_midnight_boundary() {
+        // 2021-01-01T00:00:00Z → hour 0; +59m59s stays hour 0; +1h rolls to hour 1.
+        let midnight = 1_609_459_200_000.0;
+        assert_eq!(utc_hour(midnight), 0);
+        assert_eq!(utc_hour(midnight + 3_599_000.0), 0);
+        assert_eq!(utc_hour(midnight + 3_600_000.0), 1);
+        // Last hour of the day, then the next UTC midnight resets to hour 0.
+        assert_eq!(utc_hour(midnight + 23.0 * 3_600_000.0), 23);
+        assert_eq!(utc_hour(midnight + 24.0 * 3_600_000.0), 0);
+        // The epoch itself and a pre-epoch (negative) instant both bin validly.
+        assert_eq!(utc_hour(0.0), 0);
+        assert_eq!(utc_hour(-3_600_000.0), 23, "one hour before the epoch");
+    }
+
+    #[test]
+    fn merge_bucket_sums_hour_histograms() {
+        let mut a = DayBucket {
+            date: "2021-01-01".into(),
+            ..Default::default()
+        };
+        a.visits_by_hour[9] = 2;
+        a.visits_by_hour[14] = 1;
+        let mut b = DayBucket {
+            date: "2021-01-01".into(),
+            ..Default::default()
+        };
+        b.visits_by_hour[9] = 3;
+        b.visits_by_hour[22] = 4;
+        merge_bucket(&mut a, &b);
+        assert_eq!(a.visits_by_hour[9], 5);
+        assert_eq!(a.visits_by_hour[14], 1);
+        assert_eq!(a.visits_by_hour[22], 4);
+        assert_eq!(a.visits_by_hour.iter().sum::<u32>(), 10);
     }
 
     #[test]

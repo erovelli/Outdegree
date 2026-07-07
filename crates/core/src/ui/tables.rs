@@ -65,6 +65,19 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         grid.push_str(&card("full", &activity));
     }
 
+    // Browsing rhythm (full width, §F9): a weekday × local-hour heatmap over the
+    // *displayed window* — the same buckets the graph and KPIs draw from — so each
+    // cell's visits roll up to the visit total on screen. Shown only when that
+    // window has visits.
+    {
+        let window = super::displayed_window(&a);
+        let rhythm = project::rhythm_matrix(&window, current_offset_hours());
+        let rhythm_max = rhythm.iter().flatten().copied().max().unwrap_or(0);
+        if rhythm_max > 0 {
+            grid.push_str(&card("full", &rhythm_html(&rhythm, rhythm_max)));
+        }
+    }
+
     // Top hubs.
     {
         let mut s = String::from(
@@ -529,6 +542,73 @@ fn fmt_hour(h: usize) -> String {
     format!("{h12} {ap}")
 }
 
+/// Weekday-row labels for the Rhythm heatmap, Monday-first (matching
+/// [`crate::project::rhythm_matrix`]'s row order).
+const RHYTHM_DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/// The viewer's CURRENT offset from UTC in whole hours (east positive), applied
+/// uniformly when projecting the stored UTC hour-histograms to the local-time
+/// Rhythm matrix (§F9). `Date::get_timezone_offset` returns minutes of
+/// (UTC − local), so local = UTC − offset; we negate and round to the nearest hour
+/// (a sub-hour zone rounds — an accepted §F9 simplification, alongside the DST one).
+fn current_offset_hours() -> i32 {
+    (-js_sys::Date::new_0().get_timezone_offset() / 60.0).round() as i32
+}
+
+/// The window-level browsing-rhythm heatmap card (§F9): 7 weekday rows (Mon–Sun) ×
+/// 24 local-hour columns, each cell shaded by the same quartile ramp as the
+/// Sessions activity heatmap — the CSS-class-driven `cal-l{0..4}` fills, so no
+/// inline styles are emitted (CSP forbids them). `max` is the busiest cell (the
+/// quartile scale). Native `title` tooltips carry the exact per-cell count; the
+/// caption notes the local-time projection. Self-generated strings only (a weekday
+/// table, digits, and escaped counts).
+fn rhythm_html(matrix: &[[u32; 24]; 7], max: u32) -> String {
+    let mut h = String::from(
+        "<h3>Rhythm</h3>\
+         <p class=\"muted tbl-sub\">Local time · this window</p>\
+         <div class=\"rh\">",
+    );
+    // Top hour axis: a label every 3 hours keeps the narrow columns legible.
+    h.push_str("<div class=\"rh-row rh-axis\"><div class=\"rh-daylabel\"></div>");
+    for hr in 0..24 {
+        let lbl = if hr % 3 == 0 {
+            hr.to_string()
+        } else {
+            String::new()
+        };
+        h.push_str(&format!("<div class=\"rh-hour\">{lbl}</div>"));
+    }
+    h.push_str("</div>");
+    // One row per weekday, Monday first.
+    for (r, day) in RHYTHM_DAYS.iter().enumerate() {
+        h.push_str(&format!(
+            "<div class=\"rh-row\"><div class=\"rh-daylabel\">{day}</div>"
+        ));
+        for (hr, &c) in matrix[r].iter().enumerate() {
+            let lvl = project::rhythm_level(c, max);
+            // e.g. "Tue 14:00–15:00 · 37 visits"; the last cell reads "23:00–24:00".
+            let tip = format!(
+                "{day} {hr:02}:00–{:02}:00 · {}",
+                hr + 1,
+                plural(c as u64, "visit")
+            );
+            h.push_str(&format!(
+                "<div class=\"rh-cell cal-l{lvl}\" title=\"{}\"></div>",
+                esc(&tip)
+            ));
+        }
+        h.push_str("</div>");
+    }
+    h.push_str("</div>");
+    // Compact Less…More intensity key, mirroring the Sessions heatmap's scale.
+    h.push_str("<div class=\"rh-scale\"><span>Less</span>");
+    for lvl in 0..=4 {
+        h.push_str(&format!("<div class=\"rh-cell cal-l{lvl}\"></div>"));
+    }
+    h.push_str("<span>More</span></div>");
+    h
+}
+
 /// The most-recent in-range sessions to scan for journey mining, as id-ranges.
 /// Capped so a year of history doesn't read every event; the cap is surfaced.
 const JOURNEY_SESSION_CAP: usize = 150;
@@ -759,6 +839,23 @@ pub(crate) fn tables_csv(a: &App) -> String {
     ] {
         let c = count.to_string();
         row!(name, &c);
+    }
+
+    // Rhythm (§F9): the same local-time weekday × hour histogram as the Rhythm card,
+    // scoped to the displayed window. Only nonzero cells are emitted, so a quiet
+    // window stays compact (≤168 rows regardless — no explicit cap needed).
+    let rhythm = project::rhythm_matrix(&super::displayed_window(a), current_offset_hours());
+    if rhythm.iter().flatten().any(|&c| c > 0) {
+        section!("Rhythm (local time)", &["Weekday", "Hour", "Visits"]);
+        for (r, day) in RHYTHM_DAYS.iter().enumerate() {
+            for (hr, &c) in rhythm[r].iter().enumerate() {
+                if c == 0 {
+                    continue;
+                }
+                let (hour, visits) = (format!("{hr:02}:00"), c.to_string());
+                row!(*day, &hour, &visits);
+            }
+        }
     }
 
     out

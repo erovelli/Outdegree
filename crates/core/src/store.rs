@@ -45,7 +45,10 @@ const STORES: [&str; 5] = ["events", "spa", "rollup_days", "sessions", "meta"];
 /// `1` = F7 (attention capture): the checkpoint gained foreground/focus state and
 /// buckets gained `fg_dwell_ms` / `has_focus_signal`, so a pre-F7 cache (which has
 /// neither) must be rebuilt from the raw `events` to populate the new fields.
-const DERIVED_SCHEMA_VERSION: f64 = 1.0;
+/// `2` = F9 (rhythm heatmap): buckets gained `visits_by_hour` (per-UTC-hour visit
+/// counts), which a pre-F9 rollup can't have populated — a from-raw rebuild folds
+/// the histograms in, so the Rhythm card lights up on first open after upgrade.
+const DERIVED_SCHEMA_VERSION: f64 = 2.0;
 
 /// Open the database (after the SW readiness ack). Mirrors the §4 schema so it is
 /// also self-sufficient if the stores somehow do not yet exist.

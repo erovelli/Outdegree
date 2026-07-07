@@ -10,6 +10,23 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **Browsing rhythm: when you browse, at a glance.** The Tables view gains a
+  full-width **Rhythm** card — a 7 × 24 heatmap of weekday (Mon–Sun) against
+  hour-of-day, shaded with the same single-hue quartile ramp as the Sessions
+  activity heatmap (busiest cell = darkest; empty cells stay achromatic; all
+  shading is CSS-class-driven, no inline styles). Each cell has a native tooltip
+  (`"Tue 14:00–15:00 · 37 visits"`) and the card is captioned "Local time · this
+  window". It is scoped to the displayed time window (honoring the ‹/› time
+  navigation), so a cell's visits roll up to the visit total on screen, and it
+  only appears once that window has data. Under the hood, each UTC-day rollup
+  bucket now carries a `visits_by_hour[24]` histogram — counted per UTC hour in
+  lockstep with the existing per-site visit count, so the incremental fold stays
+  bit-identical to a from-scratch recompute (property-tested at every watermark
+  split) — and the UI projects those UTC histograms to your **current** local
+  offset at render time (a DST-boundary or sub-hour-zone hour may land ±1; kept
+  stored data in UTC deliberately). Existing installs auto-rebuild their derived
+  cache from raw events once on first open after the upgrade (no user action), and
+  the CSV export gains a matching "Rhythm (local time)" section.
 - **Node inspector: "what's my relationship with this site?"** Selecting a graph
   node (the existing click-to-drill) now also opens a right-docked detail panel —
   one state with the drill-down focus, so Esc / ✕ / clicking the node again closes

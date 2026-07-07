@@ -257,7 +257,7 @@ fn on_nav(
     if has_forward_back {
         if FORWARD_BACK_NODE_VISIT {
             if let Some(k) = node_key(to_url, GRAN) {
-                acc.node(&utc_date(ts), &k, prov, 0);
+                acc.node(&utc_date(ts), &k, prov, 0, ts);
             }
         }
         let tab = state.tabs.entry(tab_id).or_default();
@@ -298,7 +298,9 @@ fn finalize(acc: &mut Acc, b: &Buffered, departure_ts: f64) {
     };
     let date = utc_date(b.ts);
     let dwell_ms = (departure_ts - b.ts).clamp(0.0, IDLE_GAP_MS) as u64;
-    acc.node(&date, &to_key, b.prov, dwell_ms);
+    // `b.ts` (the page's arrival, §7.3) sets both the UTC day bucket and the UTC
+    // hour bin (§F9), so a visit lands in the same instant on both axes.
+    acc.node(&date, &to_key, b.prov, dwell_ms, b.ts);
 
     if b.prov.is_edge() {
         if let Some(from_key) = b.origin_url.as_deref().and_then(|u| node_key(u, GRAN)) {
