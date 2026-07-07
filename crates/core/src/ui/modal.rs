@@ -3,9 +3,19 @@
 //! irreversible actions.
 
 use super::filters::panel;
-use super::{el, on, span, Shared};
+use super::{el, focus_trap, on, span, Shared};
 use wasm_bindgen::JsCast;
-use web_sys::{Element, HtmlElement, HtmlInputElement, KeyboardEvent};
+use web_sys::{Document, Element, HtmlElement, HtmlInputElement, KeyboardEvent};
+
+/// Remove the confirmation modal (if present) and return keyboard focus to the
+/// control that opened it. The single close path shared by the Confirm/Cancel
+/// buttons, Enter, the backdrop click, and the global Esc handler (§F10).
+pub(super) fn close_modal(doc: &Document) {
+    if let Some(o) = doc.get_element_by_id("bg-modal") {
+        o.remove();
+        focus_trap::restore();
+    }
+}
 
 /// A styled, validating confirmation modal — the in-app replacement for the
 /// browser's `window.prompt`, which offered no validation and (for "delete N
@@ -34,6 +44,8 @@ pub(crate) fn confirm_dialog(
     if let Some(old) = doc.get_element_by_id("bg-modal") {
         old.remove();
     }
+    // Remember the invoking control so focus returns to it on close (§F10).
+    focus_trap::remember();
 
     let overlay = el(&doc, "div");
     let _ = overlay.set_attribute("class", "modal-overlay");
@@ -87,10 +99,15 @@ pub(crate) fn confirm_dialog(
     let _ = overlay.append_child(&modal);
     let _ = root.append_child(&overlay);
 
+    // Trap Tab inside the dialog, then land focus: the input if there is one, else
+    // the first control (Cancel) so Esc/Tab engage and Enter has a target (§F10).
+    focus_trap::install(&overlay);
     if let Some(inp) = &input_opt {
         if let Ok(h) = inp.clone().dyn_into::<HtmlElement>() {
             let _ = h.focus();
         }
+    } else {
+        focus_trap::focus_first(&overlay);
     }
 
     let cb = std::rc::Rc::new(std::cell::RefCell::new(on_confirm));
@@ -104,9 +121,7 @@ pub(crate) fn confirm_dialog(
                 .and_then(|i| i.clone().dyn_into::<HtmlInputElement>().ok())
                 .map(|i| i.value());
             if (cb.borrow_mut())(val) {
-                if let Some(o) = doc.get_element_by_id("bg-modal") {
-                    o.remove();
-                }
+                close_modal(&doc);
             }
         }
     };
@@ -116,11 +131,7 @@ pub(crate) fn confirm_dialog(
     }
     {
         let doc = doc.clone();
-        on(&cancel, "click", move |_| {
-            if let Some(o) = doc.get_element_by_id("bg-modal") {
-                o.remove();
-            }
-        });
+        on(&cancel, "click", move |_| close_modal(&doc));
     }
     {
         // Click the backdrop (not the dialog) to dismiss.
@@ -132,9 +143,7 @@ pub(crate) fn confirm_dialog(
                 .map(|e| e.id() == "bg-modal")
                 .unwrap_or(false);
             if on_backdrop {
-                if let Some(o) = doc.get_element_by_id("bg-modal") {
-                    o.remove();
-                }
+                close_modal(&doc);
             }
         });
     }

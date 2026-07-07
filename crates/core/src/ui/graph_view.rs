@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent, WheelEvent};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, KeyboardEvent, MouseEvent, WheelEvent};
 
 pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let body = body_container(shared).ok_or_else(|| JsValue::from_str("no body"))?;
@@ -38,6 +38,12 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
         );
         let _ = canvas.set_attribute("aria-label", &label);
     }
+    // Keyboard-focusable (§F10 a11y): Tab reaches the canvas, then arrows pan /
+    // +/− zoom / 0 or F fit / Esc clears focus (see `attach_interactions`). This
+    // is viewport control only — keyboard node *targeting* is intentionally left
+    // as future work; the Tables view (pointed at by the aria-label above) is the
+    // screen-reader-navigable equivalent.
+    let _ = canvas.set_attribute("tabindex", "0");
 
     // The canvas *is* the app: full-bleed under the floating chrome. Its
     // position/size live in CSS (`#bg-canvas`) — not an inline style — so it
@@ -131,6 +137,19 @@ pub(crate) fn zoom(shared: &Shared, factor: f64) {
     {
         let mut a = shared.borrow_mut();
         a.camera.scale = (a.camera.scale * factor).clamp(0.1, 8.0);
+    }
+    redraw(shared);
+}
+
+/// Pan the camera by a screen-space delta and redraw (keyboard arrow panning).
+/// Cancels any in-flight tween first, like a manual drag. Instant — no animation
+/// — so there is nothing for prefers-reduced-motion to suppress.
+fn pan(shared: &Shared, dx: f64, dy: f64) {
+    {
+        let mut a = shared.borrow_mut();
+        a.anim_gen = a.anim_gen.wrapping_add(1); // cancel any camera tween
+        a.camera.x += dx;
+        a.camera.y += dy;
     }
     redraw(shared);
 }
@@ -319,6 +338,65 @@ fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
 }
 
 fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
+    // Keyboard control while the canvas holds focus (§F10 a11y): arrows pan, +/−
+    // zoom, 0 or F fit. Esc is left to the global handler (which clears any
+    // drill-down focus and then blurs the canvas). All responses are instant (no
+    // camera tween), matching the mouse zoom/fit controls, so prefers-reduced-
+    // motion has nothing to suppress here.
+    //
+    // FUTURE WORK: keyboard node *targeting* (Tab/arrow to select a node, Enter to
+    // drill in) is deliberately out of scope for this pass — the Tables view stays
+    // the accessible, screen-reader-navigable equivalent (see the canvas
+    // aria-label). This handler is viewport navigation only.
+    {
+        let s = shared.clone();
+        on(canvas.as_ref(), "keydown", move |ev| {
+            let Ok(ke) = ev.dyn_into::<KeyboardEvent>() else {
+                return;
+            };
+            if ke.meta_key() || ke.ctrl_key() || ke.alt_key() {
+                return; // don't shadow browser/OS chords
+            }
+            const PAN: f64 = 48.0;
+            let handled = match ke.key().as_str() {
+                "ArrowLeft" => {
+                    pan(&s, PAN, 0.0);
+                    true
+                }
+                "ArrowRight" => {
+                    pan(&s, -PAN, 0.0);
+                    true
+                }
+                "ArrowUp" => {
+                    pan(&s, 0.0, PAN);
+                    true
+                }
+                "ArrowDown" => {
+                    pan(&s, 0.0, -PAN);
+                    true
+                }
+                "+" | "=" => {
+                    zoom(&s, 1.2);
+                    true
+                }
+                "-" | "_" => {
+                    zoom(&s, 1.0 / 1.2);
+                    true
+                }
+                "0" | "f" | "F" => {
+                    fit_view(&s);
+                    true
+                }
+                _ => false,
+            };
+            if handled {
+                // Prevent page scroll / browser zoom for keys we consume. The global
+                // arrow-key handler already yields when the canvas is the target, so
+                // there is no double-fire with time-window stepping.
+                ke.prevent_default();
+            }
+        });
+    }
     // zoom
     {
         let s = shared.clone();

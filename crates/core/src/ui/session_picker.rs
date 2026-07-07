@@ -451,39 +451,53 @@ fn build_heatmap(shared: &Shared) -> Element {
         for r in 0..7 {
             let d = cell_date(c, r);
             let key = day_key_of(&d);
-            let cell = el(&doc, "div");
 
-            if key > today_key {
-                // Trailing days of the current week: keep the slot, no dot.
-                let _ = cell.set_attribute("class", "cal-cell cal-future");
+            let (sess_n, visits) = counts.get(&key).copied().unwrap_or((0, 0));
+            let day = day_full_label(&d);
+
+            // Non-actionable days (no sessions, or trailing days of the current
+            // week) stay decorative <div>s: an empty grid slot that a screen reader
+            // ignores and the keyboard skips — so Tab lands only on days you can
+            // actually open. Their achromatic shade + native tooltip are unchanged.
+            if key > today_key || sess_n == 0 {
+                let cell = el(&doc, "div");
+                if key > today_key {
+                    let _ = cell.set_attribute("class", "cal-cell cal-future");
+                    let _ = cell.set_attribute("aria-hidden", "true");
+                } else {
+                    let _ = cell.set_attribute("class", "cal-cell cal-l0");
+                    let _ = cell.set_attribute("title", &format!("{day} · no sessions"));
+                }
                 let _ = week.append_child(&cell);
                 continue;
             }
 
-            let (sess_n, visits) = counts.get(&key).copied().unwrap_or((0, 0));
+            // A day with sessions is a real <button> (§F10 a11y): keyboard-focusable
+            // in DOM order, Enter/Space activate (native), with a spoken label. The
+            // CSS flattens the button chrome so the grid looks identical to the
+            // former <div>s.
             let lvl = level(visits, max_visits);
-            let mut cls = format!("cal-cell cal-l{lvl}");
-            if sess_n > 0 {
-                cls.push_str(" is-hit"); // clickable (has sessions)
-            }
-            if sess_n > 0 && selected_day == Some(key) {
+            let mut cls = format!("cal-cell cal-l{lvl} is-hit");
+            if selected_day == Some(key) {
                 cls.push_str(" is-sel");
             }
+            let cell = el(&doc, "button");
+            let _ = cell.set_attribute("type", "button");
             let _ = cell.set_attribute("class", &cls);
-
-            let day = day_full_label(&d);
-            let tip = if sess_n > 0 {
-                format!(
+            let _ = cell.set_attribute(
+                "title",
+                &format!(
                     "{day} · {} · {}",
                     plural(sess_n as u64, "session"),
                     plural(visits as u64, "visit")
-                )
-            } else {
-                format!("{day} · no sessions")
-            };
-            let _ = cell.set_attribute("title", &tip);
-
-            if sess_n > 0 {
+                ),
+            );
+            // A concise spoken name for the day cell ("Mon, Jul 1 — 42 visits").
+            let _ = cell.set_attribute(
+                "aria-label",
+                &format!("{day} — {}", plural(visits as u64, "visit")),
+            );
+            {
                 let s = shared.clone();
                 on(cell.as_ref(), "click", move |_| select_day(&s, key));
             }
@@ -515,10 +529,13 @@ fn level(visits: u32, max: u32) -> u8 {
     }
 }
 
-/// The "Less … More" intensity legend shown under the grid.
+/// The "Less … More" intensity legend shown under the grid. Purely decorative:
+/// each day cell carries its own spoken visit count, so the ramp key is
+/// `aria-hidden` to keep it out of the screen-reader stream (§F10).
 fn build_scale(doc: &Document) -> Element {
     let scale = el(doc, "div");
     let _ = scale.set_attribute("class", "cal-scale");
+    let _ = scale.set_attribute("aria-hidden", "true");
     let less = el(doc, "span");
     less.set_text_content(Some("Less"));
     let _ = scale.append_child(&less);

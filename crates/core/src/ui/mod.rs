@@ -4,14 +4,17 @@
 //! construction — the DOM is built at runtime, no server hydration), instead of a
 //! reactive framework, to keep the WASM build predictable under the production
 //! CSP. `app` is the thin composition root; the floating chrome (`chrome`,
-//! `settings`, `modal`, `saved_views`, `shortcuts`, `onboarding`) and the view
-//! modules (`filters`, `graph_view`, `tables`, `sankey`, `session_picker`) mirror
-//! the spec's file breakdown.
+//! `settings`, `modal`, `help`, `saved_views`, `shortcuts`, `onboarding`) and the
+//! view modules (`filters`, `graph_view`, `tables`, `sankey`, `session_picker`)
+//! mirror the spec's file breakdown. `focus_trap` is the shared overlay
+//! focus-management helper.
 
 mod app;
 mod chrome;
 mod filters;
+mod focus_trap;
 mod graph_view;
+mod help;
 mod inspector;
 mod modal;
 mod onboarding;

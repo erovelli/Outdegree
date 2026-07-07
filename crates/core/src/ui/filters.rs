@@ -46,12 +46,15 @@ pub(crate) fn chip(doc: &Document, id: &str, label: &str) -> Element {
     c
 }
 
-/// A square icon button carrying an inline SVG glyph.
+/// A square icon button carrying an inline SVG glyph. The `title` doubles as the
+/// `aria-label` so the icon-only control has an accessible name (§F10) — callers
+/// that toggle meaning (e.g. the layout lock) refresh both in `sync_chrome`.
 pub(crate) fn icon_btn(doc: &Document, id: &str, title: &str, svg: &str) -> Element {
     let b = el(doc, "button");
     let _ = b.set_attribute("class", "iconbtn");
     let _ = b.set_attribute("id", id);
     let _ = b.set_attribute("title", title);
+    let _ = b.set_attribute("aria-label", title);
     b.set_inner_html(svg);
     b
 }

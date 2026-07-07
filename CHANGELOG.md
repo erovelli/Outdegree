@@ -10,6 +10,35 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **Help overlay and a keyboard-accessibility pass.** Pressing **?** anywhere
+  outside a text field (or the settings menu's new **Help & shortcuts** item)
+  opens a terse, two-column glass reference card — **Interactions** (click node =
+  inspect/drill, drag node = arrange, drag canvas = pan, wheel = zoom, legend row =
+  filter by provenance, table host cell = jump to graph, heatmap day = scope
+  sessions) and **Shortcuts** (⌘/Ctrl-K search, Esc close/clear, +/− zoom, 0 or F
+  fit, ←/→ step the time window, ? this help) — closed by Esc or ✕, and it's a
+  reference, not a tour. The confirmation modal and the help overlay are now real
+  **focus traps**: Tab/Shift-Tab cycle within them and focus returns to the control
+  that opened them on close; opening the settings menu moves focus into it and Esc
+  hands focus back to the gear. The Sessions activity heatmap's actionable day
+  cells are now real **`<button>`s** with spoken labels ("Mon, Jul 1 — 42 visits"),
+  keyboard-focusable in DOM order and Enter/Space-activated, so Tab lands only on
+  days you can open (empty and future days stay decorative and the Less…More key is
+  marked `aria-hidden`) — the visuals are unchanged, the buttons are flat-restyled.
+  The graph
+  **canvas is now keyboard-focusable** (Tab to it): arrows pan, +/− zoom, 0 or F
+  fit, and Esc clears drill-down focus / releases the canvas — all instant, so
+  prefers-reduced-motion has nothing to suppress. When the canvas holds focus the
+  arrows pan and the global ←/→ time-stepping yields to it (canvas-focused = pan,
+  otherwise = step the window); keyboard node *targeting* is intentionally left as
+  future work, with the Tables view remaining the screen-reader-navigable
+  equivalent (the canvas keeps its `role="img"` + descriptive label pointing there).
+  Finally, an audit pass gives every icon-only control an `aria-label` (the zoom
+  toolbar, the gear, and the layout lock — whose `aria-pressed`/label now track
+  locked state) alongside the already-labelled ✕ chips and REC button. Esc peels
+  exactly one layer at a time in strict order: modal › welcome › help › settings
+  popover + drill-down focus/legend filter › release canvas focus. No new
+  permission, no network — still 100% local.
 - **Browsing rhythm: when you browse, at a glance.** The Tables view gains a
   full-width **Rhythm** card — a 7 × 24 heatmap of weekday (Mon–Sun) against
   hour-of-day, shaded with the same single-hue quartile ramp as the Sessions
