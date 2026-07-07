@@ -537,6 +537,12 @@ fn build_scale(doc: &Document) -> Element {
 /// day's most recent session, then re-render the picker so the heatmap highlight,
 /// list, and flow all follow. Re-rendering (vs. patching cells) keeps this simple
 /// and avoids a `NodeList` dependency for the highlight swap.
+///
+/// §F6 follow-up: this day pick is *not* wired into the shared time-navigation
+/// anchor / window label. Day-click scoping intentionally stays local to the
+/// Sessions view (this heatmap keys days by a **local** `day_key` — `year*10000 +
+/// month0*100 + date` — while the time-nav anchor keys the Graph/Tables window by
+/// a **UTC day-number**; reconciling the two zones is a deliberate non-goal here).
 fn select_day(shared: &Shared, key: i64) {
     {
         let mut a = shared.borrow_mut();

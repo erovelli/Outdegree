@@ -10,6 +10,30 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **Time navigation: step backward/forward through your history.** The range
+  control (Session / Day / Week / Month / Year) is now flanked by **‹ / ›** step
+  buttons and a window label showing the actual bounds of what's on screen
+  ("Wed, Jul 1" for Day, "Jun 23 – 29" for Week, "Jun 30 – Jul 6" across months,
+  years added when a span crosses a calendar year). **‹** steps the displayed
+  window back exactly one range duration; **›** steps forward and snaps back to
+  the live view when the window reaches the latest data. On the Session range,
+  ‹/› walk your recorded sessions one at a time (the label shows that session's
+  time range). Stepping is clamped before your earliest recorded day (‹ disables
+  there; › disables at latest), but empty windows inside your history remain
+  traversable — the empty state plus the window label make gaps navigable.
+  While viewing a past window a **Latest ↩** chip appears; clicking it (or
+  pressing › at the second-newest window) returns to the live view. Keyboard:
+  **ArrowLeft / ArrowRight** step the window whenever focus isn't in a text
+  field and no modal/welcome overlay is open. Everything downstream follows the
+  displayed window: the graph, Tables (KPI cards and their vs-previous-period
+  delta chips, the daily-visits sparkline, "Surging this period", Activity,
+  journeys), and the CSV/PNG/SVG exports. Anchored historical views hold still —
+  the background live-refresh keeps folding new events but never re-renders a
+  past window out from under you; returning to **Latest** shows everything
+  captured meanwhile. The anchor is deliberately transient: it is never
+  persisted (not in uiPrefs, not in saved views), so the dashboard always
+  reopens live.
+
 - **First-run onboarding: a welcome overlay and an inlined sample dataset.** On a
   fresh, empty install the dashboard now greets you with a centered glass welcome
   overlay (in the app's monochrome idiom, the single provenance hue as the only

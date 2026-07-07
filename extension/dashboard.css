@@ -103,7 +103,8 @@ body {
 .at-bl { bottom: 22px; left: 22px; }
 .at-bc { bottom: 22px; left: 50%; transform: translateX(-50%); }
 .at-pop { top: 72px; right: 22px; min-width: 210px; }
-.at-fc { top: 70px; left: 50%; transform: translateX(-50%); }
+/* below the two-row range/time-navigation panel (§F6) */
+.at-fc { top: 92px; left: 50%; transform: translateX(-50%); }
 /* backup nudge chip: under the settings gear, right edge shared with the popover
    (which stacks above it when open — see .popover z-index). */
 .at-nudge { top: 72px; right: 22px; }
@@ -179,6 +180,40 @@ body {
 .seg-ghost button.active {
   background: oklch(1 0 0 / 0.1); color: var(--text-primary);
 }
+
+/* time navigation (§F6): the range panel stacks a ‹ range › step row above a
+   window-bounds label + a "Latest ↩" chip that clears the anchor. */
+.panel.seg-panel {
+  flex-direction: column; align-items: stretch; gap: 4px; padding: 4px 6px 6px;
+}
+.rng-row { display: flex; align-items: center; gap: 4px; }
+.rng-step {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  width: 24px; height: 30px; border-radius: 6px; flex: none;
+  color: var(--text-tertiary); font: 17px/1 var(--grotesque);
+  display: grid; place-items: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.rng-step:hover:not(:disabled) {
+  background: oklch(1 0 0 / 0.06); color: var(--text-primary);
+}
+.rng-step:disabled { opacity: 0.28; cursor: default; }
+.rng-meta {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 15px; padding: 0 2px;
+}
+.rng-window {
+  font: 11px var(--mono); letter-spacing: 0.01em; color: var(--text-secondary);
+  white-space: nowrap;
+}
+.rng-latest {
+  display: none; appearance: none; cursor: pointer; font: 10.5px var(--grotesque);
+  padding: 2px 8px; border-radius: 999px; color: var(--text-secondary);
+  background: oklch(1 0 0 / 0.05); border: 1px solid var(--toolbar-divider);
+  white-space: nowrap;
+}
+.rng-latest.show { display: inline-flex; align-items: center; }
+.rng-latest:hover { background: oklch(1 0 0 / 0.09); color: var(--text-primary); }
 
 /* icon buttons */
 .iconbtn {

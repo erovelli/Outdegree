@@ -61,6 +61,9 @@ fn apply_saved_view(shared: &Shared, v: &crate::views::SavedView) {
         a.gran = v.gran;
         a.filters = v.filters.clone();
         a.spa_mode = v.spa_mode;
+        // Saved views don't carry a time-navigation anchor (§F6), so applying one
+        // lands on the live "latest" window for the saved range.
+        a.anchor = None;
     }
     // Applying a saved view updates the live controls, so mirror it into the
     // persisted UI prefs via the normal write-through path (§7.7, no savedViews
@@ -70,7 +73,7 @@ fn apply_saved_view(shared: &Shared, v: &crate::views::SavedView) {
     // rerenders (sync_chrome then reflects the new range/filters in the controls).
     reload_buckets(shared);
     if v.range == TimeRange::Session {
-        super::refresh_session_buckets(shared);
+        super::refresh_session_buckets(shared, false);
     }
 }
 
