@@ -3,14 +3,22 @@
 //! Deviation from the §2 sketch: the controls are direct-DOM (CSR by
 //! construction — the DOM is built at runtime, no server hydration), instead of a
 //! reactive framework, to keep the WASM build predictable under the production
-//! CSP. The view modules (`app`, `filters`, `graph_view`, `tables`, `sankey`,
-//! `session_picker`) mirror the spec's file breakdown.
+//! CSP. `app` is the thin composition root; the floating chrome (`chrome`,
+//! `settings`, `modal`, `saved_views`, `shortcuts`, `onboarding`) and the view
+//! modules (`filters`, `graph_view`, `tables`, `sankey`, `session_picker`) mirror
+//! the spec's file breakdown.
 
 mod app;
+mod chrome;
 mod filters;
 mod graph_view;
+mod modal;
+mod onboarding;
 mod sankey;
+mod saved_views;
 mod session_picker;
+mod settings;
+mod shortcuts;
 mod tables;
 
 use crate::layout::{self, Pos};
@@ -281,11 +289,11 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
     // Decide whether the backup nudge should surface (§8.4): pure decision over
     // the live event count + persisted backup/snooze timestamps. Its event-count
     // gate keeps it off the empty/no-data state.
-    app::evaluate_backup_nudge(&shared);
+    settings::evaluate_backup_nudge(&shared);
     // First-run onboarding (§F4): show the welcome overlay on a truly empty,
     // not-yet-onboarded log; otherwise the "Sample data" chip (if demo data is
     // loaded) is already reflected by `sync_chrome`.
-    app::evaluate_first_run(&shared);
+    onboarding::evaluate_first_run(&shared);
     Ok(())
 }
 
@@ -346,7 +354,7 @@ pub(crate) fn live_refresh(shared: &Shared, refit: bool) {
         // requested; full re-render for the data views or the empty graph state.
         let has_canvas = s.borrow().doc.get_element_by_id("bg-canvas").is_some();
         if view == View::Graph && has_canvas && !refit {
-            app::sync_chrome(&s);
+            chrome::sync_chrome(&s);
             graph_view::redraw(&s);
         } else {
             let _ = rerender(&s);
@@ -523,7 +531,7 @@ pub(crate) fn focus_and_animate(shared: &Shared, new_focus: Option<String>) {
         a.view == View::Graph && a.doc.get_element_by_id("bg-canvas").is_some()
     };
     if ready {
-        app::sync_chrome(shared);
+        chrome::sync_chrome(shared);
         graph_view::animate_to_fit(shared);
     } else {
         let _ = rerender(shared);
@@ -673,7 +681,7 @@ pub(crate) fn reload_searches(shared: &Shared) {
 
 /// Render the active view into the body container.
 pub(crate) fn rerender(shared: &Shared) -> Result<(), JsValue> {
-    app::sync_chrome(shared);
+    chrome::sync_chrome(shared);
     let view = shared.borrow().view;
     match view {
         View::Graph => graph_view::render(shared)?,
@@ -749,6 +757,19 @@ pub(crate) fn empty_body_html(a: &App) -> String {
 
 pub(crate) fn el(doc: &Document, tag: &str) -> Element {
     doc.create_element(tag).expect("create_element")
+}
+
+pub(crate) fn span(doc: &Document, class: &str, text: &str) -> Element {
+    let s = el(doc, "span");
+    let _ = s.set_attribute("class", class);
+    s.set_text_content(Some(text));
+    s
+}
+
+pub(crate) fn set_text(doc: &Document, id: &str, text: &str) {
+    if let Some(e) = doc.get_element_by_id(id) {
+        e.set_text_content(Some(text));
+    }
 }
 
 pub(crate) fn body_container(shared: &Shared) -> Option<Element> {

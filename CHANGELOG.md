@@ -74,6 +74,12 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
   opens the session picker, and the Sankey flow diagram lives inside it, so the
   label now names what the button does.
 
+### Internal
+- Split the dashboard's monolithic `ui/app.rs` into focused modules (`ui/chrome`,
+  `ui/settings`, `ui/modal`, `ui/saved_views`, `ui/shortcuts`, `ui/onboarding`),
+  leaving `ui/app.rs` as the thin composition root. Pure code move — no behavior
+  change.
+
 ## [1.1.0] — 2026-07-02
 
 ### Added
