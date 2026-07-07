@@ -317,9 +317,13 @@ pub(super) fn view_panel(doc: &Document, shared: &Shared) -> Element {
                     let _ =
                         g.set_attribute("aria-expanded", if now_open { "true" } else { "false" });
                 }
-                // Refresh the storage readout each time the menu opens (§8.1).
+                // Refresh the storage readout each time the menu opens (§8.1), and
+                // move keyboard focus into the menu so it's operable by keyboard
+                // (the menu-button pattern; §F10). `close_popover` hands focus back
+                // to the gear. :focus-visible keeps the ring keyboard-only.
                 if now_open {
                     refresh_storage_readout(&s);
+                    super::focus_trap::focus_first(&pop);
                 }
             }
         });
@@ -633,6 +637,7 @@ pub(super) fn search_panel(doc: &Document, shared: &Shared) -> Element {
     let _ = mv.set_attribute("class", "chip chip-select");
     let _ = mv.set_attribute("id", "chip-minvisits");
     let _ = mv.set_attribute("title", "Only show sites with at least this many visits");
+    let _ = mv.set_attribute("aria-label", "Minimum visits filter");
     // Options are filled in by `sync_chrome::populate_min_visits`, which adapts the
     // thresholds to the current visit volume; this placeholder avoids an empty
     // control before the first render.
@@ -846,7 +851,8 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         });
     }
 
-    // lock toggle
+    // lock toggle — mirror the state into aria-pressed + a live aria-label/title,
+    // so the icon-only control announces both what it is and whether it's engaged.
     if let Some(lock) = doc.get_element_by_id("bg-lock") {
         lock.set_class_name(if a.locked {
             "iconbtn active"
@@ -854,6 +860,14 @@ pub(crate) fn sync_chrome(shared: &Shared) {
             "iconbtn"
         });
         lock.set_inner_html(&icon(if a.locked { "lock" } else { "unlock" }));
+        let _ = lock.set_attribute("aria-pressed", if a.locked { "true" } else { "false" });
+        let label = if a.locked {
+            "Unlock layout"
+        } else {
+            "Lock layout"
+        };
+        let _ = lock.set_attribute("aria-label", label);
+        let _ = lock.set_attribute("title", label);
     }
 
     // drill-down focus chip — only meaningful on the graph, and only while focused

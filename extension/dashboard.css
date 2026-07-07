@@ -759,6 +759,14 @@ td.host-cell:hover, span.host-cell:hover {
 .cal-cell.is-hit { cursor: pointer; }
 .cal-cell.is-hit:hover { outline: 1px solid oklch(1 0 0 / 0.35); outline-offset: 1px; }
 .cal-cell.is-sel { outline: 1.5px solid var(--text-primary); outline-offset: 1px; }
+/* Days with sessions are real <button>s (§F10 a11y); empty/future days stay
+   decorative <div>s. Flatten the native button chrome so a button day looks
+   identical to a div day — the cal-l{n} fill and is-hit/is-sel outlines still
+   apply (background is left to those, so it isn't reset here). */
+button.cal-cell {
+  appearance: none; -webkit-appearance: none;
+  margin: 0; padding: 0; border: 0; font: inherit; color: inherit;
+}
 /* Micro intensity key, tucked under the grid's right edge (single series →
  * tooltips carry the exact counts; this is just the ramp direction). */
 .cal-scale {
@@ -833,6 +841,36 @@ td.host-cell:hover, span.host-cell:hover {
 }
 .welcome-body { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
 .welcome-actions { justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+/* help overlay (§F10): a terse two-column keyboard + interaction reference card,
+   in the same centered glass idiom as the welcome overlay and confirm modal. It
+   sits above them (default .modal-overlay z-index) — the modal/welcome own Esc and
+   are never opened over the help card. */
+.panel.modal.help-modal {
+  width: 560px; max-width: calc(100vw - 32px); gap: 16px; padding: 22px 24px;
+}
+.help-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.help-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.help-x {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  color: var(--text-muted); font-size: 14px; line-height: 1;
+  padding: 3px 7px; border-radius: 6px; flex: none;
+}
+.help-x:hover { color: var(--text-primary); background: oklch(1 0 0 / 0.08); }
+/* Two columns that stack on a narrow viewport rather than forcing a scroll. */
+.help-cols { display: flex; flex-wrap: wrap; gap: 12px 28px; }
+.help-col { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.help-colhead {
+  font: 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-muted); padding-bottom: 4px;
+  border-bottom: 1px solid var(--toolbar-divider);
+}
+.help-row { display: flex; align-items: baseline; gap: 10px; }
+.help-key {
+  flex: 0 0 92px; font: 11px var(--mono); color: var(--text-primary);
+  white-space: nowrap;
+}
+.help-desc { flex: 1; min-width: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
 
 /* saved views manager */
 .modal-saverow { display: flex; gap: 8px; }

@@ -5,9 +5,9 @@
 use super::chrome::set_legend;
 use super::onboarding::dismiss_welcome_onboarded;
 use super::settings::close_popover;
-use super::{graph_view, on, Shared};
+use super::{graph_view, help, modal, on, Shared};
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlElement, KeyboardEvent};
+use web_sys::{Element, HtmlElement, KeyboardEvent};
 
 /// ⌘K / Ctrl-K focuses the host search box (command-palette affordance); Esc
 /// closes the settings menu and exits any drill-down focus.
@@ -19,15 +19,25 @@ pub(super) fn install_palette_shortcut(shared: &Shared) {
             return;
         };
         if ke.key() == "Escape" {
-            // A modal takes priority: dismiss it and stop (don't also clear focus).
-            if let Some(m) = s.borrow().doc.get_element_by_id("bg-modal") {
-                m.remove();
+            // Esc peels exactly one layer, in strict priority order (§F10):
+            //   modal  >  welcome overlay  >  help overlay  >  settings popover +
+            //   drill-down focus / legend filter  >  release graph-canvas focus.
+            // Each earlier layer swallows the press so one Esc unwinds one thing.
+            let doc = s.borrow().doc.clone();
+            if doc.get_element_by_id("bg-modal").is_some() {
+                // Close the modal and return focus to its invoking control.
+                modal::close_modal(&doc);
                 return;
             }
             // The welcome overlay dismisses like its "Start recording" button:
             // Esc onboards and closes it (§F4).
-            if s.borrow().doc.get_element_by_id("bg-welcome").is_some() {
+            if doc.get_element_by_id("bg-welcome").is_some() {
                 dismiss_welcome_onboarded(&s);
+                return;
+            }
+            // The help overlay closes (restoring focus) before touching the view.
+            if doc.get_element_by_id("bg-help").is_some() {
+                help::close_help(&doc);
                 return;
             }
             close_popover(&s);
@@ -40,7 +50,30 @@ pub(super) fn install_palette_shortcut(shared: &Shared) {
             } else if cleared {
                 set_legend(&s);
                 graph_view::redraw(&s);
+            } else if let Some(active) = doc.active_element() {
+                // Nothing left to peel: release keyboard focus from the graph
+                // canvas so Esc still "clears" a focused graph with no node
+                // selected (matching the canvas's advertised "Esc clear focus").
+                if active.id() == "bg-canvas" {
+                    if let Ok(h) = active.dyn_into::<HtmlElement>() {
+                        let _ = h.blur();
+                    }
+                }
             }
+            return;
+        }
+        // "?" opens (or re-closes) the help overlay — a terse shortcut reference.
+        // Ignored while typing, and while a modal / welcome overlay is up (those
+        // own Esc and shouldn't be shadowed by a help card).
+        if ke.key() == "?" && !is_text_target(&ke) {
+            let doc = s.borrow().doc.clone();
+            if doc.get_element_by_id("bg-modal").is_some()
+                || doc.get_element_by_id("bg-welcome").is_some()
+            {
+                return;
+            }
+            ke.prevent_default();
+            help::toggle_help(&s);
             return;
         }
         // ArrowLeft / ArrowRight step time navigation (§F6): back / forward one
@@ -48,7 +81,15 @@ pub(super) fn install_palette_shortcut(shared: &Shared) {
         // modal or the welcome overlay is up, and on the Sessions (Sankey) view —
         // where the range control is hidden and the picker owns selection.
         if ke.key() == "ArrowLeft" || ke.key() == "ArrowRight" {
-            if ke.meta_key() || ke.ctrl_key() || ke.alt_key() || is_text_target(&ke) {
+            // Yield to the graph canvas when it holds focus: there the arrows pan
+            // (see graph_view), so the global handler must not also step the time
+            // window — canvas-focused = pan, otherwise = time step (§F10).
+            if ke.meta_key()
+                || ke.ctrl_key()
+                || ke.alt_key()
+                || is_text_target(&ke)
+                || is_canvas_target(&ke)
+            {
                 return;
             }
             let (doc, on_sankey) = {
@@ -88,6 +129,15 @@ fn is_text_target(ke: &KeyboardEvent) -> bool {
             // popup) with arrows — those must not step the time window instead.
             tag == "input" || tag == "textarea" || tag == "select" || el.is_content_editable()
         })
+        .unwrap_or(false)
+}
+
+/// Whether a key event targets the graph canvas (which owns its own arrow-key
+/// panning while focused), so the global arrow-key time-stepping yields to it.
+fn is_canvas_target(ke: &KeyboardEvent) -> bool {
+    ke.target()
+        .and_then(|t| t.dyn_into::<Element>().ok())
+        .map(|e| e.id() == "bg-canvas")
         .unwrap_or(false)
 }
 

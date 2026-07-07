@@ -339,6 +339,17 @@ pub(super) fn settings_popover(doc: &Document, shared: &Shared) -> Element {
         });
     }
 
+    // Open the help overlay: a terse keyboard + interaction reference (§F10), also
+    // reachable by pressing "?" anywhere outside a text field.
+    let help = menu_btn(doc, "Help & shortcuts");
+    {
+        let s = shared.clone();
+        on(&help, "click", move |_| {
+            close_popover(&s);
+            super::help::show_help_overlay(&s);
+        });
+    }
+
     // Read-only storage usage readout atop the Data section — event/rollup/session
     // counts plus an approximate byte figure from navigator.storage.estimate()
     // (a local API, CSP-safe). Filled/refreshed each time the popover opens.
@@ -371,13 +382,30 @@ pub(super) fn settings_popover(doc: &Document, shared: &Shared) -> Element {
     let _ = sep3.set_attribute("class", "menu-sep");
     let _ = pop.append_child(&sep3);
     let _ = pop.append_child(&welcome);
+    let _ = pop.append_child(&help);
     pop
 }
 
 pub(super) fn close_popover(shared: &Shared) {
     let doc = shared.borrow().doc.clone();
     if let Some(pop) = doc.get_element_by_id("bg-settings") {
+        // If keyboard focus is inside the menu (Esc, or activating an item), hand
+        // it back to the gear that owns the menu so focus isn't stranded on a
+        // now-hidden control (§F10). A click-away (focus already elsewhere) leaves
+        // focus where the pointer put it.
+        let focus_inside = doc
+            .active_element()
+            .map(|a| pop.contains(Some(a.unchecked_ref())))
+            .unwrap_or(false);
         pop.set_class_name("panel popover at-pop");
+        if focus_inside {
+            if let Some(g) = doc
+                .get_element_by_id("bg-gear")
+                .and_then(|g| g.dyn_into::<web_sys::HtmlElement>().ok())
+            {
+                let _ = g.focus();
+            }
+        }
     }
     if let Some(g) = doc.get_element_by_id("bg-gear") {
         let _ = g.set_attribute("aria-expanded", "false");
