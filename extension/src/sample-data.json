@@ -1,0 +1,6137 @@
+{
+ "version": 1,
+ "events": [
+  {
+   "kind": "start",
+   "id": 1,
+   "ts": 1771662000
+  },
+  {
+   "kind": "nav",
+   "id": 2,
+   "ts": 1767642000,
+   "tabId": 101,
+   "windowId": 1,
+   "toUrl": "news.example/sports/35",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 3,
+   "ts": 1767592000,
+   "tabId": 101,
+   "windowId": 1,
+   "toUrl": "world.news.example/live/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 4,
+   "ts": 1767517000,
+   "tabId": 101,
+   "windowId": 1,
+   "toUrl": "tech.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 5,
+   "ts": 1767455000,
+   "tabId": 101,
+   "windowId": 1,
+   "toUrl": "sports.news.example/world/27",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 6,
+   "ts": 1767369000,
+   "tabId": 101,
+   "windowId": 1,
+   "toUrl": "tech.news.example/opinion/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 7,
+   "ts": 1767341000,
+   "tabId": 101,
+   "windowId": 1,
+   "toUrl": "world.news.example/world/28",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 8,
+   "ts": 1767317000,
+   "tabId": 101,
+   "windowId": 1,
+   "toUrl": "sports.news.example/tech/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 9,
+   "ts": 1767296000,
+   "tabId": 101,
+   "windowId": 1,
+   "toUrl": "sports.news.example/world/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 10,
+   "ts": 1767242000,
+   "tabId": 101
+  },
+  {
+   "kind": "nav",
+   "id": 11,
+   "ts": 1756242000,
+   "tabId": 102,
+   "windowId": 2,
+   "toUrl": "dev.example/reference/36",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 12,
+   "ts": 1756185000,
+   "tabId": 102,
+   "windowId": 2,
+   "toUrl": "docs.dev.example/search/8",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 13,
+   "ts": 1756112000,
+   "tabId": 102,
+   "windowId": 2,
+   "toUrl": "api.dev.example/issues/23",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 14,
+   "ts": 1756066000,
+   "tabId": 102,
+   "windowId": 2,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 15,
+   "ts": 1756051000,
+   "tabId": 102,
+   "windowId": 2,
+   "toUrl": "docs.dev.example/guide/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 16,
+   "ts": 1755988000,
+   "tabId": 102,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/sent/19",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 17,
+   "ts": 1755923000,
+   "tabId": 102,
+   "windowId": 2,
+   "toUrl": "dev.example/issues/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 18,
+   "ts": 1755889000,
+   "tabId": 102,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 19,
+   "ts": 1755853000,
+   "tabId": 102,
+   "windowId": 2,
+   "toUrl": "dev.example/",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 20,
+   "ts": 1755826000,
+   "tabId": 102
+  },
+  {
+   "kind": "nav",
+   "id": 21,
+   "ts": 1683942000,
+   "tabId": 103,
+   "windowId": 1,
+   "toUrl": "news.example/",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 22,
+   "ts": 1683877000,
+   "tabId": 103,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 23,
+   "ts": 1683805000,
+   "tabId": 103,
+   "windowId": 1,
+   "toUrl": "tech.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 24,
+   "ts": 1683767000,
+   "tabId": 103,
+   "windowId": 1,
+   "toUrl": "world.news.example/live/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 25,
+   "ts": 1683693000,
+   "tabId": 103,
+   "windowId": 1,
+   "toUrl": "news.example/world/27",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 26,
+   "ts": 1683671000,
+   "tabId": 103,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 27,
+   "ts": 1683588000,
+   "tabId": 103
+  },
+  {
+   "kind": "nav",
+   "id": 28,
+   "ts": 1670802000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=video",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 29,
+   "ts": 1670734000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "video.example/playlist/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 30,
+   "ts": 1670715000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "watch.video.example/watch/34",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 31,
+   "ts": 1670650000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "live.video.example/playlist/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 32,
+   "ts": 1670624000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "watch.video.example/trending/24",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 33,
+   "ts": 1670611000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 34,
+   "ts": 1670560000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 35,
+   "ts": 1670471000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "watch.video.example/trending/27",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 36,
+   "ts": 1670395000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "live.video.example/trending/6",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 37,
+   "ts": 1670306000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "live.video.example/channel/21",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 38,
+   "ts": 1670227000,
+   "tabId": 104,
+   "windowId": 1,
+   "toUrl": "video.example/playlist/1",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 39,
+   "ts": 1670174000,
+   "tabId": 104
+  },
+  {
+   "kind": "nav",
+   "id": 40,
+   "ts": 1655322000,
+   "tabId": 105,
+   "windowId": 2,
+   "toUrl": "search.example/search?q=mail",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 41,
+   "ts": 1655235000,
+   "tabId": 105,
+   "windowId": 2,
+   "toUrl": "mail.example/sent/21",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 42,
+   "ts": 1655173000,
+   "tabId": 105,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/sent/35",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 43,
+   "ts": 1655128000,
+   "tabId": 105,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 44,
+   "ts": 1655056000,
+   "tabId": 105,
+   "windowId": 2,
+   "toUrl": "mail.example/sent/2",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 45,
+   "ts": 1655046000,
+   "tabId": 105,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/inbox/18",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 46,
+   "ts": 1655002000,
+   "tabId": 105,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/sent/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 47,
+   "ts": 1654985000,
+   "tabId": 105,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/compose/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 48,
+   "ts": 1654903000,
+   "tabId": 105
+  },
+  {
+   "kind": "nav",
+   "id": 49,
+   "ts": 1642062000,
+   "tabId": 106,
+   "windowId": 1,
+   "toUrl": "news.example/tech/5",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 50,
+   "ts": 1642045000,
+   "tabId": 106,
+   "windowId": 1,
+   "toUrl": "world.news.example/opinion/28",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 51,
+   "ts": 1642036000,
+   "tabId": 106,
+   "windowId": 1,
+   "toUrl": "tech.news.example/sports/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 52,
+   "ts": 1642024000,
+   "tabId": 106,
+   "windowId": 1,
+   "toUrl": "world.news.example/sports/28",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 53,
+   "ts": 1641934000,
+   "tabId": 106,
+   "windowId": 1,
+   "toUrl": "sports.news.example/opinion/13",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 54,
+   "ts": 1641890000,
+   "tabId": 106,
+   "windowId": 1,
+   "toUrl": "world.news.example/live/4",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 55,
+   "ts": 1641806000,
+   "tabId": 106,
+   "windowId": 1,
+   "toUrl": "sports.news.example/live/20",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 56,
+   "ts": 1641746000,
+   "tabId": 106,
+   "windowId": 1,
+   "toUrl": "sports.news.example/sports/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 57,
+   "ts": 1641714000,
+   "tabId": 106,
+   "windowId": 1,
+   "toUrl": "tech.news.example/sports/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 58,
+   "ts": 1641646000,
+   "tabId": 106
+  },
+  {
+   "kind": "nav",
+   "id": 59,
+   "ts": 1598442000,
+   "tabId": 107,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=video",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 60,
+   "ts": 1598426000,
+   "tabId": 107,
+   "windowId": 1,
+   "toUrl": "video.example/watch/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 61,
+   "ts": 1598348000,
+   "tabId": 107,
+   "windowId": 1,
+   "toUrl": "watch.video.example/watch/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 62,
+   "ts": 1598286000,
+   "tabId": 107,
+   "windowId": 1,
+   "toUrl": "live.video.example/watch/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 63,
+   "ts": 1598228000,
+   "tabId": 107,
+   "windowId": 1,
+   "toUrl": "watch.video.example/channel/31",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 64,
+   "ts": 1598157000,
+   "tabId": 107,
+   "windowId": 1,
+   "toUrl": "video.example/watch/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 65,
+   "ts": 1598069000,
+   "newTabId": 108,
+   "sourceTabId": 107
+  },
+  {
+   "kind": "nav",
+   "id": 66,
+   "ts": 1598054000,
+   "tabId": 108,
+   "windowId": 1,
+   "toUrl": "watch.video.example/playlist/11",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 67,
+   "ts": 1597995000,
+   "tabId": 108,
+   "windowId": 1,
+   "toUrl": "watch.video.example/trending/7",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 68,
+   "ts": 1597914000,
+   "tabId": 108
+  },
+  {
+   "kind": "close",
+   "id": 69,
+   "ts": 1597846000,
+   "tabId": 107
+  },
+  {
+   "kind": "nav",
+   "id": 70,
+   "ts": 1591182000,
+   "tabId": 109,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=video",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 71,
+   "ts": 1591132000,
+   "tabId": 109,
+   "windowId": 1,
+   "toUrl": "video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 72,
+   "ts": 1591065000,
+   "tabId": 109,
+   "windowId": 1,
+   "toUrl": "watch.video.example/playlist/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 73,
+   "ts": 1591015000,
+   "tabId": 109,
+   "windowId": 1,
+   "toUrl": "live.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 74,
+   "ts": 1590960000,
+   "tabId": 109,
+   "windowId": 1,
+   "toUrl": "video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 75,
+   "ts": 1590951000,
+   "tabId": 109,
+   "windowId": 1,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 76,
+   "ts": 1590932000,
+   "tabId": 109
+  },
+  {
+   "kind": "start",
+   "id": 77,
+   "ts": 1523262000
+  },
+  {
+   "kind": "nav",
+   "id": 78,
+   "ts": 1504122000,
+   "tabId": 110,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 79,
+   "ts": 1504036000,
+   "tabId": 110,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 80,
+   "ts": 1503990000,
+   "tabId": 110,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 81,
+   "ts": 1503969000,
+   "tabId": 110,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/34",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 82,
+   "ts": 1503898000,
+   "tabId": 110,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 83,
+   "ts": 1503815000,
+   "tabId": 110,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/13",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 84,
+   "ts": 1503762000,
+   "tabId": 110,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/28",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 85,
+   "ts": 1503719000,
+   "tabId": 110
+  },
+  {
+   "kind": "nav",
+   "id": 86,
+   "ts": 1496742000,
+   "tabId": 111,
+   "windowId": 1,
+   "toUrl": "news.example/live/37",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 87,
+   "ts": 1496673000,
+   "tabId": 111,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 88,
+   "ts": 1496588000,
+   "tabId": 111,
+   "windowId": 1,
+   "toUrl": "tech.news.example/sports/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 89,
+   "ts": 1496556000,
+   "tabId": 111,
+   "windowId": 1,
+   "toUrl": "world.news.example/tech/24",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 90,
+   "ts": 1496472000,
+   "tabId": 111,
+   "windowId": 1,
+   "toUrl": "tech.news.example/tech/20",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 91,
+   "ts": 1496437000,
+   "tabId": 111,
+   "windowId": 1,
+   "toUrl": "tech.news.example/world/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 92,
+   "ts": 1496390000,
+   "tabId": 111,
+   "windowId": 1,
+   "toUrl": "sports.news.example/opinion/33",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 93,
+   "ts": 1496355000,
+   "tabId": 111,
+   "windowId": 1,
+   "toUrl": "world.news.example/world/13",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 94,
+   "ts": 1496298000,
+   "tabId": 111,
+   "windowId": 1,
+   "toUrl": "world.news.example/opinion/31",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 95,
+   "ts": 1496229000,
+   "newTabId": 112,
+   "sourceTabId": 111
+  },
+  {
+   "kind": "nav",
+   "id": 96,
+   "ts": 1496173000,
+   "tabId": 112,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 97,
+   "ts": 1496118000,
+   "tabId": 112,
+   "windowId": 1,
+   "toUrl": "news.example/opinion/16",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 98,
+   "ts": 1496091000,
+   "tabId": 112
+  },
+  {
+   "kind": "close",
+   "id": 99,
+   "ts": 1496031000,
+   "tabId": 111
+  },
+  {
+   "kind": "nav",
+   "id": 100,
+   "ts": 1486902000,
+   "tabId": 113,
+   "windowId": 1,
+   "toUrl": "dev.example/guide/27",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 101,
+   "ts": 1486815000,
+   "tabId": 113,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 102,
+   "ts": 1486777000,
+   "tabId": 113,
+   "windowId": 1,
+   "toUrl": "api.dev.example/reference/2",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 103,
+   "ts": 1486747000,
+   "tabId": 113,
+   "windowId": 1,
+   "toUrl": "dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 104,
+   "ts": 1486678000,
+   "tabId": 113,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 105,
+   "ts": 1486631000,
+   "newTabId": 114,
+   "sourceTabId": 113
+  },
+  {
+   "kind": "nav",
+   "id": 106,
+   "ts": 1486566000,
+   "tabId": 114,
+   "windowId": 1,
+   "toUrl": "dev.example/reference/8",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 107,
+   "ts": 1486504000,
+   "tabId": 114
+  },
+  {
+   "kind": "close",
+   "id": 108,
+   "ts": 1486460000,
+   "tabId": 113
+  },
+  {
+   "kind": "nav",
+   "id": 109,
+   "ts": 1420962000,
+   "tabId": 115,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=news",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 110,
+   "ts": 1420914000,
+   "tabId": 115,
+   "windowId": 1,
+   "toUrl": "news.example/tech/29",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 111,
+   "ts": 1420906000,
+   "tabId": 115,
+   "windowId": 1,
+   "toUrl": "world.news.example/sports/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 112,
+   "ts": 1420870000,
+   "tabId": 115,
+   "windowId": 1,
+   "toUrl": "tech.news.example/opinion/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 113,
+   "ts": 1420787000,
+   "tabId": 115,
+   "windowId": 1,
+   "toUrl": "world.news.example/opinion/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 114,
+   "ts": 1420747000,
+   "tabId": 115,
+   "windowId": 1,
+   "toUrl": "news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 115,
+   "ts": 1420706000,
+   "tabId": 115,
+   "windowId": 1,
+   "toUrl": "tech.news.example/opinion/29",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 116,
+   "ts": 1420648000,
+   "tabId": 115,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 117,
+   "ts": 1420616000,
+   "tabId": 115,
+   "windowId": 1,
+   "toUrl": "tech.news.example/tech/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 118,
+   "ts": 1420558000,
+   "tabId": 115
+  },
+  {
+   "kind": "nav",
+   "id": 119,
+   "ts": 1410882000,
+   "tabId": 116,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=dev",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 120,
+   "ts": 1410827000,
+   "tabId": 116,
+   "windowId": 1,
+   "toUrl": "dev.example/reference/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 121,
+   "ts": 1410756000,
+   "tabId": 116,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 122,
+   "ts": 1410702000,
+   "tabId": 116,
+   "windowId": 1,
+   "toUrl": "api.dev.example/search/20",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 123,
+   "ts": 1410649000,
+   "tabId": 116,
+   "windowId": 1,
+   "toUrl": "git.dev.example/reference/4",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 124,
+   "ts": 1410601000,
+   "tabId": 116,
+   "windowId": 1,
+   "toUrl": "api.dev.example/issues/6",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 125,
+   "ts": 1410533000,
+   "newTabId": 117,
+   "sourceTabId": 116
+  },
+  {
+   "kind": "nav",
+   "id": 126,
+   "ts": 1410518000,
+   "tabId": 117,
+   "windowId": 1,
+   "toUrl": "dev.example/issues/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 127,
+   "ts": 1410487000,
+   "tabId": 117,
+   "windowId": 1,
+   "toUrl": "dev.example/pulls/27",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 128,
+   "ts": 1410466000,
+   "tabId": 117
+  },
+  {
+   "kind": "nav",
+   "id": 129,
+   "ts": 1410392000,
+   "tabId": 116,
+   "windowId": 1,
+   "toUrl": "dev.example/",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 130,
+   "ts": 1410328000,
+   "tabId": 116
+  },
+  {
+   "kind": "start",
+   "id": 131,
+   "ts": 1350462000
+  },
+  {
+   "kind": "nav",
+   "id": 132,
+   "ts": 1338462000,
+   "tabId": 118,
+   "windowId": 1,
+   "toUrl": "dev.example/guide/36",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 133,
+   "ts": 1338401000,
+   "tabId": 118,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 134,
+   "ts": 1338324000,
+   "tabId": 118,
+   "windowId": 1,
+   "toUrl": "api.dev.example/reference/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 135,
+   "ts": 1338305000,
+   "tabId": 118,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/guide/17",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 136,
+   "ts": 1338250000,
+   "tabId": 118,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/search/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 137,
+   "ts": 1338203000,
+   "tabId": 118,
+   "windowId": 1,
+   "toUrl": "dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 138,
+   "ts": 1338140000,
+   "tabId": 118,
+   "windowId": 1,
+   "toUrl": "dev.example/search/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 139,
+   "ts": 1338070000,
+   "tabId": 118,
+   "windowId": 1,
+   "toUrl": "dev.example/search/5",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 140,
+   "ts": 1338022000,
+   "tabId": 118
+  },
+  {
+   "kind": "nav",
+   "id": 141,
+   "ts": 1328502000,
+   "tabId": 119,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=video",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 142,
+   "ts": 1328473000,
+   "tabId": 119,
+   "windowId": 1,
+   "toUrl": "video.example/watch/11",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 143,
+   "ts": 1328394000,
+   "tabId": 119,
+   "windowId": 1,
+   "toUrl": "watch.video.example/trending/29",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 144,
+   "ts": 1328327000,
+   "tabId": 119,
+   "windowId": 1,
+   "toUrl": "live.video.example/channel/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 145,
+   "ts": 1328279000,
+   "tabId": 119,
+   "windowId": 1,
+   "toUrl": "video.example/channel/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 146,
+   "ts": 1328258000,
+   "tabId": 119,
+   "windowId": 1,
+   "toUrl": "live.video.example/trending/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 147,
+   "ts": 1328242000,
+   "tabId": 119,
+   "windowId": 1,
+   "toUrl": "live.video.example/watch/16",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 148,
+   "ts": 1328210000,
+   "tabId": 119,
+   "windowId": 1,
+   "toUrl": "live.video.example/channel/12",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 149,
+   "ts": 1328195000,
+   "tabId": 119,
+   "windowId": 1,
+   "toUrl": "video.example/playlist/31",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 150,
+   "ts": 1328187000,
+   "tabId": 119
+  },
+  {
+   "kind": "nav",
+   "id": 151,
+   "ts": 1313322000,
+   "tabId": 120,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/14",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 152,
+   "ts": 1313282000,
+   "tabId": 120,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/13",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 153,
+   "ts": 1313245000,
+   "tabId": 120,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 154,
+   "ts": 1313170000,
+   "tabId": 120,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 155,
+   "ts": 1313131000,
+   "tabId": 120,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/reference/11",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 156,
+   "ts": 1313062000,
+   "tabId": 120,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/13",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 157,
+   "ts": 1313048000,
+   "newTabId": 121,
+   "sourceTabId": 120
+  },
+  {
+   "kind": "nav",
+   "id": 158,
+   "ts": 1313000000,
+   "tabId": 121,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 159,
+   "ts": 1312987000,
+   "tabId": 121
+  },
+  {
+   "kind": "nav",
+   "id": 160,
+   "ts": 1312903000,
+   "tabId": 120,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/7",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 161,
+   "ts": 1312864000,
+   "tabId": 120
+  },
+  {
+   "kind": "nav",
+   "id": 162,
+   "ts": 1249362000,
+   "tabId": 122,
+   "windowId": 2,
+   "toUrl": "video.example/watch/11",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 163,
+   "ts": 1249339000,
+   "tabId": 122,
+   "windowId": 2,
+   "toUrl": "watch.video.example/channel/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 164,
+   "ts": 1249255000,
+   "tabId": 122,
+   "windowId": 2,
+   "toUrl": "live.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 165,
+   "ts": 1249210000,
+   "tabId": 122,
+   "windowId": 2,
+   "toUrl": "live.video.example/trending/33",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 166,
+   "ts": 1249180000,
+   "tabId": 122,
+   "windowId": 2,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 167,
+   "ts": 1249140000,
+   "tabId": 122,
+   "windowId": 2,
+   "toUrl": "watch.video.example/playlist/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 168,
+   "ts": 1249112000,
+   "newTabId": 123,
+   "sourceTabId": 122
+  },
+  {
+   "kind": "nav",
+   "id": 169,
+   "ts": 1249065000,
+   "tabId": 123,
+   "windowId": 2,
+   "toUrl": "live.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 170,
+   "ts": 1249053000,
+   "tabId": 123,
+   "windowId": 2,
+   "toUrl": "live.video.example/playlist/20",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 171,
+   "ts": 1248987000,
+   "tabId": 123
+  },
+  {
+   "kind": "close",
+   "id": 172,
+   "ts": 1248958000,
+   "tabId": 122
+  },
+  {
+   "kind": "nav",
+   "id": 173,
+   "ts": 1241502000,
+   "tabId": 124,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=mail",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 174,
+   "ts": 1241413000,
+   "tabId": 124,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 175,
+   "ts": 1241344000,
+   "tabId": 124,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 176,
+   "ts": 1241279000,
+   "tabId": 124,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 177,
+   "ts": 1241230000,
+   "tabId": 124,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 178,
+   "ts": 1241159000,
+   "tabId": 124,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/37",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 179,
+   "ts": 1241118000,
+   "tabId": 124
+  },
+  {
+   "kind": "nav",
+   "id": 180,
+   "ts": 1230342000,
+   "tabId": 125,
+   "windowId": 1,
+   "toUrl": "news.example/sports/7",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 181,
+   "ts": 1230272000,
+   "tabId": 125,
+   "windowId": 1,
+   "toUrl": "world.news.example/world/2",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 182,
+   "ts": 1230188000,
+   "tabId": 125,
+   "windowId": 1,
+   "toUrl": "tech.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 183,
+   "ts": 1230167000,
+   "tabId": 125,
+   "windowId": 1,
+   "toUrl": "tech.news.example/tech/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 184,
+   "ts": 1230111000,
+   "tabId": 125,
+   "windowId": 1,
+   "toUrl": "news.example/world/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 185,
+   "ts": 1230027000,
+   "tabId": 125
+  },
+  {
+   "kind": "nav",
+   "id": 186,
+   "ts": 1169802000,
+   "tabId": 126,
+   "windowId": 1,
+   "toUrl": "dev.example/",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 187,
+   "ts": 1169742000,
+   "tabId": 126,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/pulls/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 188,
+   "ts": 1169666000,
+   "tabId": 126,
+   "windowId": 1,
+   "toUrl": "api.dev.example/issues/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 189,
+   "ts": 1169594000,
+   "tabId": 126,
+   "windowId": 1,
+   "toUrl": "dev.example/search/6",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 190,
+   "ts": 1169537000,
+   "tabId": 126,
+   "windowId": 1,
+   "toUrl": "git.dev.example/guide/34",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 191,
+   "ts": 1169460000,
+   "tabId": 126
+  },
+  {
+   "kind": "nav",
+   "id": 192,
+   "ts": 1158462000,
+   "tabId": 127,
+   "windowId": 2,
+   "toUrl": "search.example/search?q=news",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 193,
+   "ts": 1158431000,
+   "tabId": 127,
+   "windowId": 2,
+   "toUrl": "news.example/opinion/21",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 194,
+   "ts": 1158406000,
+   "tabId": 127,
+   "windowId": 2,
+   "toUrl": "world.news.example/world/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 195,
+   "ts": 1158387000,
+   "tabId": 127,
+   "windowId": 2,
+   "toUrl": "tech.news.example/sports/4",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 196,
+   "ts": 1158300000,
+   "tabId": 127,
+   "windowId": 2,
+   "toUrl": "tech.news.example/sports/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 197,
+   "ts": 1158266000,
+   "tabId": 127,
+   "windowId": 2,
+   "toUrl": "tech.news.example/sports/7",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 198,
+   "ts": 1158222000,
+   "tabId": 127,
+   "windowId": 2,
+   "toUrl": "news.example/tech/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 199,
+   "ts": 1158133000,
+   "tabId": 127,
+   "windowId": 2,
+   "toUrl": "news.example/live/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 200,
+   "ts": 1158047000,
+   "tabId": 127,
+   "windowId": 2,
+   "toUrl": "news.example/opinion/26",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 201,
+   "ts": 1157977000,
+   "tabId": 127
+  },
+  {
+   "kind": "nav",
+   "id": 202,
+   "ts": 1075482000,
+   "tabId": 128,
+   "windowId": 1,
+   "toUrl": "news.example/live/3",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 203,
+   "ts": 1075404000,
+   "tabId": 128,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 204,
+   "ts": 1075384000,
+   "tabId": 128,
+   "windowId": 1,
+   "toUrl": "tech.news.example/tech/10",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 205,
+   "ts": 1075295000,
+   "tabId": 128,
+   "windowId": 1,
+   "toUrl": "world.news.example/world/19",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 206,
+   "ts": 1075286000,
+   "tabId": 128,
+   "windowId": 1,
+   "toUrl": "sports.news.example/tech/8",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 207,
+   "ts": 1075212000,
+   "tabId": 128,
+   "windowId": 1,
+   "toUrl": "sports.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 208,
+   "ts": 1075196000,
+   "newTabId": 129,
+   "sourceTabId": 128
+  },
+  {
+   "kind": "nav",
+   "id": 209,
+   "ts": 1075116000,
+   "tabId": 129,
+   "windowId": 1,
+   "toUrl": "world.news.example/opinion/23",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 210,
+   "ts": 1075032000,
+   "tabId": 129,
+   "windowId": 1,
+   "toUrl": "world.news.example/live/20",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 211,
+   "ts": 1074970000,
+   "tabId": 129
+  },
+  {
+   "kind": "close",
+   "id": 212,
+   "ts": 1074960000,
+   "tabId": 128
+  },
+  {
+   "kind": "nav",
+   "id": 213,
+   "ts": 1062402000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "dev.example/reference/25",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 214,
+   "ts": 1062330000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/issues/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 215,
+   "ts": 1062308000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "api.dev.example/search/23",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 216,
+   "ts": 1062223000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "dev.example/search/5",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 217,
+   "ts": 1062159000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "api.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 218,
+   "ts": 1062116000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "dev.example/issues/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 219,
+   "ts": 1062041000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "api.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 220,
+   "ts": 1061990000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/17",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 221,
+   "ts": 1061967000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 222,
+   "ts": 1061936000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/29",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 223,
+   "ts": 1061922000,
+   "tabId": 130,
+   "windowId": 1,
+   "toUrl": "git.dev.example/reference/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 224,
+   "ts": 1061911000,
+   "tabId": 130
+  },
+  {
+   "kind": "nav",
+   "id": 225,
+   "ts": 985962000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "dev.example/reference/21",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 226,
+   "ts": 985889000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/search/34",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 227,
+   "ts": 985811000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "api.dev.example/reference/2",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 228,
+   "ts": 985771000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "api.dev.example/issues/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 229,
+   "ts": 985725000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/issues/24",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 230,
+   "ts": 985643000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "git.dev.example/guide/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 231,
+   "ts": 985585000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "dev.example/guide/10",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 232,
+   "ts": 985558000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 233,
+   "ts": 985508000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "api.dev.example/guide/20",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 234,
+   "ts": 985439000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 235,
+   "ts": 985406000,
+   "tabId": 131,
+   "windowId": 1,
+   "toUrl": "api.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 236,
+   "ts": 985380000,
+   "newTabId": 132,
+   "sourceTabId": 131
+  },
+  {
+   "kind": "nav",
+   "id": 237,
+   "ts": 985326000,
+   "tabId": 132,
+   "windowId": 1,
+   "toUrl": "git.dev.example/issues/22",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 238,
+   "ts": 985280000,
+   "tabId": 132,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/search/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 239,
+   "ts": 985222000,
+   "tabId": 132
+  },
+  {
+   "kind": "close",
+   "id": 240,
+   "ts": 985208000,
+   "tabId": 131
+  },
+  {
+   "kind": "nav",
+   "id": 241,
+   "ts": 978882000,
+   "tabId": 133,
+   "windowId": 1,
+   "toUrl": "video.example/watch/19",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 242,
+   "ts": 978828000,
+   "tabId": 133,
+   "windowId": 1,
+   "toUrl": "watch.video.example/playlist/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 243,
+   "ts": 978814000,
+   "tabId": 133,
+   "windowId": 1,
+   "toUrl": "live.video.example/watch/24",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 244,
+   "ts": 978783000,
+   "tabId": 133,
+   "windowId": 1,
+   "toUrl": "watch.video.example/playlist/35",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 245,
+   "ts": 978713000,
+   "tabId": 133,
+   "windowId": 1,
+   "toUrl": "video.example/playlist/23",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 246,
+   "ts": 978639000,
+   "tabId": 133,
+   "windowId": 1,
+   "toUrl": "live.video.example/watch/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 247,
+   "ts": 978631000,
+   "tabId": 133,
+   "windowId": 1,
+   "toUrl": "video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 248,
+   "ts": 978603000,
+   "tabId": 133,
+   "windowId": 1,
+   "toUrl": "video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 249,
+   "ts": 978591000,
+   "tabId": 133,
+   "windowId": 1,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 250,
+   "ts": 978525000,
+   "newTabId": 134,
+   "sourceTabId": 133
+  },
+  {
+   "kind": "nav",
+   "id": 251,
+   "ts": 978464000,
+   "tabId": 134,
+   "windowId": 1,
+   "toUrl": "watch.video.example/watch/29",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 252,
+   "ts": 978428000,
+   "tabId": 134
+  },
+  {
+   "kind": "close",
+   "id": 253,
+   "ts": 978397000,
+   "tabId": 133
+  },
+  {
+   "kind": "nav",
+   "id": 254,
+   "ts": 964122000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/36",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 255,
+   "ts": 964045000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 256,
+   "ts": 964009000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 257,
+   "ts": 963922000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/16",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 258,
+   "ts": 963840000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/16",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 259,
+   "ts": 963823000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/24",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 260,
+   "ts": 963766000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 261,
+   "ts": 963690000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/33",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 262,
+   "ts": 963631000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "api.dev.example/reference/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 263,
+   "ts": 963596000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/6",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 264,
+   "ts": 963558000,
+   "tabId": 135,
+   "windowId": 1,
+   "toUrl": "git.dev.example/pulls/7",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 265,
+   "ts": 963498000,
+   "tabId": 135
+  },
+  {
+   "kind": "nav",
+   "id": 266,
+   "ts": 950802000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "search.example/search?q=video",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 267,
+   "ts": 950759000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "video.example/channel/34",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 268,
+   "ts": 950670000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 269,
+   "ts": 950619000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "live.video.example/watch/28",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 270,
+   "ts": 950597000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "video.example/playlist/11",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 271,
+   "ts": 950511000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "video.example/watch/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 272,
+   "ts": 950438000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "watch.video.example/trending/38",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 273,
+   "ts": 950353000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "watch.video.example/channel/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 274,
+   "ts": 950338000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "live.video.example/playlist/27",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 275,
+   "ts": 950275000,
+   "tabId": 136,
+   "windowId": 2,
+   "toUrl": "video.example/trending/10",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 276,
+   "ts": 950203000,
+   "tabId": 136
+  },
+  {
+   "kind": "nav",
+   "id": 277,
+   "ts": 910842000,
+   "tabId": 137,
+   "windowId": 1,
+   "toUrl": "video.example/watch/11",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 278,
+   "ts": 910752000,
+   "tabId": 137,
+   "windowId": 1,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 279,
+   "ts": 910698000,
+   "tabId": 137,
+   "windowId": 1,
+   "toUrl": "live.video.example/channel/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 280,
+   "ts": 910619000,
+   "tabId": 137,
+   "windowId": 1,
+   "toUrl": "live.video.example/watch/21",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 281,
+   "ts": 910604000,
+   "tabId": 137,
+   "windowId": 1,
+   "toUrl": "video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 282,
+   "ts": 910537000,
+   "tabId": 137,
+   "windowId": 1,
+   "toUrl": "video.example/channel/13",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 283,
+   "ts": 910522000,
+   "tabId": 137,
+   "windowId": 1,
+   "toUrl": "live.video.example/trending/7",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 284,
+   "ts": 910452000,
+   "newTabId": 138,
+   "sourceTabId": 137
+  },
+  {
+   "kind": "nav",
+   "id": 285,
+   "ts": 910433000,
+   "tabId": 138,
+   "windowId": 1,
+   "toUrl": "live.video.example/playlist/27",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 286,
+   "ts": 910372000,
+   "tabId": 138
+  },
+  {
+   "kind": "close",
+   "id": 287,
+   "ts": 910297000,
+   "tabId": 137
+  },
+  {
+   "kind": "nav",
+   "id": 288,
+   "ts": 899682000,
+   "tabId": 139,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 289,
+   "ts": 899672000,
+   "tabId": 139,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/34",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 290,
+   "ts": 899619000,
+   "tabId": 139,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/17",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 291,
+   "ts": 899535000,
+   "tabId": 139,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 292,
+   "ts": 899462000,
+   "tabId": 139,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/33",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 293,
+   "ts": 899411000,
+   "tabId": 139,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 294,
+   "ts": 899380000,
+   "tabId": 139,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 295,
+   "ts": 899299000,
+   "newTabId": 140,
+   "sourceTabId": 139
+  },
+  {
+   "kind": "nav",
+   "id": 296,
+   "ts": 899222000,
+   "tabId": 140,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/21",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 297,
+   "ts": 899150000,
+   "tabId": 140,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/21",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 298,
+   "ts": 899071000,
+   "tabId": 140
+  },
+  {
+   "kind": "close",
+   "id": 299,
+   "ts": 898992000,
+   "tabId": 139
+  },
+  {
+   "kind": "nav",
+   "id": 300,
+   "ts": 889062000,
+   "tabId": 141,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=news",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 301,
+   "ts": 889006000,
+   "tabId": 141,
+   "windowId": 1,
+   "toUrl": "news.example/live/13",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 302,
+   "ts": 888954000,
+   "tabId": 141,
+   "windowId": 1,
+   "toUrl": "world.news.example/opinion/27",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 303,
+   "ts": 888900000,
+   "tabId": 141,
+   "windowId": 1,
+   "toUrl": "tech.news.example/sports/4",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 304,
+   "ts": 888823000,
+   "tabId": 141,
+   "windowId": 1,
+   "toUrl": "news.example/tech/2",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 305,
+   "ts": 888768000,
+   "tabId": 141,
+   "windowId": 1,
+   "toUrl": "world.news.example/live/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 306,
+   "ts": 888736000,
+   "tabId": 141
+  },
+  {
+   "kind": "nav",
+   "id": 307,
+   "ts": 824562000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/25",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 308,
+   "ts": 824486000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/31",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 309,
+   "ts": 824444000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 310,
+   "ts": 824373000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 311,
+   "ts": 824315000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 312,
+   "ts": 824279000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/22",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 313,
+   "ts": 824214000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 314,
+   "ts": 824151000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 315,
+   "ts": 824098000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "git.dev.example/guide/10",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 316,
+   "ts": 824009000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 317,
+   "ts": 823980000,
+   "tabId": 142,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/12",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 318,
+   "ts": 823927000,
+   "tabId": 142
+  },
+  {
+   "kind": "nav",
+   "id": 319,
+   "ts": 809142000,
+   "tabId": 143,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 320,
+   "ts": 809065000,
+   "tabId": 143,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/4",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 321,
+   "ts": 808997000,
+   "tabId": 143,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 322,
+   "ts": 808931000,
+   "tabId": 143,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/34",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 323,
+   "ts": 808920000,
+   "tabId": 143,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 324,
+   "ts": 808889000,
+   "tabId": 143,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 325,
+   "ts": 808851000,
+   "tabId": 143
+  },
+  {
+   "kind": "nav",
+   "id": 326,
+   "ts": 799182000,
+   "tabId": 144,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=news",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 327,
+   "ts": 799152000,
+   "tabId": 144,
+   "windowId": 1,
+   "toUrl": "news.example/sports/23",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 328,
+   "ts": 799078000,
+   "tabId": 144,
+   "windowId": 1,
+   "toUrl": "world.news.example/opinion/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 329,
+   "ts": 798992000,
+   "tabId": 144,
+   "windowId": 1,
+   "toUrl": "tech.news.example/live/22",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 330,
+   "ts": 798972000,
+   "tabId": 144,
+   "windowId": 1,
+   "toUrl": "sports.news.example/opinion/5",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 331,
+   "ts": 798930000,
+   "tabId": 144,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 332,
+   "ts": 798900000,
+   "tabId": 144,
+   "windowId": 1,
+   "toUrl": "sports.news.example/tech/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 333,
+   "ts": 798826000,
+   "tabId": 144,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 334,
+   "ts": 798770000,
+   "tabId": 144,
+   "windowId": 1,
+   "toUrl": "news.example/",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 335,
+   "ts": 798733000,
+   "tabId": 144
+  },
+  {
+   "kind": "nav",
+   "id": 336,
+   "ts": 784122000,
+   "tabId": 145,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=video",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 337,
+   "ts": 784077000,
+   "tabId": 145,
+   "windowId": 1,
+   "toUrl": "video.example/playlist/12",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 338,
+   "ts": 784030000,
+   "tabId": 145,
+   "windowId": 1,
+   "toUrl": "watch.video.example/channel/11",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 339,
+   "ts": 783940000,
+   "tabId": 145,
+   "windowId": 1,
+   "toUrl": "live.video.example/trending/22",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 340,
+   "ts": 783902000,
+   "tabId": 145,
+   "windowId": 1,
+   "toUrl": "watch.video.example/playlist/6",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 341,
+   "ts": 783814000,
+   "tabId": 145,
+   "windowId": 1,
+   "toUrl": "video.example/channel/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 342,
+   "ts": 783763000,
+   "newTabId": 146,
+   "sourceTabId": 145
+  },
+  {
+   "kind": "nav",
+   "id": 343,
+   "ts": 783685000,
+   "tabId": 146,
+   "windowId": 1,
+   "toUrl": "watch.video.example/watch/19",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 344,
+   "ts": 783601000,
+   "tabId": 146,
+   "windowId": 1,
+   "toUrl": "live.video.example/watch/17",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 345,
+   "ts": 783590000,
+   "tabId": 146
+  },
+  {
+   "kind": "close",
+   "id": 346,
+   "ts": 783526000,
+   "tabId": 145
+  },
+  {
+   "kind": "nav",
+   "id": 347,
+   "ts": 738402000,
+   "tabId": 147,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=news",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 348,
+   "ts": 738326000,
+   "tabId": 147,
+   "windowId": 1,
+   "toUrl": "news.example/live/27",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 349,
+   "ts": 738260000,
+   "tabId": 147,
+   "windowId": 1,
+   "toUrl": "world.news.example/tech/4",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 350,
+   "ts": 738248000,
+   "tabId": 147,
+   "windowId": 1,
+   "toUrl": "tech.news.example/sports/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 351,
+   "ts": 738221000,
+   "tabId": 147,
+   "windowId": 1,
+   "toUrl": "sports.news.example/world/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 352,
+   "ts": 738193000,
+   "tabId": 147,
+   "windowId": 1,
+   "toUrl": "sports.news.example/tech/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 353,
+   "ts": 738185000,
+   "tabId": 147,
+   "windowId": 1,
+   "toUrl": "tech.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 354,
+   "ts": 738138000,
+   "newTabId": 148,
+   "sourceTabId": 147
+  },
+  {
+   "kind": "nav",
+   "id": 355,
+   "ts": 738062000,
+   "tabId": 148,
+   "windowId": 1,
+   "toUrl": "sports.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 356,
+   "ts": 738045000,
+   "tabId": 148,
+   "windowId": 1,
+   "toUrl": "news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 357,
+   "ts": 737957000,
+   "tabId": 148
+  },
+  {
+   "kind": "close",
+   "id": 358,
+   "ts": 737899000,
+   "tabId": 147
+  },
+  {
+   "kind": "nav",
+   "id": 359,
+   "ts": 730782000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "search.example/search?q=dev",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 360,
+   "ts": 730747000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 361,
+   "ts": 730665000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "docs.dev.example/pulls/8",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 362,
+   "ts": 730588000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "api.dev.example/pulls/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 363,
+   "ts": 730555000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "git.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 364,
+   "ts": 730502000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "dev.example/search/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 365,
+   "ts": 730412000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "api.dev.example/guide/38",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 366,
+   "ts": 730384000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 367,
+   "ts": 730353000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "api.dev.example/reference/17",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 368,
+   "ts": 730298000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "mail.example/compose/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 369,
+   "ts": 730249000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "dev.example/reference/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 370,
+   "ts": 730210000,
+   "tabId": 149,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/compose/22",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 371,
+   "ts": 730152000,
+   "tabId": 149
+  },
+  {
+   "kind": "nav",
+   "id": 372,
+   "ts": 716262000,
+   "tabId": 150,
+   "windowId": 1,
+   "toUrl": "video.example/watch/3",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 373,
+   "ts": 716227000,
+   "tabId": 150,
+   "windowId": 1,
+   "toUrl": "watch.video.example/watch/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 374,
+   "ts": 716195000,
+   "tabId": 150,
+   "windowId": 1,
+   "toUrl": "live.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 375,
+   "ts": 716115000,
+   "tabId": 150,
+   "windowId": 1,
+   "toUrl": "video.example/watch/34",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 376,
+   "ts": 716090000,
+   "tabId": 150,
+   "windowId": 1,
+   "toUrl": "live.video.example/playlist/38",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 377,
+   "ts": 716032000,
+   "tabId": 150
+  },
+  {
+   "kind": "nav",
+   "id": 378,
+   "ts": 701322000,
+   "tabId": 151,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/35",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 379,
+   "ts": 701283000,
+   "tabId": 151,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/4",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 380,
+   "ts": 701201000,
+   "tabId": 151,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 381,
+   "ts": 701191000,
+   "tabId": 151,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/8",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 382,
+   "ts": 701113000,
+   "tabId": 151,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 383,
+   "ts": 701051000,
+   "tabId": 151,
+   "windowId": 1,
+   "toUrl": "api.dev.example/reference/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 384,
+   "ts": 700964000,
+   "tabId": 151,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 385,
+   "ts": 700938000,
+   "tabId": 151
+  },
+  {
+   "kind": "start",
+   "id": 386,
+   "ts": 652062000
+  },
+  {
+   "kind": "nav",
+   "id": 387,
+   "ts": 644382000,
+   "tabId": 152,
+   "windowId": 1,
+   "toUrl": "dev.example/guide/31",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 388,
+   "ts": 644321000,
+   "tabId": 152,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 389,
+   "ts": 644258000,
+   "tabId": 152,
+   "windowId": 1,
+   "toUrl": "api.dev.example/search/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 390,
+   "ts": 644206000,
+   "tabId": 152,
+   "windowId": 1,
+   "toUrl": "api.dev.example/search/35",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 391,
+   "ts": 644122000,
+   "tabId": 152,
+   "windowId": 1,
+   "toUrl": "api.dev.example/guide/38",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 392,
+   "ts": 644046000,
+   "tabId": 152,
+   "windowId": 1,
+   "toUrl": "api.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 393,
+   "ts": 644004000,
+   "tabId": 152,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 394,
+   "ts": 643968000,
+   "tabId": 152,
+   "windowId": 1,
+   "toUrl": "git.dev.example/issues/35",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 395,
+   "ts": 643944000,
+   "tabId": 152
+  },
+  {
+   "kind": "nav",
+   "id": 396,
+   "ts": 637002000,
+   "tabId": 153,
+   "windowId": 2,
+   "toUrl": "video.example/watch/1",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 397,
+   "ts": 636972000,
+   "tabId": 153,
+   "windowId": 2,
+   "toUrl": "watch.video.example/channel/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 398,
+   "ts": 636963000,
+   "tabId": 153,
+   "windowId": 2,
+   "toUrl": "live.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 399,
+   "ts": 636951000,
+   "tabId": 153,
+   "windowId": 2,
+   "toUrl": "watch.video.example/playlist/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 400,
+   "ts": 636890000,
+   "tabId": 153,
+   "windowId": 2,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 401,
+   "ts": 636880000,
+   "tabId": 153,
+   "windowId": 2,
+   "toUrl": "live.video.example/trending/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 402,
+   "ts": 636867000,
+   "tabId": 153,
+   "windowId": 2,
+   "toUrl": "video.example/watch/1",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 403,
+   "ts": 636790000,
+   "tabId": 153
+  },
+  {
+   "kind": "nav",
+   "id": 404,
+   "ts": 625902000,
+   "tabId": 154,
+   "windowId": 2,
+   "toUrl": "search.example/search?q=mail",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 405,
+   "ts": 625849000,
+   "tabId": 154,
+   "windowId": 2,
+   "toUrl": "mail.example/inbox/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 406,
+   "ts": 625828000,
+   "tabId": 154,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/inbox/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 407,
+   "ts": 625815000,
+   "tabId": 154,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/inbox/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 408,
+   "ts": 625752000,
+   "tabId": 154,
+   "windowId": 2,
+   "toUrl": "mail.example/sent/28",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 409,
+   "ts": 625685000,
+   "tabId": 154,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/compose/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 410,
+   "ts": 625677000,
+   "tabId": 154,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/compose/1",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 411,
+   "ts": 625602000,
+   "tabId": 154,
+   "windowId": 2,
+   "toUrl": "git.dev.example/search/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 412,
+   "ts": 625587000,
+   "tabId": 154,
+   "windowId": 2,
+   "toUrl": "mail.example/inbox/31",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 413,
+   "ts": 625579000,
+   "newTabId": 155,
+   "sourceTabId": 154
+  },
+  {
+   "kind": "nav",
+   "id": 414,
+   "ts": 625560000,
+   "tabId": 155,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 415,
+   "ts": 625482000,
+   "tabId": 155
+  },
+  {
+   "kind": "close",
+   "id": 416,
+   "ts": 625446000,
+   "tabId": 154
+  },
+  {
+   "kind": "nav",
+   "id": 417,
+   "ts": 562002000,
+   "tabId": 156,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=video",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 418,
+   "ts": 561920000,
+   "tabId": 156,
+   "windowId": 1,
+   "toUrl": "video.example/playlist/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 419,
+   "ts": 561843000,
+   "tabId": 156,
+   "windowId": 1,
+   "toUrl": "watch.video.example/playlist/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 420,
+   "ts": 561801000,
+   "tabId": 156,
+   "windowId": 1,
+   "toUrl": "live.video.example/trending/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 421,
+   "ts": 561759000,
+   "tabId": 156,
+   "windowId": 1,
+   "toUrl": "watch.video.example/watch/2",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 422,
+   "ts": 561672000,
+   "tabId": 156,
+   "windowId": 1,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 423,
+   "ts": 561655000,
+   "tabId": 156,
+   "windowId": 1,
+   "toUrl": "live.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 424,
+   "ts": 561573000,
+   "tabId": 156
+  },
+  {
+   "kind": "nav",
+   "id": 425,
+   "ts": 546882000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=mail",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 426,
+   "ts": 546846000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 427,
+   "ts": 546778000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 428,
+   "ts": 546768000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/40",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 429,
+   "ts": 546724000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/2",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 430,
+   "ts": 546695000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 431,
+   "ts": 546615000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 432,
+   "ts": 546569000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 433,
+   "ts": 546513000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 434,
+   "ts": 546450000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 435,
+   "ts": 546407000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/19",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 436,
+   "ts": 546398000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "dev.example/issues/28",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 437,
+   "ts": 546333000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/38",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 438,
+   "ts": 546310000,
+   "tabId": 157,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/40",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 439,
+   "ts": 546276000,
+   "tabId": 157
+  },
+  {
+   "kind": "nav",
+   "id": 440,
+   "ts": 535542000,
+   "tabId": 158,
+   "windowId": 1,
+   "toUrl": "video.example/trending/3",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 441,
+   "ts": 535486000,
+   "tabId": 158,
+   "windowId": 1,
+   "toUrl": "watch.video.example/playlist/38",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 442,
+   "ts": 535435000,
+   "tabId": 158,
+   "windowId": 1,
+   "toUrl": "live.video.example/trending/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 443,
+   "ts": 535402000,
+   "tabId": 158,
+   "windowId": 1,
+   "toUrl": "watch.video.example/trending/20",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 444,
+   "ts": 535387000,
+   "tabId": 158,
+   "windowId": 1,
+   "toUrl": "watch.video.example/channel/12",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 445,
+   "ts": 535344000,
+   "tabId": 158,
+   "windowId": 1,
+   "toUrl": "video.example/playlist/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 446,
+   "ts": 535316000,
+   "tabId": 158
+  },
+  {
+   "kind": "nav",
+   "id": 447,
+   "ts": 478722000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=dev",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 448,
+   "ts": 478637000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "dev.example/search/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 449,
+   "ts": 478567000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/issues/24",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 450,
+   "ts": 478506000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "api.dev.example/search/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 451,
+   "ts": 478486000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "dev.example/reference/33",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 452,
+   "ts": 478473000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/pulls/10",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 453,
+   "ts": 478431000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 454,
+   "ts": 478358000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "api.dev.example/pulls/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 455,
+   "ts": 478337000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/11",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 456,
+   "ts": 478276000,
+   "tabId": 159,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/pulls/10",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 457,
+   "ts": 478256000,
+   "tabId": 159
+  },
+  {
+   "kind": "nav",
+   "id": 458,
+   "ts": 467142000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "news.example/tech/15",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 459,
+   "ts": 467131000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "world.news.example/world/35",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 460,
+   "ts": 467058000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "tech.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 461,
+   "ts": 467043000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "sports.news.example/opinion/7",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 462,
+   "ts": 467029000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "tech.news.example/opinion/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 463,
+   "ts": 466961000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "world.news.example/sports/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 464,
+   "ts": 466879000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "sports.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 465,
+   "ts": 466813000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "sports.news.example/live/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 466,
+   "ts": 466782000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "tech.news.example/opinion/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 467,
+   "ts": 466750000,
+   "tabId": 160,
+   "windowId": 1,
+   "toUrl": "news.example/world/13",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 468,
+   "ts": 466737000,
+   "tabId": 160
+  },
+  {
+   "kind": "nav",
+   "id": 469,
+   "ts": 460122000,
+   "tabId": 161,
+   "windowId": 1,
+   "toUrl": "dev.example/reference/21",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 470,
+   "ts": 460103000,
+   "tabId": 161,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/reference/35",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 471,
+   "ts": 460031000,
+   "tabId": 161,
+   "windowId": 1,
+   "toUrl": "api.dev.example/issues/6",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 472,
+   "ts": 459971000,
+   "tabId": 161,
+   "windowId": 1,
+   "toUrl": "dev.example/issues/16",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 473,
+   "ts": 459934000,
+   "tabId": 161,
+   "windowId": 1,
+   "toUrl": "dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 474,
+   "ts": 459890000,
+   "tabId": 161
+  },
+  {
+   "kind": "nav",
+   "id": 475,
+   "ts": 384882000,
+   "tabId": 162,
+   "windowId": 1,
+   "toUrl": "news.example/opinion/10",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 476,
+   "ts": 384801000,
+   "tabId": 162,
+   "windowId": 1,
+   "toUrl": "world.news.example/tech/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 477,
+   "ts": 384776000,
+   "tabId": 162,
+   "windowId": 1,
+   "toUrl": "tech.news.example/world/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 478,
+   "ts": 384744000,
+   "tabId": 162,
+   "windowId": 1,
+   "toUrl": "tech.news.example/tech/20",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 479,
+   "ts": 384665000,
+   "tabId": 162,
+   "windowId": 1,
+   "toUrl": "news.example/live/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 480,
+   "ts": 384611000,
+   "tabId": 162,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 481,
+   "ts": 384584000,
+   "newTabId": 163,
+   "sourceTabId": 162
+  },
+  {
+   "kind": "nav",
+   "id": 482,
+   "ts": 384501000,
+   "tabId": 163,
+   "windowId": 1,
+   "toUrl": "news.example/live/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 483,
+   "ts": 384445000,
+   "tabId": 163,
+   "windowId": 1,
+   "toUrl": "news.example/world/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 484,
+   "ts": 384407000,
+   "tabId": 163
+  },
+  {
+   "kind": "close",
+   "id": 485,
+   "ts": 384382000,
+   "tabId": 162
+  },
+  {
+   "kind": "nav",
+   "id": 486,
+   "ts": 377502000,
+   "tabId": 164,
+   "windowId": 1,
+   "toUrl": "dev.example/issues/34",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 487,
+   "ts": 377459000,
+   "tabId": 164,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 488,
+   "ts": 377381000,
+   "tabId": 164,
+   "windowId": 1,
+   "toUrl": "api.dev.example/pulls/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 489,
+   "ts": 377291000,
+   "tabId": 164,
+   "windowId": 1,
+   "toUrl": "git.dev.example/guide/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 490,
+   "ts": 377208000,
+   "tabId": 164,
+   "windowId": 1,
+   "toUrl": "api.dev.example/reference/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 491,
+   "ts": 377148000,
+   "tabId": 164,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 492,
+   "ts": 377108000,
+   "tabId": 164,
+   "windowId": 1,
+   "toUrl": "git.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 493,
+   "ts": 377032000,
+   "tabId": 164,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 494,
+   "ts": 377003000,
+   "newTabId": 165,
+   "sourceTabId": 164
+  },
+  {
+   "kind": "nav",
+   "id": 495,
+   "ts": 376994000,
+   "tabId": 165,
+   "windowId": 1,
+   "toUrl": "git.dev.example/reference/8",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 496,
+   "ts": 376928000,
+   "tabId": 165,
+   "windowId": 1,
+   "toUrl": "dev.example/pulls/4",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 497,
+   "ts": 376874000,
+   "tabId": 165
+  },
+  {
+   "kind": "close",
+   "id": 498,
+   "ts": 376851000,
+   "tabId": 164
+  },
+  {
+   "kind": "nav",
+   "id": 499,
+   "ts": 370422000,
+   "tabId": 166,
+   "windowId": 2,
+   "toUrl": "video.example/playlist/14",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 500,
+   "ts": 370409000,
+   "tabId": 166,
+   "windowId": 2,
+   "toUrl": "watch.video.example/playlist/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 501,
+   "ts": 370382000,
+   "tabId": 166,
+   "windowId": 2,
+   "toUrl": "live.video.example/playlist/6",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 502,
+   "ts": 370304000,
+   "tabId": 166,
+   "windowId": 2,
+   "toUrl": "watch.video.example/playlist/28",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 503,
+   "ts": 370248000,
+   "tabId": 166,
+   "windowId": 2,
+   "toUrl": "video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 504,
+   "ts": 370201000,
+   "tabId": 166,
+   "windowId": 2,
+   "toUrl": "video.example/trending/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 505,
+   "ts": 370168000,
+   "newTabId": 167,
+   "sourceTabId": 166
+  },
+  {
+   "kind": "nav",
+   "id": 506,
+   "ts": 370121000,
+   "tabId": 167,
+   "windowId": 2,
+   "toUrl": "video.example/trending/16",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 507,
+   "ts": 370068000,
+   "tabId": 167
+  },
+  {
+   "kind": "close",
+   "id": 508,
+   "ts": 369997000,
+   "tabId": 166
+  },
+  {
+   "kind": "nav",
+   "id": 509,
+   "ts": 355722000,
+   "tabId": 168,
+   "windowId": 2,
+   "toUrl": "mail.example/",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 510,
+   "ts": 355711000,
+   "tabId": 168,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 511,
+   "ts": 355648000,
+   "tabId": 168,
+   "windowId": 2,
+   "toUrl": "mail.example/inbox/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 512,
+   "ts": 355574000,
+   "tabId": 168,
+   "windowId": 2,
+   "toUrl": "mail.example/compose/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 513,
+   "ts": 355492000,
+   "tabId": 168,
+   "windowId": 2,
+   "toUrl": "api.dev.example/pulls/5",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 514,
+   "ts": 355423000,
+   "tabId": 168,
+   "windowId": 2,
+   "toUrl": "mail.example/inbox/21",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 515,
+   "ts": 355360000,
+   "tabId": 168
+  },
+  {
+   "kind": "nav",
+   "id": 516,
+   "ts": 306102000,
+   "tabId": 169,
+   "windowId": 1,
+   "toUrl": "dev.example/",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 517,
+   "ts": 306075000,
+   "tabId": 169,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 518,
+   "ts": 306052000,
+   "tabId": 169,
+   "windowId": 1,
+   "toUrl": "api.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 519,
+   "ts": 305963000,
+   "tabId": 169,
+   "windowId": 1,
+   "toUrl": "dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 520,
+   "ts": 305894000,
+   "tabId": 169,
+   "windowId": 1,
+   "toUrl": "dev.example/reference/32",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 521,
+   "ts": 305859000,
+   "tabId": 169,
+   "windowId": 1,
+   "toUrl": "git.dev.example/pulls/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 522,
+   "ts": 305830000,
+   "tabId": 169,
+   "windowId": 1,
+   "toUrl": "api.dev.example/pulls/21",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 523,
+   "ts": 305773000,
+   "tabId": 169,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/guide/20",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 524,
+   "ts": 305706000,
+   "tabId": 169,
+   "windowId": 1,
+   "toUrl": "api.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 525,
+   "ts": 305660000,
+   "newTabId": 170,
+   "sourceTabId": 169
+  },
+  {
+   "kind": "nav",
+   "id": 526,
+   "ts": 305607000,
+   "tabId": 170,
+   "windowId": 1,
+   "toUrl": "dev.example/pulls/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 527,
+   "ts": 305538000,
+   "tabId": 170,
+   "windowId": 1,
+   "toUrl": "git.dev.example/guide/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 528,
+   "ts": 305458000,
+   "tabId": 170
+  },
+  {
+   "kind": "close",
+   "id": 529,
+   "ts": 305442000,
+   "tabId": 169
+  },
+  {
+   "kind": "nav",
+   "id": 530,
+   "ts": 299142000,
+   "tabId": 171,
+   "windowId": 1,
+   "toUrl": "video.example/playlist/15",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 531,
+   "ts": 299075000,
+   "tabId": 171,
+   "windowId": 1,
+   "toUrl": "watch.video.example/watch/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 532,
+   "ts": 299044000,
+   "tabId": 171,
+   "windowId": 1,
+   "toUrl": "live.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 533,
+   "ts": 298999000,
+   "tabId": 171,
+   "windowId": 1,
+   "toUrl": "live.video.example/channel/5",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 534,
+   "ts": 298963000,
+   "tabId": 171,
+   "windowId": 1,
+   "toUrl": "video.example/watch/34",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 535,
+   "ts": 298905000,
+   "tabId": 171,
+   "windowId": 1,
+   "toUrl": "video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 536,
+   "ts": 298887000,
+   "tabId": 171,
+   "windowId": 1,
+   "toUrl": "watch.video.example/watch/35",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 537,
+   "ts": 298805000,
+   "tabId": 171
+  },
+  {
+   "kind": "nav",
+   "id": 538,
+   "ts": 290982000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "mail.example/inbox/32",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 539,
+   "ts": 290905000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/compose/22",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 540,
+   "ts": 290841000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "mail.example/sent/22",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 541,
+   "ts": 290806000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/compose/2",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 542,
+   "ts": 290797000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 543,
+   "ts": 290740000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 544,
+   "ts": 290659000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "api.dev.example/issues/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 545,
+   "ts": 290628000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 546,
+   "ts": 290580000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "git.dev.example/pulls/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 547,
+   "ts": 290523000,
+   "newTabId": 173,
+   "sourceTabId": 172
+  },
+  {
+   "kind": "nav",
+   "id": 548,
+   "ts": 290455000,
+   "tabId": 173,
+   "windowId": 2,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 549,
+   "ts": 290413000,
+   "tabId": 173
+  },
+  {
+   "kind": "nav",
+   "id": 550,
+   "ts": 290340000,
+   "tabId": 172,
+   "windowId": 2,
+   "toUrl": "mail.example/inbox/32",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 551,
+   "ts": 290286000,
+   "tabId": 172
+  },
+  {
+   "kind": "nav",
+   "id": 552,
+   "ts": 212322000,
+   "tabId": 174,
+   "windowId": 1,
+   "toUrl": "video.example/watch/8",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 553,
+   "ts": 212261000,
+   "tabId": 174,
+   "windowId": 1,
+   "toUrl": "watch.video.example/trending/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 554,
+   "ts": 212236000,
+   "tabId": 174,
+   "windowId": 1,
+   "toUrl": "live.video.example/watch/19",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 555,
+   "ts": 212164000,
+   "tabId": 174,
+   "windowId": 1,
+   "toUrl": "video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 556,
+   "ts": 212150000,
+   "tabId": 174,
+   "windowId": 1,
+   "toUrl": "watch.video.example/trending/14",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 557,
+   "ts": 212128000,
+   "tabId": 174,
+   "windowId": 1,
+   "toUrl": "watch.video.example/channel/33",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 558,
+   "ts": 212081000,
+   "tabId": 174
+  },
+  {
+   "kind": "nav",
+   "id": 559,
+   "ts": 200622000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/25",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 560,
+   "ts": 200611000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 561,
+   "ts": 200531000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/compose/11",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 562,
+   "ts": 200490000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 563,
+   "ts": 200463000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/39",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 564,
+   "ts": 200437000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 565,
+   "ts": 200364000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/1",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 566,
+   "ts": 200322000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "api.dev.example/reference/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 567,
+   "ts": 200281000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/29",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 568,
+   "ts": 200206000,
+   "tabId": 175,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/guide/12",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 569,
+   "ts": 200166000,
+   "tabId": 175
+  },
+  {
+   "kind": "nav",
+   "id": 570,
+   "ts": 190062000,
+   "tabId": 176,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=news",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 571,
+   "ts": 189979000,
+   "tabId": 176,
+   "windowId": 1,
+   "toUrl": "news.example/opinion/38",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 572,
+   "ts": 189904000,
+   "tabId": 176,
+   "windowId": 1,
+   "toUrl": "world.news.example/world/12",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 573,
+   "ts": 189816000,
+   "tabId": 176,
+   "windowId": 1,
+   "toUrl": "tech.news.example/world/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 574,
+   "ts": 189755000,
+   "tabId": 176,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 575,
+   "ts": 189676000,
+   "tabId": 176,
+   "windowId": 1,
+   "toUrl": "sports.news.example/opinion/11",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 576,
+   "ts": 189590000,
+   "tabId": 176,
+   "windowId": 1,
+   "toUrl": "news.example/opinion/24",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 577,
+   "ts": 189563000,
+   "tabId": 176
+  },
+  {
+   "kind": "start",
+   "id": 578,
+   "ts": 133662000
+  },
+  {
+   "kind": "nav",
+   "id": 579,
+   "ts": 125562000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=mail",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 580,
+   "ts": 125475000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "mail.example/inbox/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 581,
+   "ts": 125451000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/sent/7",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 582,
+   "ts": 125429000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/23",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 583,
+   "ts": 125411000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 584,
+   "ts": 125403000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 585,
+   "ts": 125368000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 586,
+   "ts": 125332000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "dev.example/guide/25",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 587,
+   "ts": 125317000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 588,
+   "ts": 125288000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "api.dev.example/guide/24",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 589,
+   "ts": 125260000,
+   "tabId": 177,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/39",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 590,
+   "ts": 125218000,
+   "tabId": 177
+  },
+  {
+   "kind": "nav",
+   "id": 591,
+   "ts": 118782000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "search.example/search?q=news",
+   "transitionType": "generated",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 592,
+   "ts": 118699000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 593,
+   "ts": 118667000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 594,
+   "ts": 118628000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "tech.news.example/opinion/21",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 595,
+   "ts": 118617000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "news.example/tech/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 596,
+   "ts": 118575000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "news.example/world/3",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 597,
+   "ts": 118504000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "world.news.example/tech/17",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 598,
+   "ts": 118496000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "sports.news.example/tech/18",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 599,
+   "ts": 118412000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "news.example/sports/33",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 600,
+   "ts": 118333000,
+   "tabId": 178,
+   "windowId": 1,
+   "toUrl": "news.example/sports/31",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 601,
+   "ts": 118306000,
+   "newTabId": 179,
+   "sourceTabId": 178
+  },
+  {
+   "kind": "nav",
+   "id": 602,
+   "ts": 118244000,
+   "tabId": 179,
+   "windowId": 1,
+   "toUrl": "world.news.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 603,
+   "ts": 118204000,
+   "tabId": 179
+  },
+  {
+   "kind": "close",
+   "id": 604,
+   "ts": 118195000,
+   "tabId": 178
+  },
+  {
+   "kind": "nav",
+   "id": 605,
+   "ts": 103542000,
+   "tabId": 180,
+   "windowId": 1,
+   "toUrl": "dev.example/search/19",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 606,
+   "ts": 103463000,
+   "tabId": 180,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/reference/37",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 607,
+   "ts": 103412000,
+   "tabId": 180,
+   "windowId": 1,
+   "toUrl": "api.dev.example/pulls/22",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 608,
+   "ts": 103331000,
+   "tabId": 180,
+   "windowId": 1,
+   "toUrl": "git.dev.example/reference/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 609,
+   "ts": 103264000,
+   "tabId": 180,
+   "windowId": 1,
+   "toUrl": "git.dev.example/pulls/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 610,
+   "ts": 103214000,
+   "tabId": 180
+  },
+  {
+   "kind": "nav",
+   "id": 611,
+   "ts": 94002000,
+   "tabId": 181,
+   "windowId": 1,
+   "toUrl": "video.example/playlist/26",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 612,
+   "ts": 93958000,
+   "tabId": 181,
+   "windowId": 1,
+   "toUrl": "watch.video.example/trending/6",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 613,
+   "ts": 93931000,
+   "tabId": 181,
+   "windowId": 1,
+   "toUrl": "live.video.example/trending/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 614,
+   "ts": 93917000,
+   "tabId": 181,
+   "windowId": 1,
+   "toUrl": "watch.video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 615,
+   "ts": 93890000,
+   "tabId": 181,
+   "windowId": 1,
+   "toUrl": "video.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "link",
+   "id": 616,
+   "ts": 93880000,
+   "newTabId": 182,
+   "sourceTabId": 181
+  },
+  {
+   "kind": "nav",
+   "id": 617,
+   "ts": 93817000,
+   "tabId": 182,
+   "windowId": 1,
+   "toUrl": "live.video.example/channel/33",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 618,
+   "ts": 93808000,
+   "tabId": 182,
+   "windowId": 1,
+   "toUrl": "live.video.example/playlist/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 619,
+   "ts": 93744000,
+   "tabId": 182
+  },
+  {
+   "kind": "close",
+   "id": 620,
+   "ts": 93734000,
+   "tabId": 181
+  },
+  {
+   "kind": "nav",
+   "id": 621,
+   "ts": 46122000,
+   "tabId": 183,
+   "windowId": 1,
+   "toUrl": "news.example/opinion/36",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 622,
+   "ts": 46093000,
+   "tabId": 183,
+   "windowId": 1,
+   "toUrl": "world.news.example/opinion/17",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 623,
+   "ts": 46036000,
+   "tabId": 183,
+   "windowId": 1,
+   "toUrl": "tech.news.example/live/9",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 624,
+   "ts": 45951000,
+   "tabId": 183,
+   "windowId": 1,
+   "toUrl": "tech.news.example/world/6",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 625,
+   "ts": 45868000,
+   "tabId": 183,
+   "windowId": 1,
+   "toUrl": "sports.news.example/tech/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 626,
+   "ts": 45835000,
+   "tabId": 183,
+   "windowId": 1,
+   "toUrl": "sports.news.example/live/16",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 627,
+   "ts": 45807000,
+   "tabId": 183,
+   "windowId": 1,
+   "toUrl": "tech.news.example/opinion/5",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 628,
+   "ts": 45744000,
+   "tabId": 183,
+   "windowId": 1,
+   "toUrl": "news.example/live/1",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 629,
+   "ts": 45675000,
+   "tabId": 183,
+   "windowId": 1,
+   "toUrl": "tech.news.example/sports/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 630,
+   "ts": 45600000,
+   "tabId": 183
+  },
+  {
+   "kind": "nav",
+   "id": 631,
+   "ts": 35982000,
+   "tabId": 184,
+   "windowId": 1,
+   "toUrl": "dev.example/pulls/4",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 632,
+   "ts": 35927000,
+   "tabId": 184,
+   "windowId": 1,
+   "toUrl": "docs.dev.example/reference/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 633,
+   "ts": 35890000,
+   "tabId": 184,
+   "windowId": 1,
+   "toUrl": "api.dev.example/reference/10",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 634,
+   "ts": 35840000,
+   "tabId": 184,
+   "windowId": 1,
+   "toUrl": "git.dev.example/guide/36",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 635,
+   "ts": 35810000,
+   "tabId": 184,
+   "windowId": 1,
+   "toUrl": "dev.example/pulls/27",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 636,
+   "ts": 35786000,
+   "tabId": 184,
+   "windowId": 1,
+   "toUrl": "api.dev.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 637,
+   "ts": 35710000,
+   "tabId": 184,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/23",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 638,
+   "ts": 35635000,
+   "tabId": 184,
+   "windowId": 1,
+   "toUrl": "dev.example/guide/31",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 639,
+   "ts": 35618000,
+   "tabId": 184
+  },
+  {
+   "kind": "nav",
+   "id": 640,
+   "ts": 21942000,
+   "tabId": 185,
+   "windowId": 2,
+   "toUrl": "video.example/channel/27",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 641,
+   "ts": 21869000,
+   "tabId": 185,
+   "windowId": 2,
+   "toUrl": "watch.video.example/playlist/15",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 642,
+   "ts": 21846000,
+   "tabId": 185,
+   "windowId": 2,
+   "toUrl": "live.video.example/playlist/26",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 643,
+   "ts": 21837000,
+   "tabId": 185,
+   "windowId": 2,
+   "toUrl": "watch.video.example/trending/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 644,
+   "ts": 21795000,
+   "tabId": 185,
+   "windowId": 2,
+   "toUrl": "watch.video.example/channel/11",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 645,
+   "ts": 21781000,
+   "tabId": 185,
+   "windowId": 2,
+   "toUrl": "watch.video.example/playlist/33",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 646,
+   "ts": 21754000,
+   "tabId": 185,
+   "windowId": 2,
+   "toUrl": "video.example/channel/24",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 647,
+   "ts": 21690000,
+   "tabId": 185,
+   "windowId": 2,
+   "toUrl": "video.example/channel/35",
+   "transitionType": "reload",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 648,
+   "ts": 21600000,
+   "tabId": 185
+  },
+  {
+   "kind": "nav",
+   "id": 649,
+   "ts": 6882000,
+   "tabId": 186,
+   "windowId": 1,
+   "toUrl": "mail.example/sent/14",
+   "transitionType": "typed",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 650,
+   "ts": 6873000,
+   "tabId": 186,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/inbox/30",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 651,
+   "ts": 6825000,
+   "tabId": 186,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/16",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 652,
+   "ts": 6787000,
+   "tabId": 186,
+   "windowId": 1,
+   "toUrl": "mail.example/compose/40",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 653,
+   "ts": 6745000,
+   "tabId": 186,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "link",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 654,
+   "ts": 6727000,
+   "tabId": 186,
+   "windowId": 1,
+   "toUrl": "mail.example/",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "nav",
+   "id": 655,
+   "ts": 6689000,
+   "tabId": 186,
+   "windowId": 1,
+   "toUrl": "inbox.mail.example/",
+   "transitionType": "form_submit",
+   "qualifiers": []
+  },
+  {
+   "kind": "close",
+   "id": 656,
+   "ts": 6600000,
+   "tabId": 186
+  }
+ ],
+ "spa": [],
+ "rollup_days": [],
+ "sessions": [],
+ "meta": []
+}

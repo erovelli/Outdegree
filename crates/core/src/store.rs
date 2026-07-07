@@ -308,6 +308,26 @@ impl Db {
         self.write_meta_json(key, &json).await
     }
 
+    // ── onboarding markers (§F4): `onboarded` + `demoData`, stored in `meta` ─────
+
+    /// Read a boolean `meta` flag (a plain JSON bool). Absent, unparsable, or
+    /// non-boolean reads as `false` — used for the onboarding markers `onboarded`
+    /// (welcome dismissed) and `demoData` (sample dataset loaded). Both live in the
+    /// `meta` store, so [`Self::clear_all`] wipes them (Exit sample relies on this
+    /// to re-surface the welcome overlay).
+    pub async fn read_meta_bool(&self, key: &str) -> Result<bool, JsValue> {
+        match self.read_meta_json(key).await? {
+            Some(json) => Ok(serde_json::from_str::<bool>(&json).unwrap_or(false)),
+            None => Ok(false),
+        }
+    }
+
+    /// Write a boolean `meta` flag (see [`Self::read_meta_bool`]).
+    pub async fn write_meta_bool(&self, key: &str, value: bool) -> Result<(), JsValue> {
+        let json = serde_json::to_string(&value).map_err(je)?;
+        self.write_meta_json(key, &json).await
+    }
+
     // ── backup-nudge state (§8.4): timestamps in the `meta` store, no new store ──
 
     /// Last successful JSON export (epoch ms), or `None` if never exported.

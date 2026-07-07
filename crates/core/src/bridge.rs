@@ -13,6 +13,8 @@ extern "C" {
     fn download_text_js(name: &str, mime: &str, body: &str);
     #[wasm_bindgen(js_namespace = chromeBridge, js_name = downloadDataUrl)]
     fn download_data_url_js(name: &str, data_url: &str);
+    #[wasm_bindgen(js_namespace = chromeBridge, js_name = sampleData)]
+    fn sample_data_js() -> String;
 }
 
 /// Read a string value from `chrome.storage.local` (SW-owned).
@@ -36,6 +38,14 @@ pub fn download_text(name: &str, mime: &str, body: &str) {
 /// Convenience for the JSON export path.
 pub fn download_json(name: &str, json: &str) {
     download_text(name, "application/json", json);
+}
+
+/// The committed onboarding sample fixture (`extension/src/sample-data.json`),
+/// inlined into the dashboard bundle at build time via a `?raw` import (never a
+/// `fetch`, so it works under CSP `connect-src 'none'`). The raw text is handed to
+/// [`crate::sample::materialize`] on "Load sample data" (§F4).
+pub fn sample_data() -> String {
+    sample_data_js()
 }
 
 /// Trigger a local-file download from a `data:` URL (named `name`) — used for the

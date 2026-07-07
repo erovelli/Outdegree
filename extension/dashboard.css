@@ -146,6 +146,22 @@ body {
   }
 }
 
+/* sample-data chip (§F4): lives inside the brand cluster, shown in demo mode.
+   The provenance hue is used as the single accent (design constraint). */
+.demo-chip { display: none; align-items: center; gap: 9px; }
+.demo-chip.show { display: flex; }
+.demo-chip .vrule { height: 16px; align-self: center; }
+.demo-label {
+  font: 11px var(--mono); letter-spacing: 0.03em;
+  color: oklch(0.72 0.14 264);
+}
+.demo-exit {
+  appearance: none; cursor: pointer; font: 11px var(--grotesque);
+  padding: 3px 9px; border-radius: 6px; color: var(--text-secondary);
+  background: oklch(1 0 0 / 0.05); border: 1px solid var(--toolbar-divider);
+}
+.demo-exit:hover { background: oklch(1 0 0 / 0.09); color: var(--text-primary); }
+
 /* 2./3. segmented controls */
 .panel.seg-panel, .panel.viewbar { padding: 4px; gap: 6px; }
 .seg { display: flex; gap: 2px; }
@@ -653,6 +669,28 @@ td.host-cell:hover, span.host-cell:hover {
 /* A disabled Confirm (the "type DELETE" gate) reads as inert until the phrase
    matches; the hover states above are neutralized by the dimming. */
 .modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* first-run welcome overlay (§F4) — same centered glass idiom as the modal, with
+   the single provenance hue as the only accent. Below .modal-overlay's z-index
+   (set after it here) so a replace-confirm modal stacks above the welcome. */
+.welcome-overlay { z-index: 90; }
+.panel.modal.welcome-modal {
+  width: 440px; max-width: calc(100vw - 32px); gap: 16px; padding: 26px 28px;
+}
+.welcome-brand {
+  font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.welcome-sec {
+  display: flex; flex-direction: column; gap: 3px;
+  padding-left: 12px; border-left: 2px solid oklch(0.64 0.205 264 / 0.55);
+}
+.welcome-head {
+  font: 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
+  color: oklch(0.72 0.14 264);
+}
+.welcome-body { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+.welcome-actions { justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
 /* saved views manager */
 .modal-saverow { display: flex; gap: 8px; }
