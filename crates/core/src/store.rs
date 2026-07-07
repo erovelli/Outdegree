@@ -10,7 +10,7 @@ use crate::rollup::{merge_bucket, DayBucket, DeriveState, SessionRec};
 use std::collections::HashMap;
 use wasm_bindgen::JsValue;
 
-use rexie::{KeyRange, ObjectStore, Rexie, TransactionMode};
+use rexie::{Direction, KeyRange, ObjectStore, Rexie, TransactionMode};
 
 fn je<E: std::fmt::Display>(e: E) -> JsValue {
     JsValue::from_str(&e.to_string())
@@ -118,6 +118,54 @@ impl Db {
         let values = store.get_all(None, Some(limit)).await.map_err(je)?;
         tx.done().await.map_err(je)?;
         deserialize_events(values)
+    }
+
+    /// Bounded, newest-first scan for the node inspector's "Top pages" (§F8): walk
+    /// events in descending `id` order — examining at most `budget` of them, so this
+    /// never reads the whole store — and keep the `Nav` records whose `ts` falls in
+    /// `[lo_ms, hi_ms)`. Because `id` order matches capture (≈ time) order, the scan
+    /// stops early once it reaches an event older than the window (nothing beyond is
+    /// in range). Returns the in-window navs (newest first) and whether the `budget`
+    /// cap was hit *before* the window was exhausted — i.e. older in-window pages may
+    /// exist beyond the cap, which the UI surfaces as a "scanned the most recent N"
+    /// note. An extension of the Raw view's bounded read (`read_events_head`).
+    pub async fn read_recent_navs_in_window(
+        &self,
+        lo_ms: f64,
+        hi_ms: f64,
+        budget: u32,
+    ) -> Result<(Vec<Event>, bool), JsValue> {
+        let tx = self
+            .rexie
+            .transaction(&["events"], TransactionMode::ReadOnly)
+            .map_err(je)?;
+        let store = tx.store("events").map_err(je)?;
+        let pairs = store
+            .scan(None, Some(budget), None, Some(Direction::Prev))
+            .await
+            .map_err(je)?;
+        tx.done().await.map_err(je)?;
+
+        let examined = pairs.len() as u32;
+        let mut navs = Vec::new();
+        let mut reached_older = false;
+        for (_key, value) in pairs {
+            let Ok(ev) = serde_wasm_bindgen::from_value::<Event>(value) else {
+                continue; // an unrecognized future kind (§F7) — skip, keep scanning
+            };
+            let ts = ev.ts();
+            if ts < lo_ms {
+                reached_older = true; // older than the window; everything past is too
+                break;
+            }
+            if ts < hi_ms && matches!(ev, Event::Nav { .. }) {
+                navs.push(ev);
+            }
+        }
+        // Capped only when the whole budget was spent without reaching pre-window
+        // events (so we can't be sure we saw every in-window page).
+        let capped = examined >= budget && !reached_older;
+        Ok((navs, capped))
     }
 
     pub async fn count_events(&self) -> Result<u32, JsValue> {

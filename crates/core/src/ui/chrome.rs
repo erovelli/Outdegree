@@ -866,6 +866,12 @@ pub(crate) fn sync_chrome(shared: &Shared) {
             _ => chip.set_class_name("panel focuschip at-fc"),
         }
     }
+
+    // Node inspector (§F8): open iff focused on the graph — one state with the focus
+    // chip above. Drop the read borrow first; `sync` re-borrows (and may spawn the
+    // bounded page scan).
+    drop(a);
+    super::inspector::sync(shared);
 }
 
 /// §F6 time navigation: fill the window-bounds label, toggle the ‹/› enabled

@@ -12,6 +12,7 @@ mod app;
 mod chrome;
 mod filters;
 mod graph_view;
+mod inspector;
 mod modal;
 mod onboarding;
 mod sankey;
@@ -168,6 +169,30 @@ pub(crate) struct App {
     /// the `demoData` meta flag on open; set on "Load sample data", cleared on
     /// "Exit sample" (which wipes `meta` via `clear_all`).
     pub demo_data: bool,
+    /// Node inspector (§F8) — the right-docked detail panel, one state with the
+    /// drill-down `focus` (open iff `focus` is set on the Graph view). These fields
+    /// cache its rendering so `sync_chrome` doesn't rebuild the panel (resetting its
+    /// scroll) or re-scan the events store on every redraw.
+    ///
+    /// Signature of the currently-rendered *static* panel content (host + window +
+    /// projection shape + toggles). `None` when the panel is closed; unchanged →
+    /// no rebuild.
+    pub inspector_sig: Option<String>,
+    /// Key of the async "Top pages" scan the cached results below belong to: the
+    /// `(node, window, granularity)` identity. **Includes the window** (range +
+    /// anchor), so stepping to another window invalidates the cache instead of
+    /// showing stale URLs. `None` before the first scan.
+    pub inspector_scan_key: Option<String>,
+    /// Whether the async scan for `inspector_scan_key` is still in flight.
+    pub inspector_scan_pending: bool,
+    /// Cached most-visited pages for the current scan key (§F8 item f).
+    pub inspector_pages: Vec<crate::inspect::PageVisit>,
+    /// Whether the page scan hit its 20k-event cap (drives the "scanned the most
+    /// recent N" note).
+    pub inspector_pages_capped: bool,
+    /// Cached per-host search terms for the current scan key, populated only while
+    /// "Show search terms" is on and the host is a recognized engine (§F8 item g).
+    pub inspector_searches: Vec<crate::search::SearchCount>,
 }
 
 pub(crate) type Shared = Rc<RefCell<App>>;
@@ -299,6 +324,12 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         show_searches,
         searches: Vec::new(),
         demo_data,
+        inspector_sig: None,
+        inspector_scan_key: None,
+        inspector_scan_pending: false,
+        inspector_pages: Vec::new(),
+        inspector_pages_capped: false,
+        inspector_searches: Vec::new(),
     };
     let shared: Shared = Rc::new(RefCell::new(app));
 
@@ -482,6 +513,19 @@ pub(crate) fn displayed_session(a: &App) -> Option<SessionRec> {
     .or_else(|| latest_session(&a.sessions))
 }
 
+/// The day buckets the projection currently draws from: the session-scoped buckets
+/// on the Session range (when they've loaded), else the anchored calendar window
+/// (§F6). One source of truth for the "displayed window", so the projection, the
+/// dwell fg/≈ signal, the inspector's share-of-visits, and its sparkline all scope
+/// to exactly what the graph shows.
+pub(crate) fn displayed_window(a: &App) -> Vec<DayBucket> {
+    if a.time_range == TimeRange::Session && !a.session_buckets.is_empty() {
+        a.session_buckets.clone()
+    } else {
+        project::select_window(&a.buckets, a.time_range, anchor_end_day(a))
+    }
+}
+
 /// Re-project the in-memory buckets at the current granularity/filters and warm-
 /// start a fresh layout, preserving spatial memory for surviving nodes (§7.6).
 pub(crate) fn recompute_projection(shared: &Shared) {
@@ -499,11 +543,7 @@ fn recompute_projection_inner(shared: &Shared, relayout: bool) {
     // Restrict to the selected time window (design "Range" control), then project.
     // The "Session" range uses buckets scoped to the latest session's events; if
     // those aren't loaded yet it falls back to the latest day until they arrive.
-    let window = if a.time_range == TimeRange::Session && !a.session_buckets.is_empty() {
-        a.session_buckets.clone()
-    } else {
-        project::select_window(&a.buckets, a.time_range, anchor_end_day(&a))
-    };
+    let window = displayed_window(&a);
     let mut proj = project::project(&window, a.gran, &a.filters);
     // Drill-down: reduce to the focused node's full connected component, then the
     // graph view fits it on screen (§M3). The focus key is granularity-specific
