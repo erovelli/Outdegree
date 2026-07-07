@@ -171,6 +171,79 @@ jobs:
           echo "Dashboard bundle (pre-wasm-opt): $BUNDLE bytes / budget $BUDGET" >> "$GITHUB_STEP_SUMMARY"
           [ "$BUNDLE" -le "$BUDGET" ] || { echo "::error::dashboard bundle $BUNDLE exceeds budget $BUDGET"; exit 1; }
 
+  # ── Firefox overlay: build the dist-firefox/ variant + same privacy audit ─────
+  # Proves docs/PORTING.md's assertion in CI: the Firefox artifact is the same
+  # compiled bundle with only the two documented manifest deltas (background.scripts
+  # + browser_specific_settings.gecko), so the *identical* privacy gate passes when
+  # pointed at dist-firefox/manifest.json. `build:firefox` also runs `web-ext lint`,
+  # which fails the job on lint errors (warnings are allowed — see the lint-warning
+  # policy in docs/PORTING.md). web-ext is a devDependency only; nothing from it
+  # enters the shipped bundle, so the network-surface audit above is unaffected.
+  firefox:
+    name: Firefox overlay (build:firefox · web-ext lint · manifest audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust (stable + wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install JS deps
+        run: npm ci
+
+      # Full build + overlay the two manifest deltas + `web-ext lint` (fails on
+      # lint *errors*; the known-acceptable warnings do not fail — see PORTING.md).
+      - name: Build Firefox overlay (build:firefox)
+        run: npm run build:firefox
+
+      # The SAME audit as the `web` job, byte-for-byte, pointed at the Firefox
+      # manifest — the deltas never touch the audited keys, so it must pass.
+      - name: Audit Firefox manifest for privacy invariants
+        run: |
+          set -euo pipefail
+          M=dist-firefox/manifest.json
+          test -f "$M" || { echo "::error::missing $M"; exit 1; }
+          fail() { echo "::error::$1"; exit 1; }
+
+          # No host access of any kind.
+          [ "$(jq -c '.host_permissions // []' "$M")" = "[]" ] \
+            || fail "host_permissions must be []: $(jq -c '.host_permissions' "$M")"
+          [ "$(jq -c '.optional_host_permissions // []' "$M")" = "[]" ] \
+            || fail "optional_host_permissions must be absent/[]"
+
+          # Permissions (and optional_permissions) confined to the allowlist.
+          ALLOW='["webNavigation","storage","unlimitedStorage"]'
+          for key in permissions optional_permissions; do
+            EXTRA=$(jq -c --argjson a "$ALLOW" "[.${key}[]? | select(. as \$p | \$a | index(\$p) | not)]" "$M")
+            [ "$EXTRA" = "[]" ] || fail "disallowed ${key}: $EXTRA"
+          done
+
+          # Never observe incognito.
+          [ "$(jq -r '.incognito // ""' "$M")" = "not_allowed" ] \
+            || fail "incognito must be not_allowed"
+
+          # CSP must block all network connections.
+          CSP=$(jq -r '.content_security_policy.extension_pages // ""' "$M")
+          case "$CSP" in *"connect-src 'none'"*) : ;; *) fail "CSP missing connect-src 'none': $CSP";; esac
+
+          # No content scripts or web-accessible resources (no page-context reach).
+          [ "$(jq -c '.content_scripts // []' "$M")" = "[]" ] || fail "content_scripts present"
+          [ "$(jq -c '.web_accessible_resources // []' "$M")" = "[]" ] || fail "web_accessible_resources present"
+
+          echo "Firefox manifest privacy invariants enforced: host_permissions=[], permissions⊆allowlist, connect-src 'none', incognito not_allowed, no content_scripts/WAR."
+
   # ── Supply-chain: RustSec advisory + license/source gate over Cargo.lock ──────
   # Dependabot proposes bumps; this fails the build on a known advisory in the
   # *current* committed lockfile, which a bump alone does not catch. Policy lives

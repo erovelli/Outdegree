@@ -128,20 +128,59 @@ Every privacy invariant above is preserved verbatim: empty `host_permissions`,
 the same three permissions, `connect-src 'none'`, `incognito: "not_allowed"`, and
 no content scripts or web-accessible resources.
 
-### Suggested Firefox build recipe (not wired into CI)
+### Firefox build recipe (wired into CI)
 
-A follow-up could add a `build:firefox` script that:
+This is implemented as `scripts/build-firefox.mjs` + the `build:firefox` npm
+script. `npm run build:firefox`:
 
-1. runs the normal `vite build`,
-2. copies `dist/` to `dist-firefox/`,
-3. rewrites `dist-firefox/manifest.json` with the two deltas (background
-   `scripts` + `browser_specific_settings.gecko`) using a tiny Node script,
-4. runs `web-ext lint` and `web-ext build` over `dist-firefox/`.
+1. runs the normal `npm run build` (`build:wasm` + `vite build`),
+2. copies `dist/` to `dist-firefox/` (a byte-identical copy of the compiled
+   bundle),
+3. rewrites **only** `dist-firefox/manifest.json` with the two deltas — background
+   `scripts` (derived from the emitted `service_worker`, so it tracks the
+   `@crxjs` `service-worker-loader.js` filename) + `browser_specific_settings.gecko`,
+4. runs `web-ext lint --source-dir dist-firefox`.
 
-The same manifest privacy audit (`.github/workflows/ci.yml`) can be pointed at
-`dist-firefox/manifest.json` unchanged — none of the deltas touch the audited
-keys (`host_permissions`, `permissions`, `incognito`, CSP, `content_scripts`,
-`web_accessible_resources`), so the Firefox artifact passes the identical gate.
+`npm run package:firefox` then runs `web-ext build` to produce the Firefox
+`.zip`. `dist-firefox/` (like `dist/`) is generated and git-ignored. `web-ext` is
+a **devDependency only** — nothing from it enters the shipped bundle, so the
+network-surface audit is unaffected.
+
+The same manifest privacy audit (`.github/workflows/ci.yml`) is now pointed at
+`dist-firefox/manifest.json` **in CI** (the `firefox` job) — none of the deltas
+touch the audited keys (`host_permissions`, `permissions`, `incognito`, CSP,
+`content_scripts`, `web_accessible_resources`), so the Firefox artifact passes the
+identical gate. The `release.yml` workflow overlays the same two deltas onto the
+optimized `dist/` and attaches `outdegree-firefox-vX.Y.Z.zip` to the GitHub
+Release alongside the Chrome/Edge zip (AMO submission stays manual for now).
+
+#### web-ext lint policy
+
+CI runs `web-ext lint` at its default severity: **lint errors fail the build;
+warnings do not** (we deliberately do **not** pass `--warnings-as-errors`). On the
+current bundle it reports **0 errors** and a small set of known-acceptable
+warnings, each expected and none a privacy or correctness problem:
+
+- **`BACKGROUND_SERVICE_WORKER_IGNORED`** — expected and intended: Firefox ignores
+  `background.service_worker` and runs `background.scripts` instead. Shipping both
+  keys is exactly the portable form; each browser reads the one it supports.
+- **`INCOMPATIBLE_API` / `ANDROID_INCOMPATIBLE_API` (`runtime.getContexts`)** — the
+  toolbar "focus an already-open dashboard tab" optimization uses `runtime.getContexts`
+  (Firefox ≥ 129); below that it isn't implemented, and the code already degrades
+  to opening a new tab (the same fallback it uses on older Chrome). `strict_min_version`
+  stays `121.0` because that is where MV3 + `'wasm-unsafe-eval'` is stable; the
+  degradation is cosmetic (no capture impact).
+- **`UNSAFE_VAR_ASSIGNMENT` (`innerHTML`)** — a heuristic flag on the dashboard's
+  own UI code, which builds markup from local, already-in-store data on the
+  extension's own page. There is no remote or untrusted input (CSP is
+  `connect-src 'none'`, no content scripts, no remote code), so it is a
+  false positive for this extension.
+- **`MISSING_DATA_COLLECTION_PERMISSIONS`** — a forthcoming AMO requirement to
+  declare data collection. Outdegree collects and transmits nothing; the accurate
+  declaration is `browser_specific_settings.gecko.data_collection_permissions:
+  { required: ["none"] }`. It is intentionally **not** added yet: this change keeps
+  strictly to the two documented deltas and AMO submission is manual/out of scope.
+  Add it when the AMO listing is prepared.
 
 ## Known caveats
 

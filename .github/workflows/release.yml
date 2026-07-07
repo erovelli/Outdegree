@@ -112,15 +112,36 @@ jobs:
           (cd dist && find . -type f | sort | zip -X "../$ZIP" -@)
           echo "Built $ZIP ($(wc -c < "$ZIP") bytes)" >> "$GITHUB_STEP_SUMMARY"
 
+      # Firefox artifact: overlay the two documented manifest deltas onto the SAME
+      # optimized dist/ (byte-identical bundle — so the inlined WASM is exactly the
+      # one the smoke test above already validated; there is no separate Firefox
+      # WASM to smoke-test) and package with web-ext. `web-ext lint` fails on lint
+      # errors only (known-acceptable warnings are allowed — see docs/PORTING.md).
+      # web-ext is a devDependency; nothing from it enters the shipped bundle.
+      - name: Build + package Firefox zip (dist-firefox overlay)
+        run: |
+          set -euo pipefail
+          FF_ZIP="outdegree-firefox-${{ github.ref_name }}.zip"
+          node scripts/build-firefox.mjs
+          npx web-ext lint --source-dir dist-firefox
+          npx web-ext build --source-dir dist-firefox --artifacts-dir . --filename "$FF_ZIP" --overwrite-dest
+          echo "Built $FF_ZIP ($(wc -c < "$FF_ZIP") bytes)" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: outdegree-${{ github.ref_name }}.zip
+          subject-path: |
+            outdegree-${{ github.ref_name }}.zip
+            outdegree-firefox-${{ github.ref_name }}.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: outdegree-${{ github.ref_name }}.zip
+          # Chrome/Edge zip + the Firefox overlay zip. AMO submission stays manual
+          # (not wired) — the Firefox zip is attached for manual upload / sideload.
+          files: |
+            outdegree-${{ github.ref_name }}.zip
+            outdegree-firefox-${{ github.ref_name }}.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
 

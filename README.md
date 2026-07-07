@@ -123,8 +123,25 @@ vite.config.ts · package.json · build.sh · docs/{privacy-policy.md, adr/}
 **From a release build (manual):** download the latest `outdegree-*.zip` from
 [Releases](https://github.com/erovelli/Outdegree/releases), unzip it, then open
 `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and
-select the unzipped folder. Edge works the same; Firefox needs a small manifest
-overlay — see [`docs/PORTING.md`](docs/PORTING.md).
+select the unzipped folder.
+
+### Firefox / Edge
+
+The same compiled bundle runs on all three browsers — only the manifest differs,
+and only for Firefox. See [`docs/PORTING.md`](docs/PORTING.md) for the full
+assessment.
+
+- **Edge** (Chromium) is a **drop-in**: load the same `dist/`, or submit/sideload
+  the same `outdegree-*.zip` release artifact — no changes. (Edge calls incognito
+  "InPrivate"; `"incognito": "not_allowed"` is honored identically.)
+- **Firefox** needs a tiny, Firefox-only manifest overlay — two keys
+  (`background.scripts` + `browser_specific_settings.gecko`) applied to the *same*
+  compiled bundle, with no source changes and no privacy relaxation. Build it with
+  `npm run build:firefox` (emits `dist-firefox/` and runs `web-ext lint`);
+  `npm run package:firefox` zips it. To try it, open `about:debugging` → **This
+  Firefox** → **Load Temporary Add-on…** and pick `dist-firefox/manifest.json`
+  (or the release `outdegree-firefox-*.zip`). A one-click AMO
+  (addons.mozilla.org) listing will follow once published.
 
 ## Build from source
 
@@ -147,6 +164,8 @@ Scripts:
 | Command | What it does |
 |---|---|
 | `npm run build` | `build:wasm` + `build:ext` → `dist/` |
+| `npm run build:firefox` | `build` + overlay the two Firefox manifest deltas → `dist-firefox/`, then `web-ext lint` |
+| `npm run package:firefox` | `web-ext build` `dist-firefox/` → a Firefox `.zip` in `web-ext-artifacts/` |
 | `npm run dev` | dev WASM build + Vite dev server |
 | `npm run typecheck` | `tsc --noEmit` over the TypeScript layer |
 | `npm run test:ts` | Vitest unit tests for the capture layer |

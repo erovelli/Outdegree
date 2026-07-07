@@ -32,6 +32,8 @@
     "build:wasm:dev": "wasm-pack build crates/core --dev --target web --out-dir ../../extension/src/wasm",
     "build:ext": "vite build",
     "build": "npm run build:wasm && npm run build:ext",
+    "build:firefox": "npm run build && node scripts/build-firefox.mjs && web-ext lint --source-dir dist-firefox",
+    "package:firefox": "web-ext build --source-dir dist-firefox --overwrite-dest",
     "dev": "npm run build:wasm:dev && vite",
     "typecheck": "tsc --noEmit",
     "test:core": "cargo test -p browsing-graph-core",
@@ -44,6 +46,7 @@
     "fake-indexeddb": "^6",
     "typescript": "^6.0.3",
     "vite": "^8.0.16",
-    "vitest": "^3"
+    "vitest": "^3",
+    "web-ext": "^10.4.0"
   }
 }
