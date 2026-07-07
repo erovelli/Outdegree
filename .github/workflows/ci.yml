@@ -121,8 +121,15 @@ jobs:
           [ "$(jq -c '.optional_host_permissions // []' "$M")" = "[]" ] \
             || fail "optional_host_permissions must be absent/[]"
 
-          # Permissions (and optional_permissions) confined to the allowlist.
-          ALLOW='["webNavigation","storage","unlimitedStorage"]'
+          # Permissions (and optional_permissions) confined to the allowlist. The
+          # Chrome build adds "favicon" (§F12, docs/adr/0006): it unlocks Chrome's
+          # LOCAL favicon service at the extension's own origin
+          # (chrome-extension://<id>/_favicon/) to label sites with their icons. It
+          # makes NO network request (Chrome serves from its on-disk cache), so the
+          # no-egress guarantee is intact and the bundle audit below still passes.
+          # The Firefox job's allowlist is THREE (no favicon) — that service is
+          # Chromium-only and the overlay strips the permission; see the firefox job.
+          ALLOW='["webNavigation","storage","unlimitedStorage","favicon"]'
           for key in permissions optional_permissions; do
             EXTRA=$(jq -c --argjson a "$ALLOW" "[.${key}[]? | select(. as \$p | \$a | index(\$p) | not)]" "$M")
             [ "$EXTRA" = "[]" ] || fail "disallowed ${key}: $EXTRA"
@@ -140,7 +147,7 @@ jobs:
           [ "$(jq -c '.content_scripts // []' "$M")" = "[]" ] || fail "content_scripts present"
           [ "$(jq -c '.web_accessible_resources // []' "$M")" = "[]" ] || fail "web_accessible_resources present"
 
-          echo "Manifest privacy invariants enforced: host_permissions=[], permissions⊆allowlist, connect-src 'none', incognito not_allowed, no content_scripts/WAR."
+          echo "Manifest privacy invariants enforced: host_permissions=[], permissions⊆allowlist (incl. favicon), connect-src 'none', incognito not_allowed, no content_scripts/WAR."
 
       - name: Audit built bundle for network surface (§12.7)
         run: |
@@ -173,9 +180,11 @@ jobs:
 
   # ── Firefox overlay: build the dist-firefox/ variant + same privacy audit ─────
   # Proves docs/PORTING.md's assertion in CI: the Firefox artifact is the same
-  # compiled bundle with only the two documented manifest deltas (background.scripts
-  # + browser_specific_settings.gecko), so the *identical* privacy gate passes when
-  # pointed at dist-firefox/manifest.json. `build:firefox` also runs `web-ext lint`,
+  # compiled bundle with only the documented manifest deltas (background.scripts +
+  # browser_specific_settings.gecko, plus stripping the Chromium-only "favicon"
+  # permission — §F12) — so the privacy gate passes when pointed at
+  # dist-firefox/manifest.json (with a three-permission allowlist, one fewer than
+  # the Chrome job's four). `build:firefox` also runs `web-ext lint`,
   # which fails the job on lint errors (warnings are allowed — see the lint-warning
   # policy in docs/PORTING.md). web-ext is a devDependency only; nothing from it
   # enters the shipped bundle, so the network-surface audit above is unaffected.
@@ -223,7 +232,14 @@ jobs:
           [ "$(jq -c '.optional_host_permissions // []' "$M")" = "[]" ] \
             || fail "optional_host_permissions must be absent/[]"
 
-          # Permissions (and optional_permissions) confined to the allowlist.
+          # Permissions confined to the allowlist. This is THREE — deliberately one
+          # fewer than the Chrome (`web`) job, which allows a fourth, "favicon"
+          # (§F12). The `_favicon` service is Chromium-only, so scripts/build-firefox.mjs
+          # STRIPS the favicon permission from the overlay (declaring it would only
+          # produce a Firefox install warning), and the dashboard's site-icons feature
+          # runtime-guards on the permission being present — so it is cleanly inert
+          # here. Asserting exactly three keeps that strip honest: if a future change
+          # ever leaked "favicon" into dist-firefox/, this audit would fail.
           ALLOW='["webNavigation","storage","unlimitedStorage"]'
           for key in permissions optional_permissions; do
             EXTRA=$(jq -c --argjson a "$ALLOW" "[.${key}[]? | select(. as \$p | \$a | index(\$p) | not)]" "$M")
@@ -242,7 +258,7 @@ jobs:
           [ "$(jq -c '.content_scripts // []' "$M")" = "[]" ] || fail "content_scripts present"
           [ "$(jq -c '.web_accessible_resources // []' "$M")" = "[]" ] || fail "web_accessible_resources present"
 
-          echo "Firefox manifest privacy invariants enforced: host_permissions=[], permissions⊆allowlist, connect-src 'none', incognito not_allowed, no content_scripts/WAR."
+          echo "Firefox manifest privacy invariants enforced: host_permissions=[], permissions⊆allowlist (3, favicon stripped), connect-src 'none', incognito not_allowed, no content_scripts/WAR."
 
   # ── Supply-chain: RustSec advisory + license/source gate over Cargo.lock ──────
   # Dependabot proposes bumps; this fails the build on a known advisory in the

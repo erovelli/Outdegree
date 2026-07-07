@@ -214,7 +214,7 @@ fn fill_items(shared: &Shared) {
     };
     items.set_inner_html("");
 
-    let (mut sessions, query, hide_trivial, selected, selected_day) = {
+    let (mut sessions, query, hide_trivial, selected, selected_day, icon_base) = {
         let a = shared.borrow();
         (
             a.sessions.clone(),
@@ -222,6 +222,8 @@ fn fill_items(shared: &Shared) {
             a.hide_trivial_sessions,
             a.selected_session,
             a.selected_day,
+            // Owned so it outlives the borrow; `None` keeps the list icon-free (§F12).
+            super::site_icon_base(&a).map(str::to_string),
         )
     };
     sessions.sort_by(|a, b| {
@@ -289,7 +291,7 @@ fn fill_items(shared: &Shared) {
     }
 
     for sess in &shown {
-        let item = build_item(&doc, sess, selected);
+        let item = build_item(&doc, sess, selected, icon_base.as_deref());
         let sid = sess.id;
         let s = shared.clone();
         on(item.as_ref(), "click", move |_| {
@@ -303,7 +305,12 @@ fn fill_items(shared: &Shared) {
     }
 }
 
-fn build_item(doc: &Document, sess: &crate::rollup::SessionRec, selected: Option<f64>) -> Element {
+fn build_item(
+    doc: &Document,
+    sess: &crate::rollup::SessionRec,
+    selected: Option<f64>,
+    icon_base: Option<&str>,
+) -> Element {
     let item = el(doc, "button");
     let _ = item.set_attribute("type", "button");
     let cls = if selected == Some(sess.id) {
@@ -325,10 +332,17 @@ fn build_item(doc: &Document, sess: &crate::rollup::SessionRec, selected: Option
     } else {
         format!("{visits} · {}", esc(&top))
     };
+    // Lead with the session's top host's favicon (§F12) so the list is scannable by
+    // site at a glance; `""` when site icons are off.
+    let icon = sess
+        .top_hosts
+        .first()
+        .map(|(h, _)| super::favicon_img_src(icon_base, h))
+        .unwrap_or_default();
     // Time range only — the scoped-list header above already carries the date
     // once, so items don't each repeat "Today · 7/1 ·".
     item.set_inner_html(&format!(
-        "<b>{}</b><br><span class=\"muted\">{}</span>",
+        "<div class=\"sp-item-head\">{icon}<b>{}</b></div><span class=\"muted\">{}</span>",
         session_clock_range(sess.start_ts, sess.end_ts),
         meta
     ));

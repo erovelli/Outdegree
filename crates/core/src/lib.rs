@@ -14,6 +14,7 @@
 // ── Pure core (runs under `cargo test`) ────────────────────────────────────────
 pub mod derive;
 pub mod export;
+pub mod favicon;
 pub mod flow;
 pub mod graph;
 pub mod inspect;

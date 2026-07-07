@@ -8,12 +8,13 @@
 //! fill = dominant provenance, edges colored by dominant kind (search links
 //! dashed), each node ringed by a 2px black "moat". Pan/zoom via the [`Camera`].
 
+use crate::favicon::IconCache;
 use crate::layout::Pos;
 use crate::model::{GraphProjection, Provenance};
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 use wasm_bindgen::JsValue;
-use web_sys::CanvasRenderingContext2d;
+use web_sys::{CanvasRenderingContext2d, HtmlImageElement};
 
 // ── chrome (monochrome) ──────────────────────────────────────────────────────
 const BG: &str = "#000000";
@@ -44,6 +45,11 @@ const CULL_MARGIN: f64 = 96.0;
 // non-selected labels are dropped — cutting per-frame path + text work on big,
 // zoomed-out graphs. At/above it, full fidelity is preserved.
 const LOD_SCALE: f64 = 0.22;
+// A node must project to at least this screen radius (px) before its favicon is
+// drawn (§F12): below it the icon would be sub-legible, so the provenance shape
+// reads better. Paired with the LOD gate above — icons only at/above `LOD_SCALE`
+// AND a disc this big — so far-zoom / tiny nodes never pay for icon work.
+const MIN_ICON_RADIUS: f64 = 12.0;
 
 /// Node disc radius in screen pixels: `max(8, 2.6·√visits)` (design units),
 /// scaled by zoom and clamped so nodes never vanish or dominate.
@@ -331,6 +337,13 @@ fn fmt_dwell(ms: u64) -> String {
 /// Draw the full graph. `hover` labels + spotlights a node; `selected` (the
 /// drilled-down focus) wears the reticle bracket; `filter` (a clicked legend key)
 /// keeps only nodes of that provenance bright and dims the rest + all edges.
+///
+/// `icons` is the decoded-favicon cache (§F12), or `None` when site icons are off
+/// (the setting, or an unsupported browser) — then no icon is drawn and no miss is
+/// reported. Returns the hosts that qualified for an icon (on-screen, at/above the
+/// LOD zoom, disc ≥ [`MIN_ICON_RADIUS`]) but had **no cache slot yet**, so the
+/// caller can kick off their loads. Drawing never blocks on decode: the provenance
+/// shape is drawn now; the icon appears on a later frame once it decodes.
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ctx: &CanvasRenderingContext2d,
@@ -343,7 +356,12 @@ pub fn draw(
     selected: Option<&str>,
     filter: Option<Provenance>,
     communities: &HashMap<String, usize>,
-) {
+    icons: Option<&IconCache<HtmlImageElement>>,
+) -> Vec<String> {
+    // Hosts drawn this frame that want an icon but have no cache slot yet — returned
+    // so the caller starts their (load-once) loads. Empty when `icons` is `None`.
+    let mut icon_misses: Vec<String> = Vec::new();
+
     draw_backdrop(ctx, w, h, cam);
 
     // Below this zoom the graph reads as a constellation: drop provenance shapes
@@ -473,7 +491,8 @@ pub fn draw(
             // redundant channel). A node stays bright only if it survives both the
             // hover spotlight and (if set) the legend provenance filter.
             let prov = n.prov.dominant().display();
-            ctx.set_global_alpha(if hotness(&n.key, prov) { 1.0 } else { 0.22 });
+            let alpha = if hotness(&n.key, prov) { 1.0 } else { 0.22 };
+            ctx.set_global_alpha(alpha);
             set_fill(ctx, prov.color());
             // LOD: at far zoom the polygon shapes are sub-pixel — draw plain discs.
             let shape = if lod {
@@ -484,6 +503,26 @@ pub fn draw(
             trace_marker(ctx, shape, x, y, r);
             ctx.fill();
             ctx.stroke();
+
+            // Favicon overlay (§F12): only at/above the LOD zoom and once the disc
+            // is big enough for a legible icon. The provenance shape/color underneath
+            // stays the data channel — the icon sits centered inside, leaving a
+            // colored ring — so the single-hue data encoding is preserved. Uncached
+            // hosts are recorded as misses (the caller loads them, load-once); the
+            // shape already drawn stands in until the icon decodes on a later frame,
+            // or forever on error / when the host has no cached icon.
+            if let Some(cache) = icons {
+                if !lod && r >= MIN_ICON_RADIUS {
+                    match cache.ready(&n.key) {
+                        Some(img) => draw_favicon(ctx, img, x, y, r, alpha),
+                        None => {
+                            if !cache.contains(&n.key) {
+                                icon_misses.push(n.key.clone());
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     ctx.set_global_alpha(1.0);
@@ -544,6 +583,32 @@ pub fn draw(
             }
         }
     }
+
+    icon_misses
+}
+
+/// Draw a decoded favicon centered in a node disc of radius `r`, clipped to a
+/// circle so it reads as a round site badge sitting inside the provenance-colored
+/// ring (§F12). `alpha` matches the node's own, so a spotlight-dimmed node gets a
+/// dimmed icon. Kept a hair smaller than the disc so a rim of the provenance hue
+/// (the only data color) always shows around it.
+fn draw_favicon(
+    ctx: &CanvasRenderingContext2d,
+    img: &HtmlImageElement,
+    x: f64,
+    y: f64,
+    r: f64,
+    alpha: f64,
+) {
+    let s = (r * 1.3).clamp(MIN_ICON_RADIUS, 44.0);
+    let half = s / 2.0;
+    ctx.save();
+    ctx.begin_path();
+    let _ = ctx.arc(x, y, half, 0.0, PI * 2.0);
+    ctx.clip();
+    ctx.set_global_alpha(alpha);
+    let _ = ctx.draw_image_with_html_image_element_and_dw_and_dh(img, x - half, y - half, s, s);
+    ctx.restore();
 }
 
 /// 40×40 corner-bracket reticle with four crosshair ticks — the "selected" mark.

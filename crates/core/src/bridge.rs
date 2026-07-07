@@ -15,6 +15,8 @@ extern "C" {
     fn download_data_url_js(name: &str, data_url: &str);
     #[wasm_bindgen(js_namespace = chromeBridge, js_name = sampleData)]
     fn sample_data_js() -> String;
+    #[wasm_bindgen(js_namespace = chromeBridge, js_name = faviconBase)]
+    fn favicon_base_js() -> String;
 }
 
 /// Read a string value from `chrome.storage.local` (SW-owned).
@@ -38,6 +40,24 @@ pub fn download_text(name: &str, mime: &str, body: &str) {
 /// Convenience for the JSON export path.
 pub fn download_json(name: &str, json: &str) {
     download_text(name, "application/json", json);
+}
+
+/// The extension-origin base URL of Chrome's LOCAL favicon service
+/// (`chrome-extension://<id>/_favicon/`), or `None` when the running browser
+/// doesn't grant the `favicon` permission (§F12). The Firefox overlay strips the
+/// permission (the API is Chromium-only) and older Chrome predates it, so the
+/// bridge returns `""` there — mapped to `None` so the site-icons feature stays
+/// inert (no `_favicon` URLs built, no `<img>` emitted, no canvas icon loads).
+///
+/// No network: Chrome serves the icon from its on-disk favicon cache, so this is
+/// consistent with `connect-src 'none'` and the no-egress guarantee (docs/adr/0006).
+pub fn favicon_base() -> Option<String> {
+    let base = favicon_base_js();
+    if base.is_empty() {
+        None
+    } else {
+        Some(base)
+    }
 }
 
 /// The committed onboarding sample fixture (`extension/src/sample-data.json`),

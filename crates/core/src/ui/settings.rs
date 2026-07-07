@@ -53,6 +53,24 @@ pub(super) fn settings_popover(doc: &Document, shared: &Shared) -> Element {
         });
     }
 
+    // Site favicons (§F12): show 16px site icons across the dashboard. Default on;
+    // when off, no `_favicon` URLs are constructed at all (canvas or HTML paths).
+    // Persisted via uiPrefs like the other view toggles.
+    let (icons_row, icons_input) = menu_toggle(doc, "Site icons", shared.borrow().site_icons);
+    {
+        let s = shared.clone();
+        on(&icons_input, "change", move |ev| {
+            let c = ev
+                .target()
+                .and_then(|t| t.dyn_into::<HtmlInputElement>().ok())
+                .map(|i| i.checked())
+                .unwrap_or(false);
+            s.borrow_mut().site_icons = c;
+            persist_ui_prefs(&s);
+            super::refresh_site_icons(&s);
+        });
+    }
+
     let raw = menu_btn(doc, "Raw events");
     {
         let s = shared.clone();
@@ -360,6 +378,7 @@ pub(super) fn settings_popover(doc: &Document, shared: &Shared) -> Element {
 
     let _ = pop.append_child(&spa_row);
     let _ = pop.append_child(&search_row);
+    let _ = pop.append_child(&icons_row);
     let sep = el(doc, "div");
     let _ = sep.set_attribute("class", "menu-sep");
     let _ = pop.append_child(&sep);

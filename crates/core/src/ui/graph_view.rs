@@ -1,12 +1,15 @@
 //! Graph view: canvas setup, draw, and pan/zoom/hover interactions (§7.7, M3).
 
-use super::{body_container, el, on, Shared};
+use super::{body_container, el, on, Shared, View};
 use crate::render::canvas2d::{self, Camera};
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, KeyboardEvent, MouseEvent, WheelEvent};
+use web_sys::{
+    CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement, KeyboardEvent, MouseEvent,
+    WheelEvent,
+};
 
 pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let body = body_container(shared).ok_or_else(|| JsValue::from_str("no body"))?;
@@ -290,6 +293,8 @@ pub(crate) fn export_png(shared: &Shared) {
     let Some(ctx) = ctx_of(&canvas) else { return };
     let _ = ctx.set_transform(SS, 0.0, 0.0, SS, 0.0, 0.0);
     let cam = canvas2d::fit(&a.proj, &a.layout_pos, PAGE_W, PAGE_H);
+    // Exports stay in the pure shape/hue language — no favicons (icons are a live,
+    // interactive affordance, and an export shouldn't depend on async decode state).
     canvas2d::draw(
         &ctx,
         PAGE_W,
@@ -301,6 +306,7 @@ pub(crate) fn export_png(shared: &Shared) {
         None,
         None,
         &a.communities,
+        None,
     );
     match canvas.to_data_url_with_type("image/png") {
         Ok(url) => crate::bridge::download_data_url("outdegree-graph.png", &url),
@@ -318,23 +324,111 @@ pub(crate) fn export_svg(shared: &Shared) {
 
 fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
     let Some(ctx) = ctx_of(canvas) else { return };
-    let a = shared.borrow();
-    // Draw in CSS pixels onto the dpr-scaled backing store (crisp on HiDPI).
-    let d = dpr();
-    let _ = ctx.set_transform(d, 0.0, 0.0, d, 0.0, 0.0);
-    let (w, h) = (canvas.width() as f64 / d, canvas.height() as f64 / d);
-    canvas2d::draw(
-        &ctx,
-        w,
-        h,
-        &a.proj,
-        &a.layout_pos,
-        &a.camera,
-        a.hover.as_deref(),
-        a.focus.as_deref(),
-        a.legend_filter,
-        &a.communities,
-    );
+    // Draw under a short borrow, collecting favicon "misses" (§F12); then drop the
+    // borrow before kicking off any loads (they take `borrow_mut`).
+    let misses = {
+        let a = shared.borrow();
+        // Draw in CSS pixels onto the dpr-scaled backing store (crisp on HiDPI).
+        let d = dpr();
+        let _ = ctx.set_transform(d, 0.0, 0.0, d, 0.0, 0.0);
+        let (w, h) = (canvas.width() as f64 / d, canvas.height() as f64 / d);
+        // Site icons are drawn only when the setting is on AND the browser grants
+        // the favicon permission (`site_icon_base` gates both) — otherwise `None`,
+        // so `draw` constructs no icon work and reports no misses.
+        let icons = super::site_icon_base(&a).is_some().then_some(&a.favicons);
+        canvas2d::draw(
+            &ctx,
+            w,
+            h,
+            &a.proj,
+            &a.layout_pos,
+            &a.camera,
+            a.hover.as_deref(),
+            a.focus.as_deref(),
+            a.legend_filter,
+            &a.communities,
+            icons,
+        )
+    };
+    // Start a load per newly-seen host (load-once, enforced by the cache's `begin`).
+    // 32px on HiDPI for crispness, 16px otherwise — the size the spec calls for.
+    if !misses.is_empty() {
+        let size = if dpr() > 1.0 { 32 } else { 16 };
+        for host in misses {
+            start_favicon_load(shared, host, size);
+        }
+    }
+}
+
+/// Kick off an async favicon decode for `host` at `size` (§F12). Reserves a
+/// load-once cache slot (so repeat frames never restart it), then loads an
+/// `HtmlImageElement` off the extension's own `_favicon/` origin — Chrome serves it
+/// from its LOCAL cache, no network. On decode it stores the image and schedules a
+/// single coalesced redraw; on error (or an empty raster) it marks the slot
+/// `Failed`, so the node keeps its provenance shape and is never retried. Never
+/// blocks the frame that requested it.
+fn start_favicon_load(shared: &Shared, host: String, size: u16) {
+    let base = match &shared.borrow().favicon_base {
+        Some(b) => b.clone(),
+        None => return, // permission not granted → feature inert
+    };
+    // Reserve the slot; `begin` returns false if a load is already in flight / done.
+    if !shared.borrow_mut().favicons.begin(&host) {
+        return;
+    }
+    let url = crate::favicon::favicon_url(&base, &host, size);
+    let Ok(img) = HtmlImageElement::new() else {
+        shared.borrow_mut().favicons.set_failed(&host);
+        return;
+    };
+    img.set_decoding("async");
+    {
+        let s = shared.clone();
+        let h = host.clone();
+        let im = img.clone();
+        let onload = Closure::once_into_js(move || {
+            // A decoded, non-empty raster is a real icon; a 0×0 result is treated as
+            // a failure so we fall back to the shape rather than draw nothing.
+            if im.natural_width() > 0 {
+                s.borrow_mut().favicons.set_ready(&h, im.clone());
+            } else {
+                s.borrow_mut().favicons.set_failed(&h);
+            }
+            schedule_icon_redraw(&s);
+        });
+        img.set_onload(Some(onload.unchecked_ref()));
+    }
+    {
+        let s = shared.clone();
+        let h = host.clone();
+        let onerror = Closure::once_into_js(move || {
+            // Missing cached icon / blocked load: keep the shape, never retry (§F12).
+            s.borrow_mut().favicons.set_failed(&h);
+        });
+        img.set_onerror(Some(onerror.unchecked_ref()));
+    }
+    img.set_src(&url);
+}
+
+/// Coalesce the per-image `onload` redraws into one animation frame, so a burst of
+/// favicon loads repaints the canvas once per frame instead of once per icon.
+fn schedule_icon_redraw(shared: &Shared) {
+    if shared.borrow().favicon_redraw_pending {
+        return;
+    }
+    shared.borrow_mut().favicon_redraw_pending = true;
+    let s = shared.clone();
+    let cb = Closure::once_into_js(move || {
+        s.borrow_mut().favicon_redraw_pending = false;
+        // Only repaint if the graph canvas is still mounted (the user may have
+        // switched views while icons were decoding).
+        if s.borrow().view == View::Graph {
+            redraw(&s);
+        }
+    });
+    if let Some(win) = web_sys::window() {
+        let _ = win.request_animation_frame(cb.unchecked_ref());
+    }
 }
 
 fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {

@@ -30,6 +30,10 @@ The extension does not run in Incognito mode and records nothing there.
 - There are no content scripts, no `<all_urls>` access, and no remotely-hosted
   code. The Public Suffix List used for domain grouping is embedded at build
   time and never fetched.
+- Site icons are displayed from **Chrome's own local favicon cache** (the
+  `favicon` permission), served from the extension's own address — this makes **no
+  network request** and fetches nothing from the internet. In browsers without
+  that local service (e.g. Firefox) the icons are simply not shown.
 - The only way data leaves the extension is a **user-initiated export**, which
   writes a file to your own disk — never a network upload.
 

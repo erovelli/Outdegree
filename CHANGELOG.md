@@ -10,6 +10,30 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **Site favicons across the dashboard.** Sites are now labelled with their
+  icons — centered inside graph nodes (once you're zoomed in enough to read them,
+  with the provenance-colored ring still showing around each icon so the single
+  data hue is preserved), and as 16px marks in the Tables host cells, the session
+  list, and the node inspector header. Icons come from **Chrome's own local
+  favicon cache**, served from the extension's own address
+  (`chrome-extension://<id>/_favicon/`), so the feature makes **no network
+  request** — the shipped bundle still has zero network surface, `host_permissions`
+  is still `[]`, and CSP still sets `connect-src 'none'`. This is the one change
+  this cycle that widens a documented invariant: it adds the MV3 **`favicon`**
+  permission, so `permissions` is now
+  `{ webNavigation, storage, unlimitedStorage, favicon }` (see
+  [ADR-0006](docs/adr/0006-favicon-permission.md), and the updated privacy policy
+  and store listing). A **"Site icons"** setting (Settings ▸, default on) turns
+  them off — when off, no favicon URLs are constructed at all. Icons load off the
+  render loop into a bounded, load-once cache (a host with no cached icon quietly
+  keeps its shape/text and is never retried), and every HTML icon has an error
+  fallback so a missing icon shows nothing rather than a broken-image glyph. The
+  `_favicon` service is Chromium-only, so the **Firefox** overlay strips the
+  `favicon` permission and the feature runtime-guards itself to a silent no-op
+  there (Edge, being Chromium, shows icons like Chrome). The `pageUrl` scheme is
+  reattached and percent-encoded entirely inside the WASM core (reusing the F4
+  scheme const), so no `https://` literal reaches the bundle and the CI
+  network-surface audit stays at zero.
 - **Firefox & Edge distribution.** The same compiled bundle now targets all three
   browsers. **Edge** (Chromium) is a drop-in — the existing `dist/` / release zip
   loads unmodified. **Firefox** gets a dedicated overlay build:

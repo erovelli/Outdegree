@@ -9,13 +9,19 @@ import pkg from "../package.json";
 //  • connect-src 'none' (CSP)      → fetch/XHR/WebSocket/sendBeacon are blocked
 //  • incognito: "not_allowed"      → incognito browsing is never observed
 // 'wasm-unsafe-eval' is required to instantiate the dashboard WASM module.
+//
+// The `favicon` permission (§F12, docs/adr/0006) unlocks Chrome's LOCAL favicon
+// service at the extension's own origin (chrome-extension://<id>/_favicon/) so the
+// dashboard can label sites with their icons. It makes NO network request — Chrome
+// serves the icon from its on-disk cache — so the no-egress guarantee is intact.
+// It is Chromium-only; the Firefox overlay (scripts/build-firefox.mjs) strips it.
 export default defineManifest({
   manifest_version: 3,
   name: "Outdegree",
   version: pkg.version,
   description:
     "Records your navigations as a directed graph you can explore over time.",
-  permissions: ["webNavigation", "storage", "unlimitedStorage"],
+  permissions: ["webNavigation", "storage", "unlimitedStorage", "favicon"],
   host_permissions: [],
   incognito: "not_allowed",
   background: { service_worker: "src/service-worker.ts", type: "module" },

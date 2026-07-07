@@ -67,6 +67,10 @@ pub(crate) fn build_shell(shared: &Shared) -> Result<(), JsValue> {
     let _ = root.append_child(&settings_popover(&doc, shared));
     install_palette_shortcut(shared);
     install_popover_dismiss(shared);
+    // Hide any favicon <img> that fails to load (§F12) — a capturing page-level
+    // listener, since resource error events don't bubble and CSP forbids inline
+    // onerror. No-op when site icons are off (no such <img> is ever emitted).
+    super::install_favicon_error_fallback(shared);
 
     Ok(())
 }
