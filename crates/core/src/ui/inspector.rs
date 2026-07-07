@@ -266,16 +266,19 @@ fn build_plan(a: &App, host: &str) -> Option<Plan> {
         &seen,
         &series,
         &conns,
+        &super::favicon_img(a, host),
         &async_inner,
     );
 
     // Rebuild the static panel whenever any of these change (but not on a mere
     // page-scan completion, which patches its own region — so the panel's scroll
     // survives): the scan key (host/window/gran/spa), the dwell signal, the search
-    // toggle, and the projection shape (drives the connections list).
+    // toggle, the site-icons toggle (§F12), and the projection shape (drives the
+    // connections list).
     let sig = format!(
-        "{scan_key}\u{1}{has_signal}\u{1}{}\u{1}{}",
+        "{scan_key}\u{1}{has_signal}\u{1}{}\u{1}{}\u{1}{}",
         a.show_searches,
+        a.site_icons,
         project::layout_signature(&a.proj),
     );
 
@@ -400,11 +403,14 @@ fn static_html(
     seen: &Option<(String, String)>,
     series: &[(String, u32)],
     conns: &inspect::NodeConnections,
+    icon_html: &str,
     async_inner: &str,
 ) -> String {
     let host_e = esc(host);
+    // The provenance dot keeps the data-color/shape channel; the favicon (§F12,
+    // `""` when off) sits between it and the host name as an identity mark.
     let mut h = format!(
-        "<div class=\"insp-head\"><span class=\"dot {dot} {glyph}\"></span>\
+        "<div class=\"insp-head\"><span class=\"dot {dot} {glyph}\"></span>{icon_html}\
          <span class=\"insp-host\" title=\"{host_e}\">{host_e}</span>\
          <button type=\"button\" class=\"insp-x\" aria-label=\"Close inspector\">✕</button></div>",
         dot = prov_dot(prov),

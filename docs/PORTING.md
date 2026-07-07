@@ -10,11 +10,15 @@ enforces.
 The privacy invariants are non-negotiable on every target:
 
 - `host_permissions: []`, `optional_host_permissions` absent
-- `permissions ⊆ { webNavigation, storage, unlimitedStorage }`
+- `permissions ⊆ { webNavigation, storage, unlimitedStorage, favicon }` — the
+  Chrome build carries all four; **the Firefox overlay strips `favicon`** (it's a
+  Chromium-only local-cache API, §F12), so the Firefox artifact's allowlist is the
+  original three. Neither target reaches the network for icons.
 - `incognito: "not_allowed"`
 - CSP `connect-src 'none'` (no fetch / XHR / WebSocket / sendBeacon / EventSource)
 - no `content_scripts`, no `web_accessible_resources`, no remote code
-- the single OKLCH provenance hue is the only data color
+- the single OKLCH provenance hue is the only **data** color (favicons are
+  identity marks, not a data-color channel)
 
 ## Capability surface used
 
@@ -28,6 +32,7 @@ The extension touches a deliberately small slice of the WebExtensions API:
 | `tabs.create` / `tabs.get` / `tabs.onRemoved` | SW + open dashboard | ✅ | ✅ |
 | `runtime.onInstalled` / `onStartup` / `onMessage` / `sendMessage` / `getURL` | SW ⇄ dashboard handshake | ✅ | ✅ |
 | `action.onClicked` | open dashboard on toolbar click | ✅ (MV3 `action`) | ✅ |
+| `favicon` permission + `_favicon/` local service | dashboard (site icons, §F12) | ❌ **no equivalent** — overlay strips it; feature no-ops | ✅ |
 | WebAssembly + `'wasm-unsafe-eval'` CSP | dashboard page (analysis core) | ✅ | ✅ |
 | IndexedDB | SW + dashboard (event store, rollups) | ✅ | ✅ |
 
@@ -54,7 +59,7 @@ same zip to the Edge Add-ons store.
 Firefox supports MV3, `webNavigation`, `storage`/`unlimitedStorage`, the `action`
 key, `'wasm-unsafe-eval'`, and `incognito: "not_allowed"`. The capture and
 analysis code is browser-agnostic (`chrome.*` is aliased to `browser.*` callback
-style, which Firefox accepts). Three manifest-level differences matter:
+style, which Firefox accepts). These manifest-level differences matter:
 
 1. **Background type.** Chrome MV3 requires a background **service worker**.
    Firefox MV3 runs the background as an **event page** (`background.scripts`)
@@ -93,9 +98,20 @@ style, which Firefox accepts). Three manifest-level differences matter:
    `defineManifest` type does not include it. It belongs only in the Firefox
    artifact (see the build recipe below).
 
-3. **Packaging/build.** The toolchain (`@crxjs/vite-plugin`) targets Chromium.
-   For Firefox, take the same emitted `dist/`, overlay the two manifest deltas
-   above, and package with `web-ext`.
+3. **`favicon` permission (strip it).** Chrome's site-icons feature (§F12) uses the
+   Chromium-only `_favicon` local service, unlocked by the `favicon` permission.
+   Firefox has **no equivalent**, so declaring the permission there would only raise
+   an install warning. The overlay **removes `favicon` from `permissions`**, and the
+   dashboard runtime-guards the feature (`chromeBridge.faviconBase()` returns `""`
+   unless `getManifest().permissions` includes `favicon`), so on Firefox the feature
+   silently no-ops to the current shapes/text — no URLs built, no `<img>` emitted, no
+   broken icons. This is the one delta that *changes* the audited `permissions` key,
+   and it does so in the safe direction (three, not four), so the Firefox manifest
+   audit's allowlist is the original three.
+
+4. **Packaging/build.** The toolchain (`@crxjs/vite-plugin`) targets Chromium.
+   For Firefox, take the same emitted `dist/`, overlay the manifest deltas above,
+   and package with `web-ext`.
 
 ### Firefox manifest (full recommended variant)
 
@@ -136,9 +152,10 @@ script. `npm run build:firefox`:
 1. runs the normal `npm run build` (`build:wasm` + `vite build`),
 2. copies `dist/` to `dist-firefox/` (a byte-identical copy of the compiled
    bundle),
-3. rewrites **only** `dist-firefox/manifest.json` with the two deltas — background
+3. rewrites **only** `dist-firefox/manifest.json` with the deltas — background
    `scripts` (derived from the emitted `service_worker`, so it tracks the
-   `@crxjs` `service-worker-loader.js` filename) + `browser_specific_settings.gecko`,
+   `@crxjs` `service-worker-loader.js` filename) + `browser_specific_settings.gecko`
+   + **stripping the Chromium-only `favicon` permission** (§F12),
 4. runs `web-ext lint --source-dir dist-firefox`.
 
 `npm run package:firefox` then runs `web-ext build` to produce the Firefox
@@ -147,10 +164,13 @@ a **devDependency only** — nothing from it enters the shipped bundle, so the
 network-surface audit is unaffected.
 
 The same manifest privacy audit (`.github/workflows/ci.yml`) is now pointed at
-`dist-firefox/manifest.json` **in CI** (the `firefox` job) — none of the deltas
-touch the audited keys (`host_permissions`, `permissions`, `incognito`, CSP,
-`content_scripts`, `web_accessible_resources`), so the Firefox artifact passes the
-identical gate. The `release.yml` workflow overlays the same two deltas onto the
+`dist-firefox/manifest.json` **in CI** (the `firefox` job). The background/gecko
+deltas don't touch the audited keys; the one delta that does — stripping `favicon`
+from `permissions` (§F12) — narrows the set in the safe direction, so the Firefox
+job asserts a **three**-permission allowlist (one fewer than the Chrome `web`
+job's four). Every other audited key (`host_permissions`, `incognito`, CSP,
+`content_scripts`, `web_accessible_resources`) is untouched, so the Firefox
+artifact passes the same gate. The `release.yml` workflow overlays the same deltas onto the
 optimized `dist/` and attaches `outdegree-firefox-vX.Y.Z.zip` to the GitHub
 Release alongside the Chrome/Edge zip (AMO submission stays manual for now).
 
@@ -191,14 +211,18 @@ warnings, each expected and none a privacy or correctness problem:
   dashboard tab is focused across browsers; no behavioral impact on capture.
 - **WASM size.** The dashboard module is large; all targets instantiate it on the
   extension page under `'wasm-unsafe-eval'` with no network fetch.
+- **Site icons (§F12).** The `favicon`/`_favicon` local service is Chromium-only.
+  Edge shows site icons like Chrome; Firefox shows none (the overlay strips the
+  permission and the dashboard runtime-guards the feature to a silent no-op). No
+  privacy difference either way — the service never reaches the network.
 
 ## Summary
 
 | Target | Effort | Code changes | Manifest changes |
 | --- | --- | --- | --- |
 | **Edge** | none | none | none |
-| **Firefox** | small | none | add `background.scripts` + `browser_specific_settings.gecko` in a Firefox-only build artifact |
+| **Firefox** | small | none | add `background.scripts` + `browser_specific_settings.gecko`, and strip the Chromium-only `favicon` permission, in a Firefox-only build artifact |
 
-Edge is a drop-in. Firefox needs only a Firefox-specific manifest overlay (two
-keys) applied to the same compiled bundle — no source changes and no relaxation
-of any privacy guarantee.
+Edge is a drop-in. Firefox needs only a Firefox-specific manifest overlay
+(add two keys, strip one permission) applied to the same compiled bundle — no
+source changes and no relaxation of any privacy guarantee.

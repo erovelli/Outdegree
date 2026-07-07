@@ -1,9 +1,19 @@
 // Firefox overlay build: take the exact Chromium `dist/` that the privacy audit
 // enforces and produce a Firefox-loadable `dist-firefox/` by applying ONLY the
-// two documented manifest deltas from docs/PORTING.md — nothing else changes, so
+// documented manifest deltas from docs/PORTING.md — nothing else changes, so
 // every privacy invariant (host_permissions:[], permissions allowlist, CSP
 // connect-src 'none', incognito not_allowed, no content_scripts / WAR) stays
 // byte-identical and passes the same CI gate pointed at dist-firefox/manifest.json.
+//
+// Deltas (see docs/PORTING.md):
+//   1. background: ship `scripts` alongside `service_worker` (Firefox event page).
+//   2. browser_specific_settings.gecko: Firefox extension id + strict_min_version.
+//   3. permissions: STRIP "favicon" — the `_favicon` service is Chromium-only, so
+//      declaring it on Firefox would only produce an install warning (§F12). The
+//      dashboard's site-icons feature already runtime-guards on the permission
+//      being declared, so stripping it here makes the feature cleanly inert on
+//      Firefox. This is why the Firefox manifest audit's allowlist is THREE
+//      permissions while the Chrome one is FOUR (see .github/workflows/ci.yml).
 //
 // The compiled bundle (WASM, dashboard, service worker) is browser-agnostic and
 // is copied verbatim; web-ext is a dev-only tool and contributes nothing to it.
@@ -61,10 +71,21 @@ manifest.background = {
 // Delta 2 — Firefox extension id + minimum version.
 manifest.browser_specific_settings = { gecko: { ...GECKO } };
 
+// Delta 3 — Strip the Chromium-only `favicon` permission (§F12). Firefox has no
+// `_favicon` service, so declaring it would only surface an install warning; the
+// dashboard guards the feature on the permission being present, so removing it
+// here keeps site icons inert on Firefox with no source changes.
+const hadFavicon = Array.isArray(manifest.permissions)
+  && manifest.permissions.includes("favicon");
+if (hadFavicon) {
+  manifest.permissions = manifest.permissions.filter((p) => p !== "favicon");
+}
+
 writeFileSync(FF_MANIFEST, JSON.stringify(manifest, null, 2) + "\n");
 
 console.log(
   `✓ dist-firefox/ ready — overlaid background.scripts=["${sw}"] + ` +
     `browser_specific_settings.gecko { id: "${GECKO.id}", ` +
-    `strict_min_version: "${GECKO.strict_min_version}" }`
+    `strict_min_version: "${GECKO.strict_min_version}" }` +
+    (hadFavicon ? ' + stripped Chromium-only "favicon" permission' : "")
 );

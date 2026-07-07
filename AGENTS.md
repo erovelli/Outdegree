@@ -122,13 +122,38 @@ that breaks any of them will fail CI and must never ship.
   WebSocket / EventSource / navigator.sendBeacon / importScripts / dynamic import()
   of a remote URL. The only data-out path is a user-initiated local file download.
 - NO telemetry, analytics, crash/error reporting, or "phone home" of any kind.
-- permissions ⊆ { webNavigation, storage, unlimitedStorage }. host_permissions: [].
+- permissions ⊆ { webNavigation, storage, unlimitedStorage, favicon }. host_permissions: [].
 - CSP must keep connect-src 'none' (and no 'unsafe-inline').
 - incognito: "not_allowed".
 - NO content_scripts, NO web_accessible_resources, NO remotely-hosted code.
 - The Public Suffix List stays embedded at compile time (no runtime fetch).
 - The single OKLCH provenance hue is the only data color (design constraint).
+  Favicons (F12) are identity marks, not a data-color channel — the provenance
+  ring/shape around each icon stays the data encoding (ADR-0006).
 ```
+
+The `favicon` permission (added in F12, [ADR-0006](docs/adr/0006-favicon-permission.md))
+is the **only** permission beyond the original three, and the only invariant this
+release cycle deliberately widened. It unlocks Chrome's **local** favicon service at
+the extension's own origin (`chrome-extension://<id>/_favicon/`) to label sites with
+their icons. It makes **no network request** — Chrome serves the icon from its
+on-disk cache — so the no-egress guarantee, `connect-src 'none'`, and
+`host_permissions: []` all still hold, and the CI network-surface audit stays at
+zero. Two subtleties to preserve if you touch this:
+
+- **The scheme must not leak into `dist/`.** `pageUrl` needs an `http(s)` scheme,
+  but the network-surface audit greps `dist/` for `https?://`. All favicon URL
+  building lives in the Rust→WASM core (`crate::favicon`), which is base64-inlined
+  (so string constants are scrambled), it **reuses the F4 `URL_SCHEME` const**
+  rather than adding a second scheme literal, **and** it percent-encodes the value
+  (`https%3A%2F%2F…`, no literal `://`). Keep it that way — do not put a favicon URL
+  in TypeScript, and do not weaken the audit.
+- **`favicon` is Chromium-only.** `scripts/build-firefox.mjs` strips it from the
+  Firefox overlay, so the two CI manifest audits differ on purpose: the `web` job's
+  allowlist is **four** permissions (incl. `favicon`); the `firefox` job's is
+  **three**. The dashboard runtime-guards the feature on the permission being
+  declared, so it no-ops on Firefox. Keep both allowlists in step with
+  `extension/manifest.config.ts` + the overlay.
 
 If a task seems to require any of the above, **stop and surface it** rather than
 implementing it. CI-side tooling (coverage, advisory scans, badges) is fine —

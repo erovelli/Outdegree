@@ -25,6 +25,8 @@ export interface ChromeBridge {
   downloadDataUrl: (name: string, dataUrl: string) => void;
   /** Raw text of the committed onboarding sample fixture (§F4). */
   sampleData: () => string;
+  /** Extension-origin base URL for Chrome's local favicon service, or "" (§F12). */
+  faviconBase: () => string;
 }
 
 const chromeBridge: ChromeBridge = {
@@ -58,6 +60,25 @@ const chromeBridge: ChromeBridge = {
   // Hand the inlined fixture text to the WASM core, which materializes it
   // (offset→absolute timestamps + scheme prepend) before importing (§F4).
   sampleData: () => sampleDataRaw,
+
+  // Base URL for Chrome's LOCAL favicon service (§F12). Chrome serves site icons
+  // from its own on-disk favicon cache at the extension's origin
+  // (chrome-extension://<id>/_favicon/) — NO network request, so the no-egress
+  // guarantee holds (see docs/adr/0006). getURL() returns an origin-relative URL at
+  // runtime, so no https:// literal enters the bundle. Guarded on the manifest
+  // actually declaring the `favicon` permission: the Firefox overlay strips it
+  // (Chromium-only API), so this returns "" there and the WASM core's site-icons
+  // feature stays completely inert (no URLs built, no <img> emitted). Any failure
+  // (older browsers, no chrome.runtime) also degrades to "".
+  faviconBase: () => {
+    try {
+      const m = chrome.runtime.getManifest();
+      if (!m.permissions || !m.permissions.includes("favicon")) return "";
+      return chrome.runtime.getURL("_favicon/");
+    } catch {
+      return "";
+    }
+  },
 };
 
 (globalThis as unknown as { chromeBridge: ChromeBridge }).chromeBridge = chromeBridge;

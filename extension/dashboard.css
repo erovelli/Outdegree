@@ -604,6 +604,20 @@ td.host-cell:hover, span.host-cell:hover {
   text-decoration-color: var(--text-faint); text-underline-offset: 2px;
 }
 
+/* Site favicons (§F12): 16px decorative marks served from Chrome's LOCAL favicon
+ * cache via the extension's own origin (_favicon/). Same-origin, so the CSP
+ * `default-src 'self'` (which img-src falls back to) allows them — no network.
+ * alt="" because the adjacent host text is the real label. A capturing 'error'
+ * listener adds .is-broken so a missing/blocked icon hides cleanly instead of
+ * showing a broken-image glyph (there is no inline onerror — CSP forbids it). */
+.bg-favicon {
+  width: 16px; height: 16px; flex: none; border-radius: 3px;
+  object-fit: contain; vertical-align: -3px; margin-right: 6px;
+}
+.bg-favicon.is-broken { display: none; }
+/* In the flex inspector header the gap handles spacing; drop the inline margin. */
+.insp-head .bg-favicon { vertical-align: middle; margin-right: 0; }
+
 /* Rhythm heatmap (§F9): a full-width weekday × hour-of-day grid in the Tables
  * card deck. It reuses the single-hue quartile ramp of the Sessions activity
  * heatmap — the cal-l{0..4} fills carry every cell's shade, so no inline styles
@@ -690,6 +704,10 @@ td.host-cell:hover, span.host-cell:hover {
   border-radius: 8px; margin-bottom: 6px; cursor: pointer;
 }
 .sp-item:hover { background: oklch(1 0 0 / 0.05); }
+/* Session card head: the top-host favicon (§F12) sits inline with the time range;
+   the meta line drops below (the head replaces the former <b> + <br>). */
+.sp-item-head { display: flex; align-items: center; gap: 6px; }
+.sp-item-head .bg-favicon { margin-right: 0; vertical-align: middle; }
 .sp-item.is-selected {
   background: oklch(1 0 0 / 0.08); border-color: oklch(1 0 0 / 0.16);
 }

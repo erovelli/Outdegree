@@ -41,8 +41,21 @@ Lead both with **"100% local · no network · open source."**
 - **`storage` / `unlimitedStorage`** — "Stores your navigation graph locally on
   your device. `unlimitedStorage` allows a long history (months to a year)
   without hitting the default quota. Nothing is transmitted off-device."
+- **`favicon`** — "Displays site icons from Chrome's local favicon cache; no
+  network access. The extension reads the icon Chrome already has cached for a
+  site, from the extension's own address (`_favicon/`), to label sites in the
+  graph and tables. It makes no network request and fetches nothing from the web."
 - **No host permissions** — call out as a feature: the extension cannot read
   page content or contact any server.
+
+> **Re-review note (F12).** The `favicon` permission is new since v1.1.0, so a
+> resubmission triggers Google's review of the added permission. The
+> justification above is the store copy; the reviewer-facing story is that
+> `favicon` reads Chrome's **local** favicon cache from the extension's own origin
+> and makes **no network request** — the network-surface audit still shows zero
+> egress, `host_permissions` is still `[]`, and CSP still sets `connect-src
+> 'none'`. Firefox (AMO) ships without this permission (it's Chromium-only; the
+> overlay strips it), so no AMO listing change is needed for it.
 
 ## Data-practices disclosures (§12.4)
 

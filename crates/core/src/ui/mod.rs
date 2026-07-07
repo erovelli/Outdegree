@@ -198,6 +198,19 @@ pub(crate) struct App {
     /// *rendered* only while "Show search terms" is on — so toggling the setting
     /// surfaces or hides them from cache, without a rescan.
     pub inspector_searches: Vec<crate::search::SearchCount>,
+    /// Site favicons (§F12). `site_icons` is the persisted "Site icons" toggle
+    /// (default on); `favicon_base` is the extension-origin `_favicon/` URL from the
+    /// bridge, `None` when the browser doesn't grant the `favicon` permission
+    /// (Firefox overlay / older Chrome) — either being off keeps the feature inert
+    /// (no `_favicon` URLs built anywhere). See [`site_icon_base`].
+    pub site_icons: bool,
+    pub favicon_base: Option<String>,
+    /// Decoded-image cache (host → `HtmlImageElement`) for the canvas, capped and
+    /// load-once/never-retry per session (see [`crate::favicon::IconCache`]).
+    pub favicons: crate::favicon::IconCache<web_sys::HtmlImageElement>,
+    /// Coalesces the per-image `onload` redraws into one rAF so a burst of favicon
+    /// loads triggers a single canvas repaint per frame, not one per image.
+    pub favicon_redraw_pending: bool,
 }
 
 pub(crate) type Shared = Rc<RefCell<App>>;
@@ -274,6 +287,11 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
     // "Sample data" chip and suppresses the backup nudge.
     let demo_data = db.read_meta_bool("demoData").await.unwrap_or(false);
 
+    // Chrome's local favicon service base (§F12), or `None` where unsupported
+    // (Firefox overlay / older Chrome) — read once so the site-icons feature can be
+    // gated cheaply on every render without re-probing the bridge.
+    let favicon_base = crate::bridge::favicon_base();
+
     let app = App {
         db,
         buckets,
@@ -335,6 +353,13 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         inspector_pages: Vec::new(),
         inspector_pages_capped: false,
         inspector_searches: Vec::new(),
+        // Site icons (§F12): restore the persisted toggle (default on); the base URL
+        // is `None` where the `favicon` permission isn't granted, which keeps the
+        // feature inert regardless of the toggle.
+        site_icons: prefs.site_icons,
+        favicon_base,
+        favicons: crate::favicon::IconCache::new(crate::favicon::CACHE_CAP),
+        favicon_redraw_pending: false,
     };
     let shared: Shared = Rc::new(RefCell::new(app));
 
@@ -735,6 +760,7 @@ pub(crate) fn persist_ui_prefs(shared: &Shared) {
         hide_isolated: a.filters.hide_isolated,
         spa_mode: a.spa_mode,
         locked: a.locked,
+        site_icons: a.site_icons,
     };
     crate::bridge::storage_local_set(
         crate::ui_prefs::STORAGE_KEY,
@@ -918,6 +944,83 @@ where
 
 pub(crate) fn log_err(e: &JsValue) {
     web_sys::console::error_1(e);
+}
+
+/// The extension-origin `_favicon/` base to build site-icon URLs against, or
+/// `None` when site icons are off — either the user's "Site icons" toggle is off,
+/// or the browser doesn't grant the `favicon` permission (§F12). One gate for both
+/// the canvas and HTML paths, so "off" means **no `_favicon` URL is constructed at
+/// all** — exactly what the spec requires.
+pub(crate) fn site_icon_base(a: &App) -> Option<&str> {
+    if a.site_icons {
+        a.favicon_base.as_deref()
+    } else {
+        None
+    }
+}
+
+/// A 16px decorative favicon `<img>` for `host`, or `""` when `base` is `None`
+/// (site icons off/unsupported). `alt=""` (the adjacent host text is the label) +
+/// `loading="lazy"`. A page-level capturing `error` listener (installed in
+/// `app::build_shell`) adds `.is-broken` — CSS-hidden — so a missing/failed icon
+/// never shows a broken-image glyph, and CSP stays intact (no inline `onerror`).
+/// The URL is built entirely in-WASM ([`crate::favicon::favicon_url`]), so no
+/// `https://` literal reaches `dist/` (§F12 audit interaction).
+pub(crate) fn favicon_img_src(base: Option<&str>, host: &str) -> String {
+    match base {
+        Some(b) => format!(
+            "<img class=\"bg-favicon\" alt=\"\" loading=\"lazy\" src=\"{}\">",
+            esc(&crate::favicon::favicon_url(b, host, 16))
+        ),
+        None => String::new(),
+    }
+}
+
+/// [`favicon_img_src`] resolved against the app's current site-icon gate.
+pub(crate) fn favicon_img(a: &App, host: &str) -> String {
+    favicon_img_src(site_icon_base(a), host)
+}
+
+/// Re-reflect the "Site icons" setting after it toggles (§F12): rebuild the HTML
+/// views (so `<img>` favicons appear/disappear) and, on the Graph view, redraw the
+/// canvas — which re-collects icon loads (on) or drops them (off) **without**
+/// resetting the camera. `sync_chrome` refreshes the inspector header icon too.
+pub(crate) fn refresh_site_icons(shared: &Shared) {
+    let view = shared.borrow().view;
+    if view == View::Graph && shared.borrow().doc.get_element_by_id("bg-canvas").is_some() {
+        chrome::sync_chrome(shared);
+        graph_view::redraw(shared);
+    } else {
+        let _ = rerender(shared);
+    }
+}
+
+/// Install a page-level **capturing** `error` listener that hides any favicon
+/// `<img>` which fails to load (§F12). Resource `error` events don't bubble, so a
+/// delegated (bubbling) listener would miss them — this listens in the capture
+/// phase on the document. A broken `.bg-favicon` gets the `.is-broken` class
+/// (CSS-hidden), so a missing/blocked icon shows nothing rather than the browser's
+/// broken-image glyph — and there is no inline `onerror` (CSP forbids it). One
+/// listener covers every HTML favicon (Tables, session list, inspector); installed
+/// once from `build_shell`.
+pub(crate) fn install_favicon_error_fallback(shared: &Shared) {
+    let doc = shared.borrow().doc.clone();
+    let cb = Closure::wrap(Box::new(move |ev: web_sys::Event| {
+        let Some(t) = ev.target().and_then(|t| t.dyn_into::<Element>().ok()) else {
+            return;
+        };
+        let cur = t.class_name();
+        let mut classes = cur.split_whitespace();
+        if classes.clone().any(|c| c == "bg-favicon") && !classes.any(|c| c == "is-broken") {
+            t.set_class_name(&format!("{cur} is-broken"));
+        }
+    }) as Box<dyn FnMut(web_sys::Event)>);
+    let _ = doc.add_event_listener_with_callback_and_bool(
+        "error",
+        cb.as_ref().unchecked_ref(),
+        true, // capture phase — resource `error` events do not bubble
+    );
+    cb.forget();
 }
 
 /// Minimal HTML-escape for embedding user URLs/keys in `set_inner_html`.

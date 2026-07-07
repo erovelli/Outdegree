@@ -41,6 +41,7 @@ web-sys = { version = "0.3", features = [
     "Element",
     "HtmlElement",
     "HtmlCanvasElement",
+    "HtmlImageElement",
     "HtmlSelectElement",
     "HtmlInputElement",
     "HtmlOptionElement",

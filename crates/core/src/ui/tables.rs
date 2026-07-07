@@ -90,7 +90,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             let fg = fg_dwell.get(k.as_str()).copied().unwrap_or(0);
             s.push_str(&format!(
                 "<tr>{}<td class=\"num\">{}</td>{}</tr>",
-                host_td(k),
+                host_td(&a, k),
                 d,
                 time_spent_cell(has_signal, est, fg)
             ));
@@ -112,7 +112,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
                 let rel = (r / top * 100.0).round() as u32;
                 s.push_str(&format!(
                     "<tr>{}<td class=\"num\">{rel}</td></tr>",
-                    host_td(k)
+                    host_td(&a, k)
                 ));
             }
             s.push_str("</table>");
@@ -136,7 +136,7 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             };
             s.push_str(&format!(
                 "<tr>{}<td class=\"num\">{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
-                host_td(&sg.host),
+                host_td(&a, &sg.host),
                 sg.now,
                 sg.prev,
                 esc(&mult)
@@ -164,8 +164,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
             let pct = (h.share * 100.0).round() as u32;
             s.push_str(&format!(
                 "<tr>{}{}<td class=\"num\">{pct}%</td></tr>",
-                host_td(&h.from),
-                host_td(&h.to)
+                host_td(&a, &h.from),
+                host_td(&a, &h.to)
             ));
         }
         s.push_str("</table>");
@@ -291,16 +291,24 @@ fn card(span: &str, inner: &str) -> String {
 
 /// A host table cell tagged for click-to-focus: clicking it jumps to the Graph
 /// view focused on that host (a delegated listener on #bg-body reads `data-host`).
-fn host_td(host: &str) -> String {
+/// A 16px site favicon (§F12) leads the name when site icons are on; the icon has
+/// no `data-host`, so a click on it still bubbles to the cell and focuses the host.
+fn host_td(a: &App, host: &str) -> String {
     let h = esc(host);
-    format!("<td class=\"host-cell\" data-host=\"{h}\">{h}</td>")
+    format!(
+        "<td class=\"host-cell\" data-host=\"{h}\">{}{h}</td>",
+        super::favicon_img(a, host)
+    )
 }
 
 /// Inline host span variant for cells that list several hosts (pairs, community
 /// members), so each name is independently clickable.
-fn host_span(host: &str) -> String {
+fn host_span(a: &App, host: &str) -> String {
     let h = esc(host);
-    format!("<span class=\"host-cell\" data-host=\"{h}\">{h}</span>")
+    format!(
+        "<span class=\"host-cell\" data-host=\"{h}\">{}{h}</span>",
+        super::favicon_img(a, host)
+    )
 }
 
 /// Whether the currently displayed window carries any focus signal (§F7) — i.e.
@@ -401,7 +409,7 @@ fn communities_html(a: &super::App) -> String {
         let top = m
             .iter()
             .take(5)
-            .map(|s| host_span(s))
+            .map(|s| host_span(a, s))
             .collect::<Vec<_>>()
             .join(", ");
         let more = if m.len() > 5 {
