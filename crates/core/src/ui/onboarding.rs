@@ -182,6 +182,11 @@ fn do_load_sample(shared: &Shared) {
         if let Err(e) = db.reset_derivation().await {
             return super::log_err(&e);
         }
+        // Stamp the derived-schema version the import wiped with `meta`, so the
+        // next open doesn't redo the full rebuild this load already triggered (§F7).
+        if let Err(e) = db.reconcile_derived_schema().await {
+            return super::log_err(&e);
+        }
         // Mark the demo and force the pause flag ON (string "true", flagOn
         // convention) so real navigations don't interleave with the sample.
         let _ = db.write_meta_bool("demoData", true).await;

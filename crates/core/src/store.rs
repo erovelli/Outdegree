@@ -37,6 +37,16 @@ pub struct Db {
 
 const STORES: [&str; 5] = ["events", "spa", "rollup_days", "sessions", "meta"];
 
+/// Version of the *derived* data shape — the `DeriveState` checkpoint plus the
+/// `rollup_days` / `sessions` it produces. Bump it whenever a change makes an
+/// existing checkpoint or rollup incompatible with the current fold, so
+/// [`Db::reconcile_derived_schema`] rebuilds them from raw once on next open.
+///
+/// `1` = F7 (attention capture): the checkpoint gained foreground/focus state and
+/// buckets gained `fg_dwell_ms` / `has_focus_signal`, so a pre-F7 cache (which has
+/// neither) must be rebuilt from the raw `events` to populate the new fields.
+const DERIVED_SCHEMA_VERSION: f64 = 1.0;
+
 /// Open the database (after the SW readiness ack). Mirrors the §4 schema so it is
 /// also self-sufficient if the stores somehow do not yet exist.
 pub async fn open() -> Result<Db, JsValue> {
@@ -70,7 +80,7 @@ impl Db {
         let range = KeyRange::lower_bound(&JsValue::from_f64(watermark), Some(true)).map_err(je)?;
         let values = store.get_all(Some(range), None).await.map_err(je)?;
         tx.done().await.map_err(je)?;
-        deserialize_all(values)
+        deserialize_events(values)
     }
 
     /// Read events in an inclusive id range (the Sankey cursor from
@@ -94,7 +104,7 @@ impl Db {
         .map_err(je)?;
         let values = store.get_all(Some(range), None).await.map_err(je)?;
         tx.done().await.map_err(je)?;
-        deserialize_all(values)
+        deserialize_events(values)
     }
 
     /// Read the first `limit` events (ascending id) without materializing the whole
@@ -107,7 +117,7 @@ impl Db {
         let store = tx.store("events").map_err(je)?;
         let values = store.get_all(None, Some(limit)).await.map_err(je)?;
         tx.done().await.map_err(je)?;
-        deserialize_all(values)
+        deserialize_events(values)
     }
 
     pub async fn count_events(&self) -> Result<u32, JsValue> {
@@ -150,7 +160,7 @@ impl Db {
         let store = tx.store("spa").map_err(je)?;
         let values = store.get_all(None, None).await.map_err(je)?;
         tx.done().await.map_err(je)?;
-        deserialize_all(values)
+        deserialize_events(values)
     }
 
     // ── rollups ────────────────────────────────────────────────────────────────
@@ -247,6 +257,25 @@ impl Db {
         };
         let json = serde_json::to_string(&c).map_err(je)?;
         self.write_meta_json("rollupCursor", &json).await
+    }
+
+    /// Auto-invalidate a stale derived cache after an upgrade (§F7). When the
+    /// stored `derivedSchemaVersion` differs from [`DERIVED_SCHEMA_VERSION`] — an
+    /// old install whose checkpoint/rollups predate the current fold, or a fresh
+    /// install with no version stamped yet — clear the rollup, sessions, and derive
+    /// cursor ([`Self::reset_derivation`], the same "Rebuild from raw events"
+    /// plumbing) and stamp the current version. The next open then re-folds every
+    /// raw event from scratch exactly once, so new fields (foreground dwell / focus
+    /// state) populate with no user action. Idempotent thereafter. Call it before
+    /// [`Self::read_cursor`] on open. Returns whether a rebuild was triggered.
+    pub async fn reconcile_derived_schema(&self) -> Result<bool, JsValue> {
+        if self.read_meta_f64("derivedSchemaVersion").await? == Some(DERIVED_SCHEMA_VERSION) {
+            return Ok(false);
+        }
+        self.reset_derivation().await?;
+        self.write_meta_f64("derivedSchemaVersion", DERIVED_SCHEMA_VERSION)
+            .await?;
+        Ok(true)
     }
 
     pub async fn read_positions(&self) -> Result<HashMap<String, (f32, f32)>, JsValue> {
@@ -486,6 +515,19 @@ fn deserialize_all<T: serde::de::DeserializeOwned>(
         .into_iter()
         .map(|v| serde_wasm_bindgen::from_value(v).map_err(je))
         .collect()
+}
+
+/// Deserialize event records, dropping any whose `kind` this build doesn't
+/// recognize (§F7 forward compat). Such records deserialize to [`Event::Unknown`]
+/// (the `#[serde(other)]` catch-all) instead of erroring the whole batch; filtering
+/// them here keeps `Unknown` — which has no id/ts in this build — out of the fold
+/// and the stream merge, so an older dashboard degrades gracefully on a newer log.
+fn deserialize_events(values: Vec<JsValue>) -> Result<Vec<Event>, JsValue> {
+    let evs: Vec<Event> = deserialize_all(values)?;
+    Ok(evs
+        .into_iter()
+        .filter(|e| !matches!(e, Event::Unknown))
+        .collect())
 }
 
 fn event_matches_host(e: &Event, domain: &str) -> bool {

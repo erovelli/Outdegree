@@ -29,6 +29,22 @@ pub struct DeriveState {
     pub pending_origin: HashMap<i64, PendingOrigin>,
     /// Open sessions keyed by windowId.
     pub open_sessions: HashMap<i64, OpenSession>,
+    /// Foreground attribution (§F7): the currently focused window, or `-1` when the
+    /// browser itself is blurred (`WINDOW_ID_NONE`). `None` until the first
+    /// window-focus event. Checkpointed so an interval that spans a watermark split
+    /// is credited to the same window it would be in a from-scratch recompute.
+    #[serde(default)]
+    pub focused_window: Option<i64>,
+    /// The active tab per window (§F7), keyed by windowId. Set by focus (tab
+    /// activation) events; a window's entry is dropped when its active tab Closes.
+    #[serde(default)]
+    pub active_tab: HashMap<i64, i64>,
+    /// The timestamp of the last processed event, of any kind (§F7). The lower
+    /// bound of the interval the *next* event credits foreground time for.
+    /// Checkpointed so crediting is bit-identical across a watermark split — the
+    /// load-bearing piece that makes fold == recompute hold for fg attribution.
+    #[serde(default)]
+    pub last_event_ts: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -162,6 +178,12 @@ pub struct NodeStat {
     /// `#[serde(default)]` so rollups written before dwell tracking still load.
     #[serde(default)]
     pub dwell_ms: u64,
+    /// Total *foreground* time attributed to this host in this bucket, in
+    /// milliseconds (§F7): the share of inter-event intervals during which this
+    /// host was loaded in the focused window's active tab, capped at the idle gap.
+    /// `#[serde(default)]` so pre-focus rollups still load (they read as `0`).
+    #[serde(default)]
+    pub fg_dwell_ms: u64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -180,6 +202,12 @@ pub struct DayBucket {
     pub max_id: i64,
     pub nodes: HashMap<String, NodeStat>,
     pub edges: HashMap<String, EdgeStat>,
+    /// Whether any focus/window-focus event fell on this UTC day (§F7). Drives the
+    /// dwell UI: a window with signal shows foreground time; one without shows the
+    /// gap-based estimate (prefixed "≈"). `#[serde(default)]` so pre-focus buckets
+    /// read as `false` ("no focus data").
+    #[serde(default, rename = "hasFocusSignal")]
+    pub has_focus_signal: bool,
 }
 
 /// A fold delta is shaped exactly like a stored bucket.
@@ -202,10 +230,12 @@ pub fn merge_bucket(into: &mut DayBucket, delta: &DayBucket) {
         into.date = delta.date.clone();
     }
     into.max_id = into.max_id.max(delta.max_id);
+    into.has_focus_signal |= delta.has_focus_signal;
     for (k, n) in &delta.nodes {
         let e = into.nodes.entry(k.clone()).or_default();
         e.visits += n.visits;
         e.dwell_ms += n.dwell_ms;
+        e.fg_dwell_ms += n.fg_dwell_ms;
         e.prov.merge(&n.prov);
     }
     for (k, ed) in &delta.edges {
@@ -258,6 +288,22 @@ impl Acc {
         n.prov.add(prov);
     }
 
+    /// Credit `fg_ms` of foreground time to a host without recording a visit (§F7):
+    /// foreground time accrues per inter-event interval, independently of the
+    /// visit/dwell recorded when a page finalizes. Buckets by the interval-start
+    /// date the caller passes.
+    pub fn fg_credit(&mut self, date: &str, key: &str, fg_ms: u64) {
+        let b = self.bucket(date);
+        let n = b.nodes.entry(key.to_string()).or_default();
+        n.fg_dwell_ms += fg_ms;
+    }
+
+    /// Mark a UTC day as carrying a focus signal (§F7): a focus/window-focus event
+    /// fell on it, so the dwell UI trusts foreground time over the gap estimate.
+    pub fn mark_focus_signal(&mut self, date: &str) {
+        self.bucket(date).has_focus_signal = true;
+    }
+
     pub fn edge(&mut self, date: &str, from: &str, to: &str, kind: crate::model::EdgeKind) {
         let k = edge_key(from, to);
         let b = self.bucket(date);
@@ -282,6 +328,13 @@ pub fn fold(
 ) -> (Vec<DayBucketDelta>, Vec<SessionRec>) {
     let mut acc = Acc::default();
     for ev in new_events {
+        // Forward compat (§F7): an unrecognized event kind from a newer log
+        // deserializes to `Unknown`. Skip it entirely — no accumulation and no
+        // watermark advance (a later known event carries the watermark past it) —
+        // so an older dashboard degrades gracefully instead of erroring.
+        if matches!(ev, crate::model::Event::Unknown) {
+            continue;
+        }
         acc.cur_id = ev.id();
         crate::derive::step(state, &mut acc, ev);
         state.watermark = ev.id();

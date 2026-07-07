@@ -102,6 +102,51 @@ export function startRecord(ts: number): StartRecord {
   return { kind: "start", ts };
 }
 
+// ── Foreground attention (§F7): tab activation + window focus ─────────────────
+
+/**
+ * A tab-activation record (`tabs.onActivated`): which tab became the active tab
+ * of a window. Carries only ids — no URL, no title — so it needs no permission
+ * beyond the existing set; the derive layer joins it to the tab's page itself.
+ */
+export interface FocusRecord {
+  kind: "focus";
+  ts: number;
+  tabId: number;
+  windowId: number;
+}
+
+/**
+ * A window-focus record (`windows.onFocusChanged`): which window is focused,
+ * with `windowId: -1` meaning the whole browser lost focus (alt-tab away).
+ */
+export interface WfocusRecord {
+  kind: "wfocus";
+  ts: number;
+  windowId: number;
+}
+
+/** Subset of a `tabs.onActivated` activeInfo we record (no timestamp on it). */
+export interface ActivatedDetail {
+  tabId: number;
+  windowId: number;
+}
+
+/** Build a tab-activation record from an `onActivated` activeInfo. */
+export function focusRecord(d: ActivatedDetail, ts: number): FocusRecord {
+  return { kind: "focus", ts, tabId: d.tabId, windowId: d.windowId };
+}
+
+/**
+ * Build a window-focus record. Chrome reports `WINDOW_ID_NONE` (-1) when the
+ * browser is blurred; any other sentinel below 0 (e.g. `WINDOW_ID_CURRENT`, -2,
+ * which onFocusChanged should never emit) is normalized to -1 so the stored
+ * stream has exactly one "no window focused" value for the derive layer.
+ */
+export function wfocusRecord(windowId: number, ts: number): WfocusRecord {
+  return { kind: "wfocus", ts, windowId: windowId < 0 ? -1 : windowId };
+}
+
 // ── Toolbar affordances (§ pure helpers for service-worker.ts) ────────────────
 
 /**

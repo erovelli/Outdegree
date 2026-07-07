@@ -39,6 +39,21 @@ fn close(id: u64, ts: f64, tab: i64) -> Event {
 fn start(id: u64, ts: f64) -> Event {
     Event::Start { id: id as f64, ts }
 }
+fn focus(id: u64, ts: f64, tab: i64, win: i64) -> Event {
+    Event::Focus {
+        id: id as f64,
+        ts,
+        tab_id: tab as f64,
+        window_id: win as f64,
+    }
+}
+fn wfocus(id: u64, ts: f64, win: i64) -> Event {
+    Event::Wfocus {
+        id: id as f64,
+        ts,
+        window_id: win as f64,
+    }
+}
 
 // ───────────────────────────── harness ─────────────────────────────
 
@@ -107,6 +122,12 @@ fn node_visits(map: &Roll, key: &str) -> u32 {
 }
 fn node_dwell(map: &Roll, key: &str) -> u64 {
     flat(map).nodes.get(key).map(|n| n.dwell_ms).unwrap_or(0)
+}
+fn node_fg(map: &Roll, key: &str) -> u64 {
+    flat(map).nodes.get(key).map(|n| n.fg_dwell_ms).unwrap_or(0)
+}
+fn total_fg(map: &Roll) -> u64 {
+    flat(map).nodes.values().map(|n| n.fg_dwell_ms).sum()
 }
 
 // ───────────────────────── global-order correctness ─────────────────────────
@@ -424,6 +445,246 @@ fn utc_day_bucketing() {
         Some(1)
     );
     assert!(map["2021-01-02"].nodes.contains_key("c.com"));
+}
+
+// ───────────────────── foreground attribution (§F7) ─────────────────────
+
+/// Foreground time goes to the focused window's active tab only: a background
+/// tab accrues nothing while another tab is active, even as its own navs fire.
+#[test]
+fn foreground_credits_only_the_focused_active_tab() {
+    let events = vec![
+        nav(1, 1_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        nav(2, 2_000.0, 2, 1, "https://b.com/", "typed", &[]),
+        wfocus(3, 3_000.0, 1),   // window 1 focused (no active tab known yet)
+        focus(4, 4_000.0, 1, 1), // tab 1 (a.com) active
+        // tab 2 navigates in the background; the elapsed 5s belongs to a.com.
+        nav(5, 9_000.0, 2, 1, "https://b2.com/", "link", &[]),
+        close(6, 10_000.0, 2), // +1s to a.com
+        close(7, 12_000.0, 1), // +2s to a.com
+    ];
+    let (map, _, _) = run_all(&events);
+    assert_eq!(node_fg(&map, "a.com"), 8_000, "5s + 1s + 2s while active");
+    assert_eq!(node_fg(&map, "b.com"), 0, "background tab credits nothing");
+    assert_eq!(node_fg(&map, "b2.com"), 0);
+    // The gap-based estimate is untouched by focus events: b.com dwelled 7s
+    // (arrival 2000 → next tab-2 nav 9000) even though it was never foregrounded.
+    assert_eq!(node_dwell(&map, "b.com"), 7_000);
+}
+
+/// A tab switch mid-interval credits the pre-switch node up to the switch, then
+/// the newly active node after it.
+#[test]
+fn tab_switch_mid_interval_credits_the_pre_switch_node() {
+    let events = vec![
+        nav(1, 1_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        nav(2, 2_000.0, 2, 1, "https://b.com/", "typed", &[]),
+        wfocus(3, 3_000.0, 1),
+        focus(4, 4_000.0, 1, 1),  // a.com active
+        focus(5, 10_000.0, 2, 1), // switch: the 6s before this goes to a.com
+        close(6, 15_000.0, 2),    // 5s on b.com, then its tab closes
+        close(7, 16_000.0, 1),    // active tab gone → the last 1s credits nothing
+    ];
+    let (map, _, _) = run_all(&events);
+    assert_eq!(node_fg(&map, "a.com"), 6_000);
+    assert_eq!(node_fg(&map, "b.com"), 5_000);
+    assert_eq!(
+        total_fg(&map),
+        11_000,
+        "the post-close second is uncredited"
+    );
+}
+
+/// `wfocus(-1)` (browser blurred) suspends attribution until a window refocuses.
+#[test]
+fn browser_blur_credits_nothing() {
+    let events = vec![
+        nav(1, 1_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        wfocus(2, 2_000.0, 1),
+        focus(3, 3_000.0, 1, 1),
+        wfocus(4, 5_000.0, -1), // +2s to a.com, then the browser blurs
+        nav(5, 30_000.0, 1, 1, "https://b.com/", "link", &[]), // blurred: no credit
+        wfocus(6, 40_000.0, 1), // still no credit for the blurred 10s
+        close(7, 45_000.0, 1),  // +5s to the now-current b.com
+    ];
+    let (map, _, _) = run_all(&events);
+    assert_eq!(node_fg(&map, "a.com"), 2_000);
+    assert_eq!(node_fg(&map, "b.com"), 5_000);
+}
+
+/// Closing the focused window's active tab stops attribution entirely until a
+/// new focus event arrives (the window→tab entry is dropped with the tab).
+#[test]
+fn close_of_the_active_tab_stops_attribution() {
+    let events = vec![
+        nav(1, 1_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        wfocus(2, 2_000.0, 1),
+        focus(3, 3_000.0, 1, 1),
+        close(4, 8_000.0, 1), // +5s to a.com, then its tab closes
+        nav(5, 20_000.0, 2, 1, "https://b.com/", "typed", &[]), // no active tab → nothing
+        close(6, 21_000.0, 2),
+    ];
+    let (map, _, _) = run_all(&events);
+    assert_eq!(node_fg(&map, "a.com"), 5_000);
+    assert_eq!(
+        total_fg(&map),
+        5_000,
+        "no credit after the active tab closed"
+    );
+}
+
+/// A single interval's credit caps at the idle gap (an overnight-idle focused tab
+/// can't claim hours), and a backward clock jump credits 0, mirroring dwell.
+#[test]
+fn foreground_credit_caps_at_idle_gap_and_clamps_backward() {
+    let day = 86_400_000.0;
+    let events = vec![
+        nav(1, 1_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        wfocus(2, 2_000.0, 1),
+        focus(3, 3_000.0, 1, 1),
+        nav(4, 3_000.0 + day, 1, 1, "https://b.com/", "link", &[]), // a day later
+        nav(5, 500.0, 1, 1, "https://c.com/", "link", &[]),         // clock jumped back
+        close(6, 600.0, 1),
+    ];
+    let (map, _, _) = run_all(&events);
+    assert_eq!(
+        node_fg(&map, "a.com"),
+        1_800_000,
+        "capped at the 30-min idle gap"
+    );
+    assert_eq!(node_fg(&map, "b.com"), 0, "backward jump credits 0");
+}
+
+/// A focus event naming a tab with no derived page — never navigated, or sitting
+/// on a non-http(s) URL — credits nothing while it stays active.
+#[test]
+fn focus_on_a_tab_without_a_node_credits_nothing() {
+    let events = vec![
+        wfocus(1, 1_000.0, 1),
+        focus(2, 2_000.0, 99, 1), // tab 99 never navigates
+        nav(3, 10_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        focus(4, 11_000.0, 2, 1), // tab 2's page is non-http(s)
+        nav(5, 12_000.0, 2, 1, "chrome://newtab", "typed", &[]),
+        close(6, 20_000.0, 1),
+        close(7, 21_000.0, 2),
+    ];
+    let (map, _, _) = run_all(&events);
+    assert_eq!(total_fg(&map), 0, "unknown tab / non-http page: no credit");
+}
+
+/// `Start` (browser restart) clears all focus state: window/tab ids don't
+/// survive a restart, so attribution stays off until fresh focus events arrive.
+#[test]
+fn start_clears_focus_state() {
+    let events = vec![
+        nav(1, 1_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        wfocus(2, 2_000.0, 1),
+        focus(3, 3_000.0, 1, 1),
+        start(4, 10_000.0), // +7s to a.com, then everything resets
+        nav(5, 20_000.0, 1, 1, "https://b.com/", "typed", &[]), // same ids, no credit
+        close(6, 25_000.0, 1),
+    ];
+    let (map, _, _) = run_all(&events);
+    assert_eq!(node_fg(&map, "a.com"), 7_000);
+    assert_eq!(
+        node_fg(&map, "b.com"),
+        0,
+        "no phantom focus across a restart"
+    );
+}
+
+/// `has_focus_signal` marks exactly the UTC days a focus/wfocus event fell on;
+/// days with only navs (old captures) stay `false` — the "≈ estimate" UI cue.
+#[test]
+fn focus_signal_marks_only_days_with_focus_events() {
+    let d1 = 1_609_502_400_000.0; // 2021-01-01T12:00:00Z
+    let d2 = 1_609_588_800_000.0; // 2021-01-02T12:00:00Z
+    let events = vec![
+        nav(1, d1, 1, 1, "https://a.com/", "typed", &[]),
+        close(2, d1 + 1_000.0, 1),
+        nav(3, d2, 1, 1, "https://b.com/", "typed", &[]),
+        wfocus(4, d2 + 1_000.0, 1),
+        close(5, d2 + 2_000.0, 1),
+    ];
+    let (map, _, _) = run_all(&events);
+    assert!(
+        !map["2021-01-01"].has_focus_signal,
+        "nav-only day: no signal"
+    );
+    assert!(map["2021-01-02"].has_focus_signal, "wfocus day: signal");
+}
+
+/// Forward compat (§F7): an event `kind` this build doesn't know deserializes to
+/// `Event::Unknown` (instead of erroring the batch) and the fold skips it — the
+/// output equals the same stream without the unknown record.
+#[test]
+fn unknown_event_kinds_are_skipped_not_errors() {
+    let unknown: Event = serde_json::from_str(r#"{"kind":"gaze","id":2,"ts":1500,"intensity":9}"#)
+        .expect("unknown kind must deserialize, not error");
+    assert!(matches!(unknown, Event::Unknown));
+
+    let known = vec![
+        nav(1, 1_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        nav(3, 2_000.0, 1, 1, "https://b.com/", "link", &[]),
+        close(4, 3_000.0, 1),
+    ];
+    let mut with_unknown = known.clone();
+    with_unknown.insert(1, unknown);
+
+    let (m1, s1, st1) = run_all(&known);
+    let (m2, s2, st2) = run_all(&with_unknown);
+    assert_eq!(m1, m2, "skipped unknown must not change the rollup");
+    assert_eq!(s1, s2);
+    assert_eq!(
+        serde_json::to_value(&st1).unwrap(),
+        serde_json::to_value(&st2).unwrap()
+    );
+}
+
+/// The fg-attribution stream version of the §11 invariant: incremental fold
+/// (split + checkpoint round-trip) equals recompute at **every** split — in
+/// particular at splits landing *between* a wfocus/focus and the interval it
+/// governs, where the credit depends entirely on checkpointed state.
+#[test]
+fn fg_incremental_equals_recompute_at_every_split() {
+    let gap = 1_800_000.0;
+    let events = vec![
+        nav(1, 1_000.0, 1, 1, "https://a.com/", "typed", &[]),
+        wfocus(2, 2_000.0, 1),
+        focus(3, 3_000.0, 1, 1),
+        nav(4, 6_000.0, 2, 1, "https://b.com/", "typed", &[]), // background nav
+        focus(5, 9_000.0, 2, 1),                               // switch to b.com
+        wfocus(6, 12_000.0, -1),                               // browser blurs
+        wfocus(7, 20_000.0, 2),                                // focus second window
+        focus(8, 21_000.0, 3, 2),                              // tab with no node
+        nav(9, 25_000.0, 3, 2, "https://c.com/", "typed", &[]),
+        close(10, 30_000.0, 2), // close win-1's active tab
+        wfocus(11, 31_000.0, 1),
+        nav(
+            12,
+            31_000.0 + gap + 1.0,
+            1,
+            1,
+            "https://later.com/",
+            "typed",
+            &[],
+        ),
+        start(13, 32_000.0 + gap + 10.0), // restart clears focus state
+        nav(14, 33_000.0 + gap, 1, 1, "https://post.com/", "link", &[]),
+        close(15, 34_000.0 + gap, 1),
+    ];
+    let (m_all, s_all, st_all) = run_all(&events);
+    let st_all_v = serde_json::to_value(&st_all).unwrap();
+    for at in 0..=events.len() {
+        let (m_sp, s_sp, st_sp) = run_split(&events, at);
+        assert_eq!(m_all, m_sp, "fg rollup mismatch at split {at}");
+        assert_eq!(s_all, s_sp, "fg sessions mismatch at split {at}");
+        assert_eq!(
+            st_all_v,
+            serde_json::to_value(&st_sp).unwrap(),
+            "fg checkpoint mismatch at split {at}"
+        );
+    }
 }
 
 // ─────────────────── fold == recompute, at every split ───────────────────

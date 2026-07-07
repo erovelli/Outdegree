@@ -21,6 +21,12 @@ const FORWARD_BACK_NODE_VISIT: bool = false;
 
 /// Dispatch one event in global order (§7.3).
 pub fn step(state: &mut DeriveState, acc: &mut Acc, ev: &Event) {
+    // Foreground attribution (§F7): before this event mutates any state, credit the
+    // interval that just ended — `[last_event_ts, ev.ts]` — to whatever was focused
+    // *during* it (the state as it stood after the previous event). Reading the
+    // pre-event state is what makes crediting bit-identical across a watermark split.
+    credit_foreground(state, acc, ev.ts());
+
     match ev {
         Event::Start { ts, .. } => on_start(state, acc, *ts),
         Event::Close { ts, tab_id, .. } => on_close(state, acc, *tab_id as i64, *ts),
@@ -48,7 +54,62 @@ pub fn step(state: &mut DeriveState, acc: &mut Acc, ev: &Event) {
             transition_type,
             qualifiers,
         ),
+        Event::Focus {
+            ts,
+            tab_id,
+            window_id,
+            ..
+        } => on_focus(state, acc, *ts, *tab_id as i64, *window_id as i64),
+        Event::Wfocus { ts, window_id, .. } => on_wfocus(state, acc, *ts, *window_id as i64),
+        // Forward compat (§F7): unrecognized kinds are dropped before `step` (in
+        // `fold` and at the store boundary); this arm keeps the match exhaustive.
+        Event::Unknown => {}
     }
+
+    // Advance the foreground clock so the next event credits from here.
+    state.last_event_ts = Some(ev.ts());
+}
+
+/// Credit the interval `[last_event_ts, cur_ts]` of foreground time to the host
+/// currently loaded in the focused window's active tab (§F7). Credits nothing
+/// unless **all** hold: a focused window is known, it is not `-1` (browser
+/// blurred), that window has a known active tab, and that tab has a current
+/// http(s) page. The credit is clamped to `[0, IDLE_GAP_MS]` (a backward clock or
+/// an overnight-idle tab contributes 0 / the cap) and bucketed by the interval's
+/// start day, mirroring how gap-based dwell caps and buckets.
+fn credit_foreground(state: &DeriveState, acc: &mut Acc, cur_ts: f64) {
+    let Some(prev_ts) = state.last_event_ts else {
+        return; // no prior event → no interval to credit
+    };
+    let dt = (cur_ts - prev_ts).clamp(0.0, IDLE_GAP_MS) as u64;
+    if dt == 0 {
+        return; // zero / sub-ms / backward interval: nothing to credit
+    }
+    let Some(fw) = state.focused_window else {
+        return; // focus never observed
+    };
+    if fw < 0 {
+        return; // browser blurred (WINDOW_ID_NONE)
+    }
+    let Some(&tab) = state.active_tab.get(&fw) else {
+        return; // focused window's active tab unknown
+    };
+    let Some(ts) = state.tabs.get(&tab) else {
+        return; // that tab has no derived state (never navigated)
+    };
+    // The tab's on-screen page is its buffered nav (held for redirect lookahead),
+    // else its confirmed `last_url` — exactly the "current page" `on_link` uses.
+    let url = match &ts.buffer {
+        Some(b) => Some(b.to_url.as_str()),
+        None => ts.last_url.as_deref(),
+    };
+    let Some(url) = url else {
+        return; // no page yet
+    };
+    let Some(key) = node_key(url, GRAN) else {
+        return; // non-http(s): not graphed, credit nothing
+    };
+    acc.fg_credit(&utc_date(prev_ts), &key, dt);
 }
 
 /// `Start`: flush every tab's buffer, then clear all per-tab state and close all
@@ -65,6 +126,10 @@ fn on_start(state: &mut DeriveState, acc: &mut Acc, ts: f64) {
     }
     state.tabs.clear();
     state.pending_origin.clear();
+    // A restart invalidates every window/tab id, so drop all foreground state
+    // (§F7): attribution resumes only once a fresh focus/window-focus arrives.
+    state.active_tab.clear();
+    state.focused_window = None;
     // Sorted so multi-session close on restart emits in a deterministic order
     // (required for the fold == recompute invariant).
     let mut wins: Vec<i64> = state.open_sessions.keys().copied().collect();
@@ -86,6 +151,24 @@ fn on_close(state: &mut DeriveState, acc: &mut Acc, tab_id: i64, close_ts: f64) 
         }
     }
     state.pending_origin.remove(&tab_id);
+    // Closing the active tab stops foreground attribution for its window (§F7):
+    // drop the window→tab entry so intervals credit nothing until a new focus.
+    state.active_tab.retain(|_, &mut t| t != tab_id);
+}
+
+/// `Focus{tabId, windowId}` (`tabs.onActivated`): record that `tabId` is now the
+/// active tab of `windowId`, and mark the day as carrying a focus signal (§F7).
+/// It does not change which window is *focused* — only a window-focus event does.
+fn on_focus(state: &mut DeriveState, acc: &mut Acc, ts: f64, tab_id: i64, window_id: i64) {
+    state.active_tab.insert(window_id, tab_id);
+    acc.mark_focus_signal(&utc_date(ts));
+}
+
+/// `Wfocus{windowId}` (`windows.onFocusChanged`): record the focused window
+/// (`-1` = browser blurred), and mark the day as carrying a focus signal (§F7).
+fn on_wfocus(state: &mut DeriveState, acc: &mut Acc, ts: f64, window_id: i64) {
+    state.focused_window = Some(window_id);
+    acc.mark_focus_signal(&utc_date(ts));
 }
 
 /// `Link{newTabId, sourceTabId}`: snapshot the source's *current* page as the
