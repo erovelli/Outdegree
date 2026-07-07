@@ -27,8 +27,8 @@ const INTERACTIONS: [(&str, &str); 7] = [
 const SHORTCUTS: [(&str, &str); 6] = [
     ("⌘ / Ctrl-K", "Focus the host search"),
     ("Esc", "Close / clear focus"),
-    ("+ / −", "Zoom the graph"),
-    ("0 or F", "Fit the graph to screen"),
+    ("+ / −", "Zoom (when the graph is focused)"),
+    ("0 or F", "Fit to screen (when the graph is focused)"),
     (
         "← / →",
         "Step the time window (pans when the graph is focused)",
