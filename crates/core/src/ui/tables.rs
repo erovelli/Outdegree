@@ -293,13 +293,20 @@ fn host_span(host: &str) -> String {
 /// any of its day buckets saw a focus/window-focus event. Mirrors the window the
 /// projection uses (the session-scoped buckets for the Session range, else the
 /// anchored calendar window), so the dwell column matches what's on screen.
+///
+/// A bucket with credited foreground time also counts: attribution buckets on
+/// the interval-START day, so a focused session crossing midnight UTC can
+/// accrue fg_dwell on a day whose own focus events all landed the day before —
+/// real foreground time must not hide behind the "≈" estimate there.
 fn window_has_focus_signal(a: &App) -> bool {
     let window = if a.time_range == TimeRange::Session && !a.session_buckets.is_empty() {
         a.session_buckets.clone()
     } else {
         project::select_window(&a.buckets, a.time_range, super::anchor_end_day(a))
     };
-    window.iter().any(|b| b.has_focus_signal)
+    window
+        .iter()
+        .any(|b| b.has_focus_signal || b.nodes.values().any(|s| s.fg_dwell_ms > 0))
 }
 
 /// The "Time spent" cell for a host (§F7). With a focus signal in the window it
