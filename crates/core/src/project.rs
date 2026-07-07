@@ -196,6 +196,20 @@ pub fn window_label(range: TimeRange, start_day: i64, end_day: i64) -> String {
     }
 }
 
+/// Friendly UTC label for a `YYYY-MM-DD` bucket date (e.g. `"Jul 1, 2026"`), for
+/// the node inspector's first-seen / last-seen dates (§F8). Rendered in UTC to
+/// match the day-bucket boundaries the projection uses. Falls back to the raw
+/// string when it doesn't parse. Pure/testable.
+pub fn date_label(date: &str) -> String {
+    match day_number(date) {
+        Some(d) => {
+            let (y, m, day) = civil_from_days(d);
+            format!("{} {}, {}", MONTHS[(m - 1) as usize], day, y)
+        }
+        None => date.to_string(),
+    }
+}
+
 /// Whether ‹ (step one range duration earlier) is allowed: the window it would
 /// land on must still start on or after the earliest recorded day, so navigation
 /// clamps before the first data instead of scrolling into an unbounded void.
@@ -1406,6 +1420,14 @@ mod tests {
             window_label(TimeRange::Year, dn("2024-07-07"), dn("2025-07-06")),
             "Jul 7, 2024 – Jul 6, 2025"
         );
+    }
+
+    #[test]
+    fn date_label_formats_or_falls_back() {
+        assert_eq!(date_label("2026-07-01"), "Jul 1, 2026");
+        assert_eq!(date_label("2024-12-31"), "Dec 31, 2024");
+        // Unparseable input passes through unchanged.
+        assert_eq!(date_label("not-a-date"), "not-a-date");
     }
 
     #[test]

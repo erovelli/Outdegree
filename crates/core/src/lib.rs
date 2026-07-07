@@ -16,6 +16,7 @@ pub mod derive;
 pub mod export;
 pub mod flow;
 pub mod graph;
+pub mod inspect;
 pub mod interpret;
 pub mod layout;
 pub mod model;

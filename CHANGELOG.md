@@ -10,6 +10,25 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **Node inspector: "what's my relationship with this site?"** Selecting a graph
+  node (the existing click-to-drill) now also opens a right-docked detail panel —
+  one state with the drill-down focus, so Esc / ✕ / clicking the node again closes
+  both. Scoped to the displayed window and filters, it shows the host with its
+  provenance-colored marker (and, in Domain mode, how many hostnames it aggregates),
+  a stat row (visits, time spent — honoring the same foreground/**≈** convention as
+  the Tables "Time spent" column, and share of window visits), first/last-seen
+  dates, a per-site daily-visits sparkline, its top "Came from" / "Went to"
+  connections (each row re-focuses the graph + inspector), and a footer that routes
+  to the existing confirm-and-forget flow for this site (on completion the host is
+  gone, focus clears, and the panel closes). "Top pages" (the most-visited URLs
+  within the host, path + truncated query) and — when "Show search terms" is on and
+  the host is a recognized search engine — its top query terms fill asynchronously
+  from a **bounded** events-store scan (the session's id-range for the Session
+  range, else the newest ≤20,000 events intersecting the window), cached per
+  (node, window, granularity) so stepping windows never shows stale URLs and never
+  blocks the render loop. Clicking a host cell in the Tables view opens the same
+  inspector via the same focus path. Still 100% local — the scan only reads events
+  already in your own store.
 - **Foreground attention: focused time per site, not just navigation gaps.** The
   service worker now records two new (id-only) event kinds in the same global
   stream: `focus` from `tabs.onActivated` (which tab is on-screen in a window)

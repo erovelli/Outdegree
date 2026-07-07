@@ -235,8 +235,9 @@ fn stats_html(
 }
 
 /// A small achromatic daily-visits sparkline (SVG polyline). Empty for fewer than
-/// two points (Session/Day, or a single-bucket window) — nothing to trend.
-fn sparkline_html(series: &[(String, u32)]) -> String {
+/// two points (Session/Day, or a single-bucket window) — nothing to trend. Shared
+/// with the node inspector's per-host sparkline (§F8).
+pub(super) fn sparkline_html(series: &[(String, u32)]) -> String {
     if series.len() < 2 {
         return String::new();
     }
@@ -298,22 +299,18 @@ fn host_span(host: &str) -> String {
 /// the interval-START day, so a focused session crossing midnight UTC can
 /// accrue fg_dwell on a day whose own focus events all landed the day before —
 /// real foreground time must not hide behind the "≈" estimate there.
-fn window_has_focus_signal(a: &App) -> bool {
-    let window = if a.time_range == TimeRange::Session && !a.session_buckets.is_empty() {
-        a.session_buckets.clone()
-    } else {
-        project::select_window(&a.buckets, a.time_range, super::anchor_end_day(a))
-    };
-    window
+pub(super) fn window_has_focus_signal(a: &App) -> bool {
+    super::displayed_window(a)
         .iter()
         .any(|b| b.has_focus_signal || b.nodes.values().any(|s| s.fg_dwell_ms > 0))
 }
 
-/// The "Time spent" cell for a host (§F7). With a focus signal in the window it
-/// shows real foreground time; without one, the gap-based estimate prefixed "≈".
-/// Either way a `title` tooltip explains which is shown. Sub-second values read
-/// "—" (too little attention to be meaningful).
-fn time_spent_cell(has_signal: bool, est_ms: u64, fg_ms: u64) -> String {
+/// The dwell display for a host given whether the window carries a focus signal
+/// (§F7): with signal, real foreground time; without one, the gap-based estimate
+/// prefixed "≈". Returns `(text, tooltip)`; sub-second values read "—" (too little
+/// attention to be meaningful). The one place the fg/≈ convention is defined, so the
+/// Tables "Time spent" column and the node inspector (§F8) stay consistent.
+pub(super) fn dwell_display(has_signal: bool, est_ms: u64, fg_ms: u64) -> (String, &'static str) {
     let (ms, prefix, title) = if has_signal {
         (
             fg_ms,
@@ -333,6 +330,12 @@ fn time_spent_cell(has_signal: bool, est_ms: u64, fg_ms: u64) -> String {
     } else {
         "—".to_string()
     };
+    (text, title)
+}
+
+/// The "Time spent" table cell for a host — [`dwell_display`] wrapped in a `<td>`.
+fn time_spent_cell(has_signal: bool, est_ms: u64, fg_ms: u64) -> String {
+    let (text, title) = dwell_display(has_signal, est_ms, fg_ms);
     format!(
         "<td class=\"num\" title=\"{}\">{}</td>",
         esc(title),

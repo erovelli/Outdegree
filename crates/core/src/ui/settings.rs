@@ -211,14 +211,7 @@ pub(super) fn settings_popover(doc: &Document, shared: &Shared) -> Element {
                         );
                         return false;
                     }
-                    let db = s2.borrow().db.clone();
-                    let s3 = s2.clone();
-                    wasm_bindgen_futures::spawn_local(async move {
-                        if let Err(e) = db.forget_domain(&domain).await {
-                            return super::log_err(&e);
-                        }
-                        reload_and_rerender(&s3);
-                    });
+                    run_forget(&s2, domain);
                     true
                 },
             );
@@ -389,6 +382,48 @@ pub(super) fn close_popover(shared: &Shared) {
     if let Some(g) = doc.get_element_by_id("bg-gear") {
         let _ = g.set_attribute("aria-expanded", "false");
     }
+}
+
+/// Permanently forget every record for `domain` (hostname or registrable), then
+/// re-derive and re-render (§8). Shared by the settings-menu "Forget domain…" entry
+/// (which prompts for the domain) and the node inspector footer (which already
+/// knows it, [`forget_domain_confirm`]).
+pub(super) fn run_forget(shared: &Shared, domain: String) {
+    let db = shared.borrow().db.clone();
+    let s = shared.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Err(e) = db.forget_domain(&domain).await {
+            return super::log_err(&e);
+        }
+        reload_and_rerender(&s);
+    });
+}
+
+/// Open the confirm-and-delete "Forget this site" flow for a *known* host/domain —
+/// the node inspector footer (§F8). No text entry (the domain is already known):
+/// just a danger-confirm that runs the same [`run_forget`] path. On confirm the
+/// host's records are removed and the graph rebuilds; the now-missing drill-down
+/// focus clears, which closes the inspector panel — the "panel closes on
+/// completion" behavior the spec asks for, with no extra wiring.
+pub(super) fn forget_domain_confirm(shared: &Shared, domain: &str) {
+    let domain = domain.to_string();
+    let s = shared.clone();
+    confirm_dialog(
+        shared,
+        "Forget this site",
+        &format!(
+            "Permanently remove every stored record for {domain}, then rebuild. \
+             This can't be undone."
+        ),
+        None,
+        "Forget",
+        true,
+        None,
+        move |_| {
+            run_forget(&s, domain.clone());
+            true
+        },
+    );
 }
 
 // ── data stewardship: storage readout · export · backup nudge (§8) ────────────

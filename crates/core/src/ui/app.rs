@@ -9,6 +9,7 @@ use super::chrome::{
     brand_panel, focus_panel, legend_panel, range_panel, readout_panel, search_panel, view_panel,
     zoom_panel,
 };
+use super::inspector::inspector_panel;
 use super::settings::{nudge_panel, settings_popover};
 use super::shortcuts::{install_palette_shortcut, install_popover_dismiss};
 use super::{el, on, Shared, View};
@@ -61,6 +62,7 @@ pub(crate) fn build_shell(shared: &Shared) -> Result<(), JsValue> {
     let _ = root.append_child(&search_panel(&doc, shared));
     let _ = root.append_child(&readout_panel(&doc));
     let _ = root.append_child(&focus_panel(&doc, shared));
+    let _ = root.append_child(&inspector_panel(&doc, shared));
     let _ = root.append_child(&nudge_panel(&doc, shared));
     let _ = root.append_child(&settings_popover(&doc, shared));
     install_palette_shortcut(shared);
