@@ -56,9 +56,15 @@ Every CI run (`.github/workflows/ci.yml`) gates the build on two bespoke audits:
 
 1. **Manifest privacy audit** — runs against the *emitted* `dist/manifest.json`
    (not just source), failing the build if `host_permissions` is non-empty, if
-   permissions stray outside `{ webNavigation, storage, unlimitedStorage }`, if
-   the CSP loses `connect-src 'none'`, if `incognito` isn't `not_allowed`, or if
-   content scripts / web-accessible resources appear.
+   permissions stray outside `{ webNavigation, storage, unlimitedStorage,
+   favicon }`, if the CSP loses `connect-src 'none'`, if `incognito` isn't
+   `not_allowed`, or if content scripts / web-accessible resources appear.
+   `favicon` is the only permission ever added and it grants **zero network
+   capability** — it reads Chrome's *local* favicon cache from the extension's
+   own origin, no fetch, no host access (the full trade is documented in
+   [ADR-0006](docs/adr/0006-favicon-permission.md)). The **Firefox** artifact is
+   audited against the original **three**-permission allowlist — the overlay
+   strips `favicon` (Chromium-only), and CI fails if it ever leaks back in.
 2. **Network-surface audit** — greps the built `dist/` bundle for
    `fetch`/`XMLHttpRequest`/`WebSocket`/`EventSource`/`sendBeacon`/`importScripts`
    and for any external `http(s)://` URL, failing the build if any are present.

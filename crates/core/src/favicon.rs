@@ -1,7 +1,7 @@
 //! Favicon support (§F12): pure URL construction for Chrome's LOCAL favicon
 //! service plus the decoded-icon cache policy. Kept in the **pure** core (compiles
 //! native + wasm32, no `web-sys`) so both the URL builder and the cache
-//! eviction/no-retry policy are exercised under `cargo test`. The wasm shell
+//! capacity/no-retry policy are exercised under `cargo test`. The wasm shell
 //! (`render::canvas2d` + `ui`) instantiates the cache over `HtmlImageElement`.
 //!
 //! **Audit interaction (the whole reason this lives here).** The favicon service
@@ -23,11 +23,14 @@
 //! The net effect: the dist network-surface grep stays at exactly **zero** matches
 //! without weakening the audit (verified in CI + by the F12 audit-bite check).
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 /// Decoded-icon cache capacity (host → image). Bounds memory on a very large
-/// graph; ~512 comfortably covers any projection the dashboard draws at once, and
-/// the least-recently-*inserted* host is evicted past the cap ([`IconCache`]).
+/// graph; ~512 comfortably covers any projection the dashboard draws at once.
+/// Slots are first-come-first-served and **never evicted** ([`IconCache`]): past
+/// the cap, further hosts simply keep their provenance shapes for the session —
+/// the trade that guarantees a steady state with zero per-frame load work (see
+/// the churn note on [`IconCache`]).
 pub const CACHE_CAP: usize = 512;
 
 /// Build the favicon URL for `host` at `size` (16, or 32 for HiDPI) against the
@@ -86,20 +89,29 @@ pub enum Slot<T> {
     Failed,
 }
 
-/// A bounded, insertion-ordered host→icon cache with a **load-once, never-retry**
-/// policy (§F12). Any present host — `Loading`, `Ready`, *or* `Failed` — is left
-/// alone by [`begin`](Self::begin), so a frame never restarts a load it already
-/// tried. Past `cap` entries the least-recently-*inserted* host is evicted; an
-/// in-flight image whose slot was evicted resolves into nothing (its
-/// [`set_ready`](Self::set_ready) becomes a no-op), which is harmless.
+/// A bounded host→icon cache with a **load-once, never-retry** policy (§F12).
+/// Any present host — `Loading`, `Ready`, *or* `Failed` — is left alone by
+/// [`begin`](Self::begin), so a frame never restarts a load it already tried.
 ///
-/// Kept generic over `T` so the eviction + no-retry policy is unit-tested natively
-/// (with `T = u32`), independent of `HtmlImageElement`.
+/// **Churn guard: slots are first-come-first-served and NEVER evicted.** At
+/// capacity, [`begin`](Self::begin) refuses new hosts (returns `false` without
+/// inserting). Eviction was rejected deliberately: with more than `cap`
+/// icon-qualifying hosts visible at once, evict-on-insert would make every frame
+/// re-report the evicted-but-visible hosts as misses → re-begin → evict *other*
+/// visible hosts → a perpetual load/repaint loop. Refusing instead makes the
+/// session's total load count provably ≤ `cap`: [`len`](Self::len) is
+/// monotonically non-decreasing, bounded by `cap`, and `begin` returns `true`
+/// only when it grows it — so once every reserved slot has resolved
+/// (`Ready`/`Failed`, each exactly once), **no frame can ever start another load**
+/// regardless of how many nodes are visible. Hosts beyond the first `cap`
+/// distinct sightings keep their provenance shapes for the session (the designed
+/// degradation; `CACHE_CAP` comfortably exceeds any legible projection).
+///
+/// Kept generic over `T` so the capacity + no-retry policy is unit-tested
+/// natively (with `T = u32`), independent of `HtmlImageElement`.
 #[derive(Debug, Default)]
 pub struct IconCache<T> {
     map: HashMap<String, Slot<T>>,
-    /// Insertion order, for capacity eviction (oldest at the front).
-    order: VecDeque<String>,
     cap: usize,
 }
 
@@ -108,14 +120,13 @@ impl<T> IconCache<T> {
     pub fn new(cap: usize) -> Self {
         IconCache {
             map: HashMap::new(),
-            order: VecDeque::new(),
             cap: cap.max(1),
         }
     }
 
-    /// Whether `host` has a slot (any state). A frame that sees `false` should
-    /// [`begin`](Self::begin) a load; `true` means the load-once policy already
-    /// covers it.
+    /// Whether `host` has a slot (any state). A frame that sees `false` may
+    /// [`begin`](Self::begin) a load (subject to capacity); `true` means the
+    /// load-once policy already covers it.
     pub fn contains(&self, host: &str) -> bool {
         self.map.contains_key(host)
     }
@@ -128,32 +139,27 @@ impl<T> IconCache<T> {
         }
     }
 
-    /// Reserve a `Loading` slot for `host`, evicting the oldest entry when at
-    /// capacity. Returns `true` if a **new** load should start; `false` when a slot
-    /// already exists (load-once / never-retry — including a prior `Failed`).
+    /// Reserve a `Loading` slot for `host`. Returns `true` if a **new** load
+    /// should start; `false` when a slot already exists (load-once / never-retry —
+    /// including a prior `Failed`) **or the cache is at capacity** (the churn
+    /// guard: no eviction, no re-request — see the type-level note).
     pub fn begin(&mut self, host: &str) -> bool {
-        if self.map.contains_key(host) {
+        if self.map.contains_key(host) || self.map.len() >= self.cap {
             return false;
         }
-        if self.map.len() >= self.cap {
-            if let Some(old) = self.order.pop_front() {
-                self.map.remove(&old);
-            }
-        }
         self.map.insert(host.to_string(), Slot::Loading);
-        self.order.push_back(host.to_string());
         true
     }
 
-    /// Mark a completed load. A no-op if the slot was evicted meanwhile (the load
-    /// resolved after the host fell out of the cache).
+    /// Mark a completed load. A no-op for an unknown host (defensive; slots are
+    /// never removed, so a reserved host is always present).
     pub fn set_ready(&mut self, host: &str, image: T) {
         if let Some(slot) = self.map.get_mut(host) {
             *slot = Slot::Ready(image);
         }
     }
 
-    /// Mark a failed load (never retried while the slot lives). No-op if evicted.
+    /// Mark a failed load (never retried this session). No-op for an unknown host.
     pub fn set_failed(&mut self, host: &str) {
         if let Some(slot) = self.map.get_mut(host) {
             *slot = Slot::Failed;
@@ -168,6 +174,13 @@ impl<T> IconCache<T> {
     /// Whether the cache is empty.
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
+    }
+
+    /// How many more hosts [`begin`](Self::begin) would accept. The renderer uses
+    /// this to bound its per-frame miss collection — at `0` it collects nothing,
+    /// so a full cache costs a saturated graph zero allocations per frame.
+    pub fn remaining(&self) -> usize {
+        self.cap.saturating_sub(self.map.len())
     }
 }
 
@@ -237,31 +250,83 @@ mod tests {
     }
 
     #[test]
-    fn cache_evicts_oldest_past_capacity() {
+    fn cache_refuses_new_hosts_at_capacity_without_evicting() {
+        // The churn guard: at capacity, begin() must neither insert nor evict —
+        // otherwise >cap visible hosts would thrash slots forever (see the type doc).
         let mut c: IconCache<u32> = IconCache::new(2);
-        c.begin("a");
-        c.begin("b");
-        assert_eq!(c.len(), 2);
-        c.begin("c"); // evicts "a" (oldest)
-        assert_eq!(c.len(), 2);
-        assert!(!c.contains("a"));
-        assert!(c.contains("b"));
-        assert!(c.contains("c"));
-        // "a" fell out, so it's a fresh sighting again (a bounded, best-effort retry
-        // only after eviction — never a per-frame retry).
         assert!(c.begin("a"));
+        assert!(c.begin("b"));
+        assert_eq!(c.len(), 2);
+        assert_eq!(c.remaining(), 0);
+        assert!(!c.begin("c"), "at capacity, a new host must be refused");
+        assert_eq!(c.len(), 2);
+        assert!(c.contains("a") && c.contains("b"), "no eviction ever");
+        assert!(!c.contains("c"));
+        // Refused hosts stay refused — repeat frames never squeeze one in.
+        assert!(!c.begin("c"));
+        // Slots resolving does NOT free capacity (slots are per-session, not LRU).
+        c.set_ready("a", 1);
+        c.set_failed("b");
+        assert!(!c.begin("c"));
     }
 
     #[test]
-    fn set_ready_after_eviction_is_a_noop() {
+    fn set_ready_on_unknown_host_is_a_noop() {
+        // Defensive: resolving a host that never got a slot must not create one.
         let mut c: IconCache<u32> = IconCache::new(1);
-        c.begin("a");
-        c.begin("b"); // evicts "a"
-        c.set_ready("a", 1); // "a" is gone — must not resurrect it
-        assert!(!c.contains("a"));
-        assert_eq!(c.ready("a"), None);
-        // "b" is still Loading and can complete normally.
-        c.set_ready("b", 2);
-        assert_eq!(c.ready("b"), Some(&2));
+        c.set_ready("ghost", 1);
+        c.set_failed("phantom");
+        assert!(c.is_empty());
+        assert_eq!(c.ready("ghost"), None);
+    }
+
+    #[test]
+    fn steady_state_no_loads_once_reachable_slots_resolve() {
+        // The property the churn guard exists for (§F12 review fix): with ANY number
+        // of visible hosts — here 3× the cap — the per-frame loop reaches a steady
+        // state where no frame starts a load once every reachable slot has resolved.
+        const CAP: usize = 8;
+        let hosts: Vec<String> = (0..CAP * 3).map(|i| format!("h{i}.example")).collect();
+        let mut c: IconCache<u32> = IconCache::new(CAP);
+
+        // Frame 1: simulate the renderer — every uncached visible host is a miss,
+        // bounded by remaining capacity (mirrors draw()'s budget); each miss begins.
+        let mut started_total = 0;
+        let misses: Vec<&String> = hosts
+            .iter()
+            .filter(|h| !c.contains(h))
+            .take(c.remaining())
+            .collect();
+        for h in misses {
+            if c.begin(h) {
+                started_total += 1;
+            }
+        }
+        assert_eq!(started_total, CAP, "first frame fills exactly cap slots");
+
+        // All in-flight loads resolve (mix of success and failure).
+        for (i, h) in hosts.iter().take(CAP).enumerate() {
+            if i % 2 == 0 {
+                c.set_ready(h, i as u32);
+            } else {
+                c.set_failed(h);
+            }
+        }
+
+        // Frames 2..=10: same visible set every frame. Steady state: the budget is
+        // zero, so no misses are even collected — and begin() would refuse anyway.
+        // Two phases per frame (collect, then begin), exactly like the renderer.
+        for _ in 0..9 {
+            let budget = c.remaining();
+            assert_eq!(budget, 0, "a full cache advertises no capacity");
+            let misses: Vec<&String> = hosts
+                .iter()
+                .filter(|h| !c.contains(h))
+                .take(budget)
+                .collect();
+            let started = misses.into_iter().filter(|h| c.begin(h)).count();
+            assert_eq!(started, 0, "no frame after saturation may start a load");
+        }
+        assert_eq!(c.len(), CAP, "slot count is monotone and capped — no churn");
     }
 }

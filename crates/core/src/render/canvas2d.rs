@@ -341,9 +341,13 @@ fn fmt_dwell(ms: u64) -> String {
 /// `icons` is the decoded-favicon cache (§F12), or `None` when site icons are off
 /// (the setting, or an unsupported browser) — then no icon is drawn and no miss is
 /// reported. Returns the hosts that qualified for an icon (on-screen, at/above the
-/// LOD zoom, disc ≥ [`MIN_ICON_RADIUS`]) but had **no cache slot yet**, so the
-/// caller can kick off their loads. Drawing never blocks on decode: the provenance
-/// shape is drawn now; the icon appears on a later frame once it decodes.
+/// LOD zoom, disc ≥ [`MIN_ICON_RADIUS`]) but had **no cache slot yet**, capped at
+/// the cache's [`remaining`](IconCache::remaining) capacity, so the caller can
+/// kick off their loads. The cap is the churn guard: the cache never evicts, so a
+/// saturated cache yields an empty miss list every frame — with any number of
+/// visible nodes, load work reaches a steady state of zero once all reachable
+/// slots resolve. Drawing never blocks on decode: the provenance shape is drawn
+/// now; the icon appears on a later frame once it decodes.
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ctx: &CanvasRenderingContext2d,
@@ -360,7 +364,13 @@ pub fn draw(
 ) -> Vec<String> {
     // Hosts drawn this frame that want an icon but have no cache slot yet — returned
     // so the caller starts their (load-once) loads. Empty when `icons` is `None`.
+    // Bounded by the cache's remaining capacity (the §F12 churn guard): the cache
+    // never evicts, so a saturated cache has budget 0 — this stays empty, no per-
+    // frame allocation, and no load can ever start again. With any number of
+    // visible nodes the system therefore reaches a steady state once all reachable
+    // slots have resolved.
     let mut icon_misses: Vec<String> = Vec::new();
+    let mut icon_budget: usize = icons.map(|c| c.remaining()).unwrap_or(0);
 
     draw_backdrop(ctx, w, h, cam);
 
@@ -508,16 +518,20 @@ pub fn draw(
             // is big enough for a legible icon. The provenance shape/color underneath
             // stays the data channel — the icon sits centered inside, leaving a
             // colored ring — so the single-hue data encoding is preserved. Uncached
-            // hosts are recorded as misses (the caller loads them, load-once); the
-            // shape already drawn stands in until the icon decodes on a later frame,
-            // or forever on error / when the host has no cached icon.
+            // hosts are recorded as misses (the caller loads them, load-once), but
+            // only within `icon_budget` — the cache's remaining capacity — so a
+            // saturated cache reports nothing and per-frame work goes to zero (the
+            // churn guard; see `IconCache`). The shape already drawn stands in until
+            // the icon decodes on a later frame, or forever on error / no cached
+            // icon / an over-budget host.
             if let Some(cache) = icons {
                 if !lod && r >= MIN_ICON_RADIUS {
                     match cache.ready(&n.key) {
                         Some(img) => draw_favicon(ctx, img, x, y, r, alpha),
                         None => {
-                            if !cache.contains(&n.key) {
+                            if icon_budget > 0 && !cache.contains(&n.key) {
                                 icon_misses.push(n.key.clone());
+                                icon_budget -= 1;
                             }
                         }
                     }

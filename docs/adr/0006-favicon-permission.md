@@ -93,7 +93,15 @@ keeps the audit at a hard zero, which is strictly safer.
   off the render loop into a bounded, load-once/never-retry cache
   (`IconCache`, cap ~512): the provenance shape is drawn immediately and the icon
   appears on a later frame once decoded. A host with no cached icon, or a load
-  error, keeps its shape forever (never retried this session).
+  error, keeps its shape forever (never retried this session). Cache slots are
+  first-come-first-served and **never evicted**: at capacity the renderer stops
+  collecting misses (its per-frame miss list is capped at the cache's remaining
+  capacity) and `begin` refuses new hosts, so total loads per session are provably
+  ≤ the cap. Even with more visible icon-qualifying hosts than slots, the system
+  reaches a steady state with **zero** per-frame load work once all reachable
+  slots resolve — eviction would instead thrash slots among visible hosts forever
+  (miss → evict → re-miss). Hosts beyond the first ~512 distinct sightings keep
+  their provenance shapes for the session: the designed degradation.
 - **HTML:** a 16px `alt=""` `loading="lazy"` `<img>` leads the host name in Tables
   cells, session-list cards, and the inspector header. A page-level **capturing**
   `error` listener adds a CSS-hidden `.is-broken` class (resource `error` events

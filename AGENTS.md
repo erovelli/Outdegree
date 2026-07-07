@@ -128,6 +128,8 @@ that breaks any of them will fail CI and must never ship.
 - NO content_scripts, NO web_accessible_resources, NO remotely-hosted code.
 - The Public Suffix List stays embedded at compile time (no runtime fetch).
 - The single OKLCH provenance hue is the only data color (design constraint).
+  Favicons (F12) are identity marks, not a data-color channel — the provenance
+  ring/shape around each icon stays the data encoding (ADR-0006).
 ```
 
 The `favicon` permission (added in F12, [ADR-0006](docs/adr/0006-favicon-permission.md))

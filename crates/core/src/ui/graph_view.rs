@@ -351,6 +351,9 @@ fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
         )
     };
     // Start a load per newly-seen host (load-once, enforced by the cache's `begin`).
+    // `misses` is already capped at the cache's remaining capacity (the §F12 churn
+    // guard): the cache never evicts, so once it saturates this list is empty on
+    // every subsequent frame — no repeat loads, rAF repaints, or image allocations.
     // 32px on HiDPI for crispness, 16px otherwise — the size the spec calls for.
     if !misses.is_empty() {
         let size = if dpr() > 1.0 { 32 } else { 16 };

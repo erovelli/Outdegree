@@ -52,8 +52,14 @@ merged:
 
 - Adds any network call (`fetch`/`XHR`/`WebSocket`/`EventSource`/`sendBeacon`/
   `importScripts`/remote `import()`), telemetry, or analytics.
-- Widens `permissions` beyond `{ webNavigation, storage, unlimitedStorage }`, adds
-  `host_permissions`, content scripts, or web-accessible resources.
+- Widens `permissions` beyond `{ webNavigation, storage, unlimitedStorage,
+  favicon }` (the Chrome allowlist; the Firefox artifact is audited against the
+  original **three** — its overlay strips the Chromium-only `favicon`), adds
+  `host_permissions`, content scripts, or web-accessible resources. Any
+  **further** widening fails CI on the spot. `favicon` is the one deliberate,
+  documented addition — it reads Chrome's *local* favicon cache with zero network
+  capability; see [ADR-0006](docs/adr/0006-favicon-permission.md) before touching
+  anything near it.
 - Loosens the CSP (`connect-src 'none'` must stay) or `incognito: "not_allowed"`.
 
 See [SECURITY.md](SECURITY.md) and
