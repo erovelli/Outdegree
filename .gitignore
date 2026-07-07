@@ -25,6 +25,10 @@ node_modules
 dist
 *.tsbuildinfo
 
+# Firefox overlay build + web-ext package output (generated from dist/)
+dist-firefox
+web-ext-artifacts
+
 # Vitest coverage output
 coverage
 
