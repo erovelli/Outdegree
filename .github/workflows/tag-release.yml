@@ -1,0 +1,42 @@
+name: Tag release
+
+# Creates the release tag server-side. Exists because remote coding sessions
+# push over a credential that allows branch refs but not tags — so "cut a
+# release" from such a session is: merge the version-bump PR, dispatch this on
+# main to mint v<package.json version> at HEAD, then dispatch the Release
+# workflow on that new tag (a GITHUB_TOKEN-created tag does not fire Release's
+# tag-push trigger — GitHub's workflow-recursion guard).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the tag ref
+
+jobs:
+  tag:
+    name: Create v<version> tag at HEAD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create tag from package.json version
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const version = require('./package.json').version;
+            const tag = `v${version}`;
+            try {
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/tags/${tag}`,
+                sha: context.sha,
+              });
+              core.notice(`Created ${tag} at ${context.sha}. Now dispatch the Release workflow on the ${tag} tag.`);
+            } catch (e) {
+              if (e.status === 422) {
+                core.setFailed(`${tag} already exists — bump package.json before tagging.`);
+              } else {
+                throw e;
+              }
+            }
