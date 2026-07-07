@@ -10,6 +10,26 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **Firefox & Edge distribution.** The same compiled bundle now targets all three
+  browsers. **Edge** (Chromium) is a drop-in — the existing `dist/` / release zip
+  loads unmodified. **Firefox** gets a dedicated overlay build:
+  `npm run build:firefox` copies the audited `dist/` to `dist-firefox/` and rewrites
+  **only** the manifest with exactly two Firefox-only deltas — `background.scripts`
+  (shipped alongside the Chrome `service_worker`, so each browser reads the key it
+  supports) and `browser_specific_settings.gecko` (`id` +
+  `strict_min_version: "121.0"`) — with no source changes and no privacy
+  relaxation, then runs `web-ext lint`; `npm run package:firefox` zips it. A new CI
+  `firefox` job builds the overlay, lints it (failing on lint errors; the handful of
+  known-acceptable warnings are documented in `docs/PORTING.md`), and points the
+  **identical** manifest privacy audit at `dist-firefox/manifest.json` — the two
+  deltas never touch the audited keys (`host_permissions`, `permissions`,
+  `incognito`, CSP, `content_scripts`, `web_accessible_resources`), so it passes
+  unchanged. `release.yml` overlays the same deltas onto the optimized `dist/` and
+  attaches `outdegree-firefox-vX.Y.Z.zip` to the GitHub Release beside the
+  Chrome/Edge zip (both build-provenance-attested); AMO submission stays manual.
+  `web-ext` is a **devDependency only** — nothing from it enters the shipped
+  bundle, and the Chrome `dist/` stays byte-identical to before. See
+  [`docs/PORTING.md`](docs/PORTING.md).
 - **Help overlay and a keyboard-accessibility pass.** Pressing **?** anywhere
   outside a text field (or the settings menu's new **Help & shortcuts** item)
   opens a terse, two-column glass reference card — **Interactions** (click node =
