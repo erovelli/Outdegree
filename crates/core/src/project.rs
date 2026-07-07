@@ -254,6 +254,7 @@ pub fn project(buckets: &[DayBucket], gran: Granularity, filters: &Filters) -> G
             let e = nodes.entry(k.clone()).or_default();
             e.visits += n.visits;
             e.dwell_ms += n.dwell_ms;
+            e.fg_dwell_ms += n.fg_dwell_ms;
             e.prov.merge(&n.prov);
         }
         for (k, ed) in &b.edges {
@@ -272,6 +273,7 @@ pub fn project(buckets: &[DayBucket], gran: Granularity, filters: &Filters) -> G
             let e = rn.entry(registrable(&k)).or_default();
             e.visits += n.visits;
             e.dwell_ms += n.dwell_ms;
+            e.fg_dwell_ms += n.fg_dwell_ms;
             e.prov.merge(&n.prov);
         }
         nodes = rn;
@@ -317,6 +319,7 @@ pub fn project(buckets: &[DayBucket], gran: Granularity, filters: &Filters) -> G
             visits: n.visits,
             prov: n.prov,
             dwell_ms: n.dwell_ms,
+            fg_dwell_ms: n.fg_dwell_ms,
         })
         .collect();
     node_vec.sort_by(|a, b| b.visits.cmp(&a.visits).then_with(|| a.key.cmp(&b.key)));

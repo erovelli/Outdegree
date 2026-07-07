@@ -185,6 +185,12 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
 
     let db = Rc::new(store::open().await?);
 
+    // Derived-schema reconcile (§F7): if this install's cached checkpoint/rollups
+    // predate the current fold (e.g. an upgrade that added foreground-dwell/focus
+    // state), invalidate them so the fold below rebuilds from raw exactly once. A
+    // no-op on an already-current install.
+    db.reconcile_derived_schema().await?;
+
     // Incremental fold: read the checkpoint, fold id > watermark, persist.
     let (watermark, mut state) = db.read_cursor().await?;
     let new_events = db.read_events_after(watermark).await?;

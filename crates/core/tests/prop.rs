@@ -85,6 +85,15 @@ enum Spec {
         tab: i64,
     },
     Start,
+    /// Tab activation (§F7): `tab` becomes the active tab of `win`.
+    Focus {
+        tab: i64,
+        win: i64,
+    },
+    /// Window focus change (§F7); `win == -1` = browser blurred (WINDOW_ID_NONE).
+    Wfocus {
+        win: i64,
+    },
 }
 
 fn spec() -> impl Strategy<Value = Spec> {
@@ -94,6 +103,12 @@ fn spec() -> impl Strategy<Value = Spec> {
         2 => (1i64..5, 1i64..5).prop_map(|(new_tab, src_tab)| Spec::Link { new_tab, src_tab }),
         2 => (1i64..5).prop_map(|tab| Spec::Close { tab }),
         1 => Just(Spec::Start),
+        // Foreground-attention events (§F7), interleaved with everything above so
+        // fg-credit intervals can straddle any watermark split. Focus can name tabs
+        // that never navigate (no node → credit nothing); wfocus includes -1
+        // (browser blurred) alongside real window ids.
+        3 => (1i64..5, 1i64..3).prop_map(|(tab, win)| Spec::Focus { tab, win }),
+        2 => prop_oneof![1 => Just(-1i64), 2 => 1i64..3].prop_map(|win| Spec::Wfocus { win }),
     ]
 }
 
@@ -144,6 +159,17 @@ fn build(specs: Vec<(Spec, i64)>) -> Vec<Event> {
                 tab_id: tab as f64,
             },
             Spec::Start => Event::Start { id, ts: tsf },
+            Spec::Focus { tab, win } => Event::Focus {
+                id,
+                ts: tsf,
+                tab_id: tab as f64,
+                window_id: win as f64,
+            },
+            Spec::Wfocus { win } => Event::Wfocus {
+                id,
+                ts: tsf,
+                window_id: win as f64,
+            },
         };
         out.push(ev);
     }

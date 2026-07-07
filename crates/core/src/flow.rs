@@ -355,6 +355,9 @@ pub fn from_session_events(events: &[Event], gran: Granularity) -> FlowGraph {
                     }
                 }
             }
+            // Focus events carry no navigation; unrecognized kinds are skipped
+            // (§F7 forward compat). Neither changes the flow.
+            Event::Focus { .. } | Event::Wfocus { .. } | Event::Unknown => {}
             Event::Nav {
                 tab_id,
                 to_url,
@@ -524,6 +527,9 @@ pub fn session_chains(events: &[Event], gran: Granularity) -> Vec<Vec<String>> {
                     flush(&mut cur, &mut out, t);
                 }
             }
+            // Focus events carry no navigation; unrecognized kinds are skipped
+            // (§F7 forward compat). Neither changes a chain.
+            Event::Focus { .. } | Event::Wfocus { .. } | Event::Unknown => {}
             Event::Nav {
                 tab_id,
                 to_url,

@@ -17,9 +17,11 @@ import {
   closeRecord,
   findDashboardTab,
   flagOn,
+  focusRecord,
   linkRecord,
   navRecord,
   startRecord,
+  wfocusRecord,
   type DashboardTabRef,
   type NavDetail,
 } from "./capture";
@@ -143,6 +145,21 @@ chrome.webNavigation.onCreatedNavigationTarget.addListener((d) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (paused) return;
   return enqueue(() => idbAdd("events", closeRecord(tabId, Date.now())));
+});
+
+// Tab activation → "focus" (§F7): which tab is on-screen in a window. Ids only
+// (no URL/title), no new permission; the derive layer attributes foreground
+// time by joining it to the tab's already-captured page.
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  if (paused) return;
+  return enqueue(() => idbAdd("events", focusRecord(activeInfo, Date.now())));
+});
+
+// Window focus → "wfocus" (§F7). Chrome reports WINDOW_ID_NONE (-1) when the
+// whole browser is blurred (alt-tab away) — recorded as -1 so attribution stops.
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (paused) return;
+  return enqueue(() => idbAdd("events", wfocusRecord(windowId, Date.now())));
 });
 
 // Toolbar click focuses an already-open dashboard tab, else opens one — so

@@ -40,6 +40,10 @@ are what the §7.2 mapping must match.
 | 10 | **Close a tab** | a `close` record (`tabId`) |
 | 11 | Open the **dashboard** itself | **no** `nav` recorded for the extension page |
 | 12 | Click **REC** (top-left) to pause, navigate, then click again to resume | **no** new `events` while paused; records **resume** after un-pausing (regression guard: the flag is stored as a string, so resume must actually restart capture) |
+| 13 | **Switch tabs** within a window (click another tab) | one `focus` record (`tabId`, `windowId`) per activation, appended in firing order |
+| 14 | **Alt-tab away** from Chrome to another app, then back | a `wfocus` with `windowId: -1` on blur, then a `wfocus` with the real window id on return; clicking between two Chrome windows records a `wfocus` per switch (some platforms emit an intermediate `-1`) |
+| 15 | **Close the focused tab** | a `close` record, then a `focus` for whichever tab Chrome activates next |
+| 16 | Pause (REC), then switch tabs and alt-tab | **no** `focus`/`wfocus` records while paused; they resume after un-pausing |
 
 ## What to tune from observations
 
@@ -58,9 +62,14 @@ are what the §7.2 mapping must match.
 
 ## Accept
 
-All twelve rows behave as described; the redirect window and §7.2 table reflect
+All sixteen rows behave as described; the redirect window and §7.2 table reflect
 reality. Then the derived views (graph, tables, sessions) on the dashboard
 should match what you browsed.
+
+> Rows 13–16 (foreground attention, §F7) were added with the focus/wfocus
+> capture and **have not yet been walked in a real Chrome** — the attribution
+> logic is fully covered by `cargo test`, but the capture wiring (event order,
+> platform blur behavior, pause gating) needs this manual pass before release.
 
 ## Derived-view acceptance (graph/Sankey behavior)
 
@@ -77,6 +86,8 @@ open and **live-refreshes** on tab focus/visibility, so just switch back to it.
 | D | **Sankey** tab → pick a session | starting hosts on the **left**, flow → right; toggle **Hostname/Domain** regroups |
 | E | **Drag** a node on the Graph | it moves and stays put; reopening preserves the arrangement |
 | F | Settings (gear) → **Rebuild from raw events** | the whole graph re-derives from the stored `events` (recovery if the cursor ever drifts) |
+| G | Read a page ~1 min in the foreground, leave another tab open in the background, then check **Tables → Top hubs** | "Time spent" shows ≈1 min for the read page (no "≈" prefix — the window has focus data); the background tab's host shows little or none; hover the cell for the explanatory tooltip |
+| H | **Upgrade path**: load this build over a profile that captured data with a pre-focus build | on first open the dashboard rebuilds from raw once (brief but automatic); old days show "≈"-prefixed estimates, days after the upgrade show foreground time |
 
 ### Accept
 

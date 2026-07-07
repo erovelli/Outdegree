@@ -72,12 +72,14 @@ Chrome + chromedriver, so it usually runs in CI rather than locally.
 
 ```
 Service Worker (TypeScript, append-only)        Dashboard page (Rust → WASM)
-  onCommitted               → "nav"   ┐            derive   read-time global-order pass
-  onCreatedNavigationTarget → "link"  │  ONE id     rollup   UTC-day buckets + sessions
-  tabs.onRemoved            → "close" │  sequence   project  range merge + display filters
-  onStartup                 → "start" ┘ (events)    graph    Louvain · hubs · PrefixSpan
-  onHistoryStateUpdated     → "nav" (spa store)     layout   Fruchterman–Reingold
-  onReferenceFragmentUpdated→ "nav" (spa store)     render   canvas2d · svg · flow (Sankey)
+  onCommitted               → "nav"    ┐           derive   read-time global-order pass
+  onCreatedNavigationTarget → "link"   │           rollup   UTC-day buckets + sessions
+  tabs.onRemoved            → "close"  │  ONE id   project  range merge + display filters
+  tabs.onActivated          → "focus"  │  sequence graph    Louvain · hubs · PrefixSpan
+  windows.onFocusChanged    → "wfocus" │  (events) layout   Fruchterman–Reingold
+  onStartup                 → "start"  ┘           render   canvas2d · svg · flow (Sankey)
+  onHistoryStateUpdated     → "nav" (spa store)
+  onReferenceFragmentUpdated→ "nav" (spa store)
 ```
 
 Two layers, two languages:

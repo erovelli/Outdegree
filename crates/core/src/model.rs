@@ -43,18 +43,51 @@ pub enum Event {
         #[serde(rename = "tabId")]
         tab_id: f64,
     },
+    /// Tab activation (`chrome.tabs.onActivated`): which tab became active in a
+    /// window. Feeds foreground attribution (§F7); carries only ids, so it needs
+    /// no permission beyond the existing set.
+    #[serde(rename = "focus")]
+    Focus {
+        id: f64,
+        ts: f64,
+        #[serde(rename = "tabId")]
+        tab_id: f64,
+        #[serde(rename = "windowId")]
+        window_id: f64,
+    },
+    /// Window focus change (`chrome.windows.onFocusChanged`): which window is
+    /// focused, or `windowId == -1` (Chrome's `WINDOW_ID_NONE`) when the browser
+    /// itself is blurred (§F7).
+    #[serde(rename = "wfocus")]
+    Wfocus {
+        id: f64,
+        ts: f64,
+        #[serde(rename = "windowId")]
+        window_id: f64,
+    },
     #[serde(rename = "start")]
     Start { id: f64, ts: f64 },
+    /// Forward-compat catch-all (§F7): an event `kind` this build does not
+    /// recognize (an older dashboard reading a log written by a newer version).
+    /// It deserializes here instead of failing the whole batch; the read layer
+    /// drops it and the fold skips it, so the dashboard degrades gracefully.
+    #[serde(other)]
+    Unknown,
 }
 
 impl Event {
-    /// Global ordering key (the `events` primary key).
+    /// Global ordering key (the `events` primary key). `Unknown` (a forward-compat
+    /// unrecognized kind) has no id in this build; it is dropped before it reaches
+    /// any id-consuming path, so the `NAN` here is never observed.
     pub fn id(&self) -> f64 {
         match self {
             Event::Nav { id, .. }
             | Event::Link { id, .. }
             | Event::Close { id, .. }
+            | Event::Focus { id, .. }
+            | Event::Wfocus { id, .. }
             | Event::Start { id, .. } => *id,
+            Event::Unknown => f64::NAN,
         }
     }
 
@@ -63,7 +96,10 @@ impl Event {
             Event::Nav { ts, .. }
             | Event::Link { ts, .. }
             | Event::Close { ts, .. }
+            | Event::Focus { ts, .. }
+            | Event::Wfocus { ts, .. }
             | Event::Start { ts, .. } => *ts,
+            Event::Unknown => f64::NAN,
         }
     }
 }
@@ -388,6 +424,11 @@ pub struct NodeAgg {
     /// Carried alongside `visits` so the UI can rank/size by attention, not just hits.
     #[serde(default)]
     pub dwell_ms: u64,
+    /// Total *foreground* time (§F7): time this host was loaded in the focused
+    /// window's active tab, attributed per inter-event interval and capped at the
+    /// idle gap. `0` for data captured before focus tracking (see `has_focus_signal`).
+    #[serde(default)]
+    pub fg_dwell_ms: u64,
 }
 
 /// An edge in a projected graph view (§7.1).

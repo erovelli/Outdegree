@@ -168,6 +168,13 @@ pub(super) fn settings_popover(doc: &Document, shared: &Shared) -> Element {
                                 if let Err(e) = db.reset_derivation().await {
                                     return super::log_err(&e);
                                 }
+                                // The imported meta may carry a stale (or no)
+                                // derived-schema version; reconcile stamps the
+                                // current one so the next open doesn't redo the
+                                // full rebuild this import already triggered (§F7).
+                                if let Err(e) = db.reconcile_derived_schema().await {
+                                    return super::log_err(&e);
+                                }
                                 reload_and_rerender(&s5);
                             });
                             true

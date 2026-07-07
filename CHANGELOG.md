@@ -10,6 +10,29 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 ## [Unreleased]
 
 ### Added
+- **Foreground attention: focused time per site, not just navigation gaps.** The
+  service worker now records two new (id-only) event kinds in the same global
+  stream: `focus` from `tabs.onActivated` (which tab is on-screen in a window)
+  and `wfocus` from `windows.onFocusChanged` (which window is focused; `-1` when
+  the whole browser is blurred). Both are pause-gated and serialized exactly like
+  nav/link/close, carry no URL or title, and need **no new permission** — the set
+  stays exactly `webNavigation`/`storage`/`unlimitedStorage`, still 100% local.
+  The derive pass attributes each interval between consecutive events (capped at
+  the 30-minute idle gap) to the page loaded in the focused window's active tab —
+  and to nothing at all while the browser is blurred, the active tab is unknown
+  or closed, or that tab has no http(s) page. The result is a per-site
+  foreground-dwell total alongside the existing gap-based estimate (which is
+  unchanged), plus a per-day "has focus signal" marker. Tables' "Time spent" now
+  shows real foreground time when the displayed window has focus data, and the
+  gap estimate prefixed **≈** (with an explanatory tooltip) when it doesn't — so
+  pre-upgrade history stays honest. The CSV export carries both columns; the Raw
+  view header now breaks the shown events down per kind (surfacing the extra
+  volume; compaction remains the ADR-0003 follow-up). On first open after the
+  upgrade an existing install automatically rebuilds its derived cache from the
+  raw events (a new `derivedSchemaVersion` meta key), so foreground time appears
+  with no user action; the fold==recompute property test now interleaves focus
+  events at every watermark split, and the interpreter skips unrecognized future
+  event kinds instead of erroring.
 - **Time navigation: step backward/forward through your history.** The range
   control (Session / Day / Week / Month / Year) is now flanked by **‹ / ›** step
   buttons and a window label showing the actual bounds of what's on screen

@@ -43,6 +43,16 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
         .iter()
         .map(|n| (n.key.as_str(), n.dwell_ms))
         .collect();
+    // Foreground dwell + whether the displayed window carries any focus signal
+    // (§F7): with signal we show real foreground time; without it, the gap-based
+    // estimate prefixed "≈".
+    let fg_dwell: HashMap<&str, u64> = a
+        .proj
+        .nodes
+        .iter()
+        .map(|n| (n.key.as_str(), n.fg_dwell_ms))
+        .collect();
+    let has_signal = window_has_focus_signal(&a);
 
     // Curated single-screen dashboard (no tabs): only the highest-signal widgets,
     // row-capped to fit one screen. The full set of tables stays available via
@@ -63,17 +73,13 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
              <th class=\"num\">Time spent</th></tr>",
         );
         for (k, d) in &hubs {
-            let t = dwell.get(k.as_str()).copied().unwrap_or(0);
-            let tcell = if t >= 1000 {
-                fmt_dwell(t)
-            } else {
-                "—".to_string()
-            };
+            let est = dwell.get(k.as_str()).copied().unwrap_or(0);
+            let fg = fg_dwell.get(k.as_str()).copied().unwrap_or(0);
             s.push_str(&format!(
-                "<tr>{}<td class=\"num\">{}</td><td class=\"num\">{}</td></tr>",
+                "<tr>{}<td class=\"num\">{}</td>{}</tr>",
                 host_td(k),
                 d,
-                esc(&tcell)
+                time_spent_cell(has_signal, est, fg)
             ));
         }
         s.push_str("</table>");
@@ -281,6 +287,57 @@ fn host_td(host: &str) -> String {
 fn host_span(host: &str) -> String {
     let h = esc(host);
     format!("<span class=\"host-cell\" data-host=\"{h}\">{h}</span>")
+}
+
+/// Whether the currently displayed window carries any focus signal (§F7) — i.e.
+/// any of its day buckets saw a focus/window-focus event. Mirrors the window the
+/// projection uses (the session-scoped buckets for the Session range, else the
+/// anchored calendar window), so the dwell column matches what's on screen.
+///
+/// A bucket with credited foreground time also counts: attribution buckets on
+/// the interval-START day, so a focused session crossing midnight UTC can
+/// accrue fg_dwell on a day whose own focus events all landed the day before —
+/// real foreground time must not hide behind the "≈" estimate there.
+fn window_has_focus_signal(a: &App) -> bool {
+    let window = if a.time_range == TimeRange::Session && !a.session_buckets.is_empty() {
+        a.session_buckets.clone()
+    } else {
+        project::select_window(&a.buckets, a.time_range, super::anchor_end_day(a))
+    };
+    window
+        .iter()
+        .any(|b| b.has_focus_signal || b.nodes.values().any(|s| s.fg_dwell_ms > 0))
+}
+
+/// The "Time spent" cell for a host (§F7). With a focus signal in the window it
+/// shows real foreground time; without one, the gap-based estimate prefixed "≈".
+/// Either way a `title` tooltip explains which is shown. Sub-second values read
+/// "—" (too little attention to be meaningful).
+fn time_spent_cell(has_signal: bool, est_ms: u64, fg_ms: u64) -> String {
+    let (ms, prefix, title) = if has_signal {
+        (
+            fg_ms,
+            "",
+            "Foreground time — how long this site's tab was the focused, active tab.",
+        )
+    } else {
+        (
+            est_ms,
+            "≈",
+            "Estimated from the gaps between navigations (this window has no focus \
+             data), so it can include time a tab sat in the background.",
+        )
+    };
+    let text = if ms >= 1000 {
+        format!("{prefix}{}", fmt_dwell(ms))
+    } else {
+        "—".to_string()
+    };
+    format!(
+        "<td class=\"num\" title=\"{}\">{}</td>",
+        esc(title),
+        esc(&text)
+    )
 }
 
 fn range_label(range: TimeRange) -> &'static str {
@@ -568,6 +625,12 @@ pub(crate) fn tables_csv(a: &App) -> String {
         .iter()
         .map(|n| (n.key.as_str(), n.dwell_ms))
         .collect();
+    let fg_dwell: HashMap<&str, u64> = a
+        .proj
+        .nodes
+        .iter()
+        .map(|n| (n.key.as_str(), n.fg_dwell_ms))
+        .collect();
 
     let mut out = String::new();
     // Both helpers append to `out`; as macros (not closures) they avoid holding a
@@ -603,11 +666,15 @@ pub(crate) fn tables_csv(a: &App) -> String {
     row!("Newly discovered", &nh);
     row!("Revisit rate", &rr);
 
-    section!("Top hubs", &["Host", "Degree", "Dwell (ms)"]);
+    section!(
+        "Top hubs",
+        &["Host", "Degree", "Dwell est (ms)", "Foreground (ms)"],
+    );
     for (k, d) in &hubs {
         let d = d.to_string();
         let t = dwell.get(k.as_str()).copied().unwrap_or(0).to_string();
-        row!(k, &d, &t);
+        let f = fg_dwell.get(k.as_str()).copied().unwrap_or(0).to_string();
+        row!(k, &d, &t, &f);
     }
 
     section!("Launch pads", &["Host", "Outbound"]);
@@ -715,8 +782,12 @@ pub(crate) fn render_raw(shared: &Shared) {
         } else {
             format!("Raw events ({})", plural(total as u64, "event"))
         };
+        // Per-kind counts of the shown page (§F7 volume note): focus/wfocus multiply
+        // event volume, so the header surfaces how the stream splits across kinds.
         let mut html = format!(
-            "<h3>{heading}</h3><table><tr><th>id</th><th>kind</th><th>ts</th><th>detail</th></tr>"
+            "<h3>{heading}</h3><p class=\"muted tbl-sub\">{}</p>\
+             <table><tr><th>id</th><th>kind</th><th>ts</th><th>detail</th></tr>",
+            esc(&kind_counts_line(&events))
         );
         for ev in events.iter() {
             let (id, kind, ts, detail) = describe(ev);
@@ -730,6 +801,21 @@ pub(crate) fn render_raw(shared: &Shared) {
         html.push_str("</table>");
         body.set_inner_html(&html);
     });
+}
+
+/// One-line per-kind breakdown of the shown events (§F7 volume note), in a fixed
+/// kind order; kinds with zero occurrences are omitted. E.g.
+/// `"nav 412 · link 8 · close 51 · focus 203 · wfocus 96 · start 2"`.
+fn kind_counts_line(events: &[Event]) -> String {
+    let mut counts: HashMap<&str, u32> = HashMap::new();
+    for ev in events {
+        *counts.entry(describe(ev).1).or_insert(0) += 1;
+    }
+    ["nav", "link", "close", "focus", "wfocus", "start"]
+        .iter()
+        .filter_map(|k| counts.get(k).map(|c| format!("{k} {c}")))
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// Format an epoch-millisecond timestamp as an ISO-8601 UTC string — unambiguous
@@ -779,6 +865,33 @@ fn describe(ev: &Event) -> (f64, &'static str, f64, String) {
             format!("tab {source_tab_id} → new tab {new_tab_id}"),
         ),
         Event::Close { id, ts, tab_id } => (*id, "close", *ts, format!("tab {tab_id}")),
+        Event::Focus {
+            id,
+            ts,
+            tab_id,
+            window_id,
+        } => (
+            *id,
+            "focus",
+            *ts,
+            format!(
+                "tab {} active in window {}",
+                *tab_id as i64, *window_id as i64
+            ),
+        ),
+        Event::Wfocus { id, ts, window_id } => (
+            *id,
+            "wfocus",
+            *ts,
+            if *window_id < 0.0 {
+                "browser blurred".to_string()
+            } else {
+                format!("window {} focused", *window_id as i64)
+            },
+        ),
         Event::Start { id, ts } => (*id, "start", *ts, "browser start".into()),
+        // Unrecognized kinds are dropped before a read reaches here (§F7); this arm
+        // keeps the match exhaustive.
+        Event::Unknown => (f64::NAN, "unknown", f64::NAN, String::new()),
     }
 }

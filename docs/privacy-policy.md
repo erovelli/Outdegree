@@ -4,7 +4,7 @@ title: Privacy Policy
 
 # Outdegree — Privacy Policy
 
-_Last updated: 2026-06-28_
+_Last updated: 2026-07-07_
 
 Outdegree records the web pages you navigate to and stores them **only on
 your own device**, in your browser's local IndexedDB storage.
@@ -36,8 +36,10 @@ The extension does not run in Incognito mode and records nothing there.
 ## What is processed
 
 Navigation metadata only: the URL you navigated to, the navigation type (e.g.
-link, typed, form submit), and timing. The extension does **not** read page
-content.
+link, typed, form submit), and timing. To distinguish time actively spent on a
+page from time it sat in a background tab, the extension also records which tab
+and window are focused — as numeric browser ids and timestamps only, carrying no
+URL or title. The extension does **not** read page content.
 
 ## Contact
 
