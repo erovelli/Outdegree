@@ -1602,6 +1602,9 @@ fn do_load_sample(shared: &Shared) {
             a.paused = true;
             a.demo_data = true;
         }
+        // An already-visible backup nudge would otherwise linger beside the
+        // "Sample data" chip; demo mode suppresses it (see evaluate_backup_nudge).
+        hide_nudge(&s);
         // Re-fold the imported events and re-render; sync_chrome then shows the
         // PAUSED state and the "Sample data" chip.
         reload_and_rerender(&s);
