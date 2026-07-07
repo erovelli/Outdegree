@@ -447,6 +447,68 @@ fn utc_day_bucketing() {
     assert!(map["2021-01-02"].nodes.contains_key("c.com"));
 }
 
+// ─────────────────── UTC hour histograms (§F9 rhythm heatmap) ───────────────────
+
+/// A visit is binned into the UTC hour of the page's **arrival** ts (`b.ts`, the
+/// same instant that picks its UTC day), not the ts of the event that finalizes
+/// it — including across a UTC-midnight boundary.
+#[test]
+fn visits_bucket_by_utc_hour_including_midnight() {
+    let t_2330 = 1_609_543_800_000.0; // 2021-01-01T23:30:00Z → hour 23
+    let t_0015 = 1_609_546_500_000.0; // 2021-01-02T00:15:00Z → hour 0 (next UTC day)
+    let events = vec![
+        nav(1, t_2330, 1, 1, "https://a.com/", "typed", &[]),
+        nav(2, t_0015, 1, 1, "https://b.com/", "link", &[]), // finalizes a at hour 23
+        close(3, t_0015 + 1_000.0, 1),                       // finalizes b at hour 0/2nd
+    ];
+    let (map, _, _) = run_all(&events);
+    let d1 = &map["2021-01-01"];
+    assert_eq!(d1.visits_by_hour[23], 1, "a.com arrived 23:30 UTC");
+    assert_eq!(d1.visits_by_hour.iter().sum::<u32>(), 1);
+    let d2 = &map["2021-01-02"];
+    assert_eq!(d2.visits_by_hour[0], 1, "b.com arrived 00:15 UTC next day");
+    assert_eq!(d2.visits_by_hour.iter().sum::<u32>(), 1);
+    // The histogram total equals the node-visit total for the same day.
+    for b in map.values() {
+        let hist: u32 = b.visits_by_hour.iter().sum();
+        let visits: u32 = b.nodes.values().map(|n| n.visits).sum();
+        assert_eq!(hist, visits, "histogram vs visits on {}", b.date);
+    }
+}
+
+/// The §11 invariant applied to the hour histograms: an incremental fold (split +
+/// checkpoint round-trip) reproduces the per-UTC-hour visit counts exactly, at
+/// **every** watermark split, for visits scattered across several hours and a
+/// UTC-midnight boundary. `DayBucket`'s derived equality covers `visits_by_hour`,
+/// so the whole-bucket `assert_eq!` already checks the array bucket-for-bucket.
+#[test]
+fn hour_histograms_incremental_equals_recompute_at_every_split() {
+    let hour = 3_600_000.0;
+    let base = 1_609_459_200_000.0; // 2021-01-01T00:00:00Z (a Friday)
+    let events = vec![
+        nav(1, base + hour / 2.0, 1, 1, "https://a.com/", "typed", &[]), // hour 0
+        nav(2, base + 2.5 * hour, 1, 1, "https://b.com/", "link", &[]),  // hour 2
+        nav(3, base + 9.0 * hour, 1, 1, "https://c.com/", "link", &[]),  // hour 9
+        nav(4, base + 23.5 * hour, 1, 1, "https://d.com/", "link", &[]), // hour 23
+        nav(5, base + 25.0 * hour, 1, 1, "https://e.com/", "link", &[]), // hour 1 (2nd)
+        close(6, base + 26.0 * hour, 1),
+    ];
+    let (m_all, _, _) = run_all(&events);
+    for at in 0..=events.len() {
+        let (m_sp, _, _) = run_split(&events, at);
+        assert_eq!(m_all, m_sp, "hour-histogram rollup mismatch at split {at}");
+    }
+    // Spot-check the recomputed histogram: four visits on the 1st (hours 0/2/9/23),
+    // one on the 2nd (hour 1).
+    let d1 = &m_all["2021-01-01"];
+    assert_eq!(d1.visits_by_hour[0], 1);
+    assert_eq!(d1.visits_by_hour[2], 1);
+    assert_eq!(d1.visits_by_hour[9], 1);
+    assert_eq!(d1.visits_by_hour[23], 1);
+    assert_eq!(d1.visits_by_hour.iter().sum::<u32>(), 4);
+    assert_eq!(m_all["2021-01-02"].visits_by_hour[1], 1);
+}
+
 // ───────────────────── foreground attribution (§F7) ─────────────────────
 
 /// Foreground time goes to the focused window's active tab only: a background

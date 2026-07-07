@@ -604,6 +604,32 @@ td.host-cell:hover, span.host-cell:hover {
   text-decoration-color: var(--text-faint); text-underline-offset: 2px;
 }
 
+/* Rhythm heatmap (§F9): a full-width weekday × hour-of-day grid in the Tables
+ * card deck. It reuses the single-hue quartile ramp of the Sessions activity
+ * heatmap — the cal-l{0..4} fills carry every cell's shade, so no inline styles
+ * are emitted (CSP forbids them). Structure is flex rows: a leading weekday label
+ * plus 24 hour cells, with a matching top hour axis. On a narrow card the strip
+ * scrolls inside itself rather than forcing the page to scroll. */
+.rh { display: flex; flex-direction: column; gap: 3px; overflow-x: auto; }
+.rh-row { display: flex; gap: 3px; align-items: center; }
+.rh-daylabel {
+  flex: 0 0 32px; text-align: right; padding-right: 6px;
+  font: 9px var(--mono); color: var(--text-faint); white-space: nowrap;
+}
+/* No background here: every cell also carries a cal-l{0..4} class, which supplies
+ * the fill (empty cells = cal-l0, achromatic). */
+.rh-cell { flex: 1 1 0; min-width: 13px; height: 17px; border-radius: 2px; }
+.rh-axis .rh-hour {
+  flex: 1 1 0; min-width: 13px; text-align: left;
+  font: 8.5px var(--mono); color: var(--text-faint);
+}
+.rh-scale {
+  display: flex; align-items: center; gap: 3px; align-self: flex-end;
+  margin-top: 6px; font: 9px var(--mono); color: var(--text-faint);
+}
+.rh-scale .rh-cell { flex: 0 0 auto; width: 11px; height: 11px; min-width: 0; }
+.rh-scale span { padding: 0 3px; }
+
 /* session picker (two-pane) + sankey */
 .sp-flow h3, .sp-list h3 { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
 /* Sankey color keys (bars = provenance, ribbons = edge kind) — shown inline on

@@ -491,6 +491,62 @@ pub fn daily_series(
     pts.into_iter().map(|(_, date, v)| (date, v)).collect()
 }
 
+/// A window-level browsing-rhythm matrix: `matrix[weekday][hour]` visit counts,
+/// rows Mon(0)…Sun(6) and columns local hour 0…23 (§F9). Built by projecting each
+/// day bucket's UTC `visits_by_hour` histogram to local time — every UTC hour is
+/// shifted by `offset_hours` (whole hours east of UTC, negative west), which rolls
+/// the visit onto the adjacent local day (and thus weekday) when it crosses local
+/// midnight. Buckets whose date can't be parsed are skipped (they can't be placed
+/// on a weekday). Pure/testable; the UI layer reads the offset from the browser
+/// clock at render time.
+///
+/// DST simplification (accepted, §F9): the viewer's **current** offset is applied
+/// uniformly to the whole window, so a bucket recorded on the other side of a DST
+/// transition — or in a sub-hour timezone, which the caller rounds to the nearest
+/// hour — can land one hour off. That imprecision is deliberate; keeping stored
+/// data in UTC and shifting at render avoids a per-bucket timezone history.
+pub fn rhythm_matrix(buckets: &[DayBucket], offset_hours: i32) -> [[u32; 24]; 7] {
+    let mut m = [[0u32; 24]; 7];
+    for b in buckets {
+        let Some(day) = day_number(&b.date) else {
+            continue;
+        };
+        for (h, &c) in b.visits_by_hour.iter().enumerate() {
+            if c == 0 {
+                continue;
+            }
+            let shifted = h as i32 + offset_hours;
+            let local_day = day + shifted.div_euclid(24) as i64;
+            let local_hour = shifted.rem_euclid(24) as usize;
+            // `weekday` is Sun=0…Sat=6; the Rhythm rows are Mon-first.
+            let row = (weekday(local_day) + 6) % 7;
+            m[row][local_hour] += c;
+        }
+    }
+    m
+}
+
+/// Quartile bin (`0` = empty, `1..=4`) of a Rhythm cell's `count` against the
+/// busiest cell `max`, matching the Sessions activity-heatmap ramp (§7.7): the
+/// single provenance hue at rising opacity, empty cells achromatic. Boundaries are
+/// strictly-greater-than (0.25 / 0.5 / 0.75 of `max`), identical to the session
+/// picker's `level`. `max == 0` (an empty window) reads every cell as `0`.
+pub fn rhythm_level(count: u32, max: u32) -> u8 {
+    if count == 0 || max == 0 {
+        return 0;
+    }
+    let f = count as f64 / max as f64;
+    if f > 0.75 {
+        4
+    } else if f > 0.5 {
+        3
+    } else if f > 0.25 {
+        2
+    } else {
+        1
+    }
+}
+
 /// This-window-vs-previous-window comparison (same length, immediately prior), for
 /// "↑12% vs last week" deltas. `*_pct` return `None` when the prior window is empty
 /// (no baseline to compare against — the caller shows nothing rather than "↑∞%").
@@ -1239,6 +1295,63 @@ mod tests {
             !s.iter().any(|x| x.host == "tiny.com"),
             "below min_now floor"
         );
+    }
+
+    #[test]
+    fn rhythm_level_bins_like_the_activity_heatmap() {
+        // Empty window / empty cell → bin 0.
+        assert_eq!(rhythm_level(0, 0), 0);
+        assert_eq!(rhythm_level(0, 100), 0);
+        // Single nonzero cell: it is its own max → the top bin; nothing else lights.
+        assert_eq!(rhythm_level(1, 1), 4);
+        // All-equal counts: every nonzero cell equals the max → all top bin.
+        assert_eq!(rhythm_level(5, 5), 4);
+        // Quartile boundaries are strictly-greater-than (matches session_picker::level).
+        assert_eq!(rhythm_level(25, 100), 1); // exactly 0.25 → bin 1
+        assert_eq!(rhythm_level(26, 100), 2);
+        assert_eq!(rhythm_level(50, 100), 2); // exactly 0.50 → bin 2
+        assert_eq!(rhythm_level(51, 100), 3);
+        assert_eq!(rhythm_level(75, 100), 3); // exactly 0.75 → bin 3
+        assert_eq!(rhythm_level(76, 100), 4);
+        assert_eq!(rhythm_level(100, 100), 4);
+    }
+
+    #[test]
+    fn rhythm_matrix_projects_utc_hours_to_local_weekday_hour() {
+        // 2021-01-01 is a Friday → Mon-first row 4. Put visits at UTC hours 0/10/23.
+        let mut b = bucket("2021-01-01");
+        b.visits_by_hour[0] = 2;
+        b.visits_by_hour[10] = 5;
+        b.visits_by_hour[23] = 1;
+
+        // No offset: everything stays on Friday, same hours.
+        let m = rhythm_matrix(std::slice::from_ref(&b), 0);
+        assert_eq!(m[4][0], 2);
+        assert_eq!(m[4][10], 5);
+        assert_eq!(m[4][23], 1);
+        // The busiest cell is the only signal; the rest are empty.
+        let total: u32 = m.iter().flatten().sum();
+        assert_eq!(total, 8);
+
+        // +2h east: UTC Fri 23:00 rolls into Sat 01:00; 0→2 and 10→12 stay Friday.
+        let m2 = rhythm_matrix(std::slice::from_ref(&b), 2);
+        assert_eq!(m2[4][2], 2);
+        assert_eq!(m2[4][12], 5);
+        assert_eq!(m2[5][1], 1, "UTC Fri 23:00 +2h = Sat 01:00");
+
+        // -3h west: UTC Fri 00:00 rolls back into Thu 21:00; the others stay Friday.
+        let m3 = rhythm_matrix(std::slice::from_ref(&b), -3);
+        assert_eq!(m3[3][21], 2, "UTC Fri 00:00 -3h = Thu 21:00");
+        assert_eq!(m3[4][7], 5); // 10 - 3
+        assert_eq!(m3[4][20], 1); // 23 - 3
+    }
+
+    #[test]
+    fn rhythm_matrix_skips_unparseable_dates() {
+        let mut b = bucket("not-a-date");
+        b.visits_by_hour[8] = 9;
+        let m = rhythm_matrix(&[b], 0);
+        assert_eq!(m.iter().flatten().sum::<u32>(), 0);
     }
 
     #[test]
