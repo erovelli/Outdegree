@@ -97,9 +97,19 @@ pub(super) fn brand_panel(doc: &Document, shared: &Shared) -> Element {
     p
 }
 
-// ── 2. range (top-center) ────────────────────────────────────────────────────
+// ── 2. range + time navigation (top-center) ──────────────────────────────────
 pub(super) fn range_panel(doc: &Document, shared: &Shared) -> Element {
     let p = panel(doc, "seg-panel at-tc");
+
+    // Row 1: ‹  [ Session | Day | Week | Month | Year ]  › — the range segmented
+    // control flanked by the step buttons (§F6).
+    let row = el(doc, "div");
+    let _ = row.set_attribute("class", "rng-row");
+    let prev = step_btn(doc, "rng-prev", "Previous period", "‹");
+    {
+        let s = shared.clone();
+        on(&prev, "click", move |_| step_range(&s, false));
+    }
     let (wrap, btns) = seg(
         doc,
         "solid",
@@ -122,7 +132,14 @@ pub(super) fn range_panel(doc: &Document, shared: &Shared) -> Element {
         };
         let s = shared.clone();
         on(btn, "click", move |_| {
-            s.borrow_mut().time_range = range;
+            {
+                let mut a = s.borrow_mut();
+                a.time_range = range;
+                // Picking a range restarts navigation at the live "latest" window:
+                // the anchor types differ across ranges (a day-number vs a session
+                // id), so a clean reset is the least surprising behavior (§F6).
+                a.anchor = None;
+            }
             recompute_projection(&s);
             persist_positions(&s);
             persist_ui_prefs(&s);
@@ -130,12 +147,127 @@ pub(super) fn range_panel(doc: &Document, shared: &Shared) -> Element {
             // The Session range needs buckets scoped to the latest session's
             // events; load them (async) so it isn't just the latest UTC day.
             if range == TimeRange::Session {
-                super::refresh_session_buckets(&s);
+                super::refresh_session_buckets(&s, false);
             }
         });
     }
-    let _ = p.append_child(&wrap);
+    let next = step_btn(doc, "rng-next", "Next period", "›");
+    {
+        let s = shared.clone();
+        on(&next, "click", move |_| step_range(&s, true));
+    }
+    let _ = row.append_child(&prev);
+    let _ = row.append_child(&wrap);
+    let _ = row.append_child(&next);
+    let _ = p.append_child(&row);
+
+    // Row 2: the window-bounds label, plus a "Latest ↩" chip that clears the
+    // anchor. `sync_chrome` fills the label and toggles the chip's visibility.
+    let meta = el(doc, "div");
+    let _ = meta.set_attribute("class", "rng-meta");
+    let label = span(doc, "rng-window", "");
+    let _ = label.set_attribute("id", "rng-window-label");
+    let latest = el(doc, "button");
+    let _ = latest.set_attribute("type", "button");
+    let _ = latest.set_attribute("class", "rng-latest");
+    let _ = latest.set_attribute("id", "rng-latest");
+    let _ = latest.set_attribute("aria-label", "Jump to the latest window");
+    latest.set_text_content(Some("Latest ↩"));
+    {
+        let s = shared.clone();
+        on(&latest, "click", move |_| go_live(&s));
+    }
+    let _ = meta.append_child(&label);
+    let _ = meta.append_child(&latest);
+    let _ = p.append_child(&meta);
     p
+}
+
+/// A ‹/› time-navigation step button (a bare glyph button; disabled via the
+/// `disabled` attribute by `sync_chrome` at the ends of the timeline).
+fn step_btn(doc: &Document, id: &str, aria: &str, glyph: &str) -> Element {
+    let b = el(doc, "button");
+    let _ = b.set_attribute("type", "button");
+    let _ = b.set_attribute("class", "rng-step");
+    let _ = b.set_attribute("id", id);
+    let _ = b.set_attribute("aria-label", aria);
+    b.set_text_content(Some(glyph));
+    b
+}
+
+/// ‹ / › time-navigation step (§F6): move the displayed window one range duration
+/// (calendar ranges) or one session (Session range) back/forward. Gated internally
+/// so the keyboard path is as safe as the `disabled`-attribute buttons.
+pub(super) fn step_range(shared: &Shared, forward: bool) {
+    let range = shared.borrow().time_range;
+    if range == TimeRange::Session {
+        step_session(shared, forward);
+        return;
+    }
+    let new_anchor = {
+        let a = shared.borrow();
+        let cur = match a.anchor {
+            Some(super::Anchor::Day(d)) => Some(d),
+            _ => None,
+        };
+        if forward {
+            if !crate::project::can_step_forward(&a.buckets, range, cur) {
+                return;
+            }
+            crate::project::forward_end(&a.buckets, range, cur)
+        } else {
+            if !crate::project::can_step_back(&a.buckets, range, cur) {
+                return;
+            }
+            crate::project::back_end(&a.buckets, range, cur)
+        }
+    };
+    shared.borrow_mut().anchor = new_anchor.map(super::Anchor::Day);
+    recompute_projection(shared);
+    persist_positions(shared);
+    let _ = rerender(shared);
+}
+
+/// Session-range stepping: walk the sessions store previous/next, snapping back to
+/// the live view when › passes the newest session (§F6).
+fn step_session(shared: &Shared, forward: bool) {
+    let new_anchor = {
+        let a = shared.borrow();
+        let order = crate::project::session_order(&a.sessions);
+        let cur = match a.anchor {
+            Some(super::Anchor::Session(id)) => Some(id),
+            _ => None,
+        };
+        let step = if forward {
+            crate::project::session_forward(&order, cur)
+        } else {
+            crate::project::session_back(&order, cur)
+        };
+        match step {
+            crate::project::SessionStep::To(id) => Some(super::Anchor::Session(id)),
+            crate::project::SessionStep::Live => None,
+            crate::project::SessionStep::Blocked => return,
+        }
+    };
+    shared.borrow_mut().anchor = new_anchor;
+    sync_chrome(shared); // instant label / chevron feedback
+    super::refresh_session_buckets(shared, true);
+}
+
+/// Clear the anchor and return to the live "latest" window (the "Latest ↩" chip).
+fn go_live(shared: &Shared) {
+    if shared.borrow().anchor.is_none() {
+        return;
+    }
+    shared.borrow_mut().anchor = None;
+    if shared.borrow().time_range == TimeRange::Session {
+        sync_chrome(shared);
+        super::refresh_session_buckets(shared, true);
+    } else {
+        recompute_projection(shared);
+        persist_positions(shared);
+        let _ = rerender(shared);
+    }
 }
 
 // ── 3. view + settings gear (top-right) ──────────────────────────────────────
@@ -632,6 +764,9 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         toggle_active(&doc, &format!("rng-{v}"), v == rv);
     }
 
+    // time navigation: window label, ‹/› enabled state, "Latest ↩" chip (§F6)
+    sync_time_nav(&doc, &a);
+
     // counts
     set_text(
         &doc,
@@ -733,6 +868,77 @@ pub(crate) fn sync_chrome(shared: &Shared) {
     }
 }
 
+/// §F6 time navigation: fill the window-bounds label, toggle the ‹/› enabled
+/// states at the ends of the timeline, and show the "Latest ↩" chip only while an
+/// anchor is set. Data-driven from the current range + anchor, so it stays in
+/// step with every re-render.
+fn sync_time_nav(doc: &Document, a: &super::App) {
+    // Window-bounds label. Session shows the displayed session's time range; the
+    // calendar ranges show their UTC day-window bounds.
+    let label = match a.time_range {
+        TimeRange::Session => super::displayed_session(a)
+            .map(|s| super::session_when(s.start_ts, s.end_ts))
+            .unwrap_or_default(),
+        range => crate::project::window_day_bounds(&a.buckets, range, super::anchor_end_day(a))
+            .map(|(start, end)| crate::project::window_label(range, start, end))
+            .unwrap_or_default(),
+    };
+    set_text(doc, "rng-window-label", &label);
+
+    // "Latest ↩" chip: visible only when anchored to a past window.
+    if let Some(chip) = doc.get_element_by_id("rng-latest") {
+        chip.set_class_name(if a.anchor.is_some() {
+            "rng-latest show"
+        } else {
+            "rng-latest"
+        });
+    }
+
+    // ‹ / › enabled states.
+    let (back, fwd) = match a.time_range {
+        TimeRange::Session => {
+            let order = crate::project::session_order(&a.sessions);
+            let cur = match a.anchor {
+                Some(super::Anchor::Session(id)) => Some(id),
+                _ => None,
+            };
+            (
+                matches!(
+                    crate::project::session_back(&order, cur),
+                    crate::project::SessionStep::To(_)
+                ),
+                !matches!(
+                    crate::project::session_forward(&order, cur),
+                    crate::project::SessionStep::Blocked
+                ),
+            )
+        }
+        range => {
+            let cur = match a.anchor {
+                Some(super::Anchor::Day(d)) => Some(d),
+                _ => None,
+            };
+            (
+                crate::project::can_step_back(&a.buckets, range, cur),
+                crate::project::can_step_forward(&a.buckets, range, cur),
+            )
+        }
+    };
+    set_disabled(doc, "rng-prev", !back);
+    set_disabled(doc, "rng-next", !fwd);
+}
+
+/// Toggle the `disabled` attribute on a control by id.
+fn set_disabled(doc: &Document, id: &str, disabled: bool) {
+    if let Some(e) = doc.get_element_by_id(id) {
+        if disabled {
+            let _ = e.set_attribute("disabled", "disabled");
+        } else {
+            let _ = e.remove_attribute("disabled");
+        }
+    }
+}
+
 /// Rebuild the min-visits dropdown so its thresholds track the current visit
 /// volume — a "nice" 1-2-5 ladder up to the busiest site (see
 /// [`crate::project::visit_thresholds`]). Only rewrites the options when the
@@ -748,7 +954,7 @@ fn populate_min_visits(doc: &Document, a: &super::App) {
         return;
     };
 
-    let window = crate::project::select_window(&a.buckets, a.time_range);
+    let window = crate::project::select_window(&a.buckets, a.time_range, super::anchor_end_day(a));
     let probe = crate::project::Filters {
         min_visits: 0,
         hide_search_hubs: a.filters.hide_search_hubs,

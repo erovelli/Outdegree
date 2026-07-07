@@ -28,10 +28,13 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
 
     let g = graph::build(&a.proj);
     let hubs = graph::hubs(&g, TOP);
-    let stats = project::range_stats(&a.buckets, a.time_range);
-    let delta = project::period_delta(&a.buckets, a.time_range);
-    let series = project::daily_series(&a.buckets, a.time_range);
-    let surging = project::surging_hosts(&a.buckets, a.time_range, 3, TOP);
+    // Anchor-relative (§F6): the KPI banner, sparkline, and surging list all scope
+    // to the displayed window (the latest window when `anchor` is `None`).
+    let ae = super::anchor_end_day(&a);
+    let stats = project::range_stats(&a.buckets, a.time_range, ae);
+    let delta = project::period_delta(&a.buckets, a.time_range, ae);
+    let series = project::daily_series(&a.buckets, a.time_range, ae);
+    let surging = project::surging_hosts(&a.buckets, a.time_range, ae, 3, TOP);
     let next_hops = graph::next_hops(&a.proj, 4, TOP);
     let authorities = graph::pagerank(&a.proj, 0.85, 40);
     let dwell: HashMap<&str, u64> = a
@@ -46,8 +49,8 @@ pub(crate) fn render(shared: &Shared) -> Result<(), wasm_bindgen::JsValue> {
     // Export tables (CSV) and the Graph view.
     let mut grid = String::new();
 
-    // Activity summary (full width).
-    let activity = activity_html(&a.sessions, a.time_range);
+    // Activity summary (full width), scoped to the same window as the KPIs.
+    let activity = activity_html(&a.sessions, a.time_range, anchor_session_window(&a));
     if !activity.is_empty() {
         grid.push_str(&card("full", &activity));
     }
@@ -342,11 +345,25 @@ fn communities_html(a: &super::App) -> String {
     h
 }
 
-/// Activity summary from the sessions overlapping the selected range: how many,
+/// The epoch-millisecond `[lo, hi)` window the anchored Tables cards scope their
+/// session-derived stats to, matching the day-bucket window the KPIs use (§F6).
+/// `None` when live, so those cards keep their trailing-window behavior.
+fn anchor_session_window(a: &App) -> Option<(f64, f64)> {
+    a.anchor?; // live view (no anchor) → the cards keep their trailing window
+    let (start, end) =
+        project::window_day_bounds(&a.buckets, a.time_range, super::anchor_end_day(a))?;
+    Some((
+        start as f64 * 86_400_000.0,
+        (end as f64 + 1.0) * 86_400_000.0,
+    ))
+}
+
+/// Activity summary from the sessions overlapping the selected window: how many,
 /// typical length, busiest local weekday + hour, and the longest run. Uses the
-/// browser's local `Date` (so weekday/hour match the user's clock).
-fn activity_html(sessions: &[SessionRec], range: TimeRange) -> String {
-    let in_range = sessions_in_range(sessions, range);
+/// browser's local `Date` (so weekday/hour match the user's clock). `win` scopes
+/// to an anchored window (§F6); `None` is the live trailing window.
+fn activity_html(sessions: &[SessionRec], range: TimeRange, win: Option<(f64, f64)>) -> String {
+    let in_range = sessions_in_range(sessions, range, win);
     if in_range.is_empty() {
         return String::new();
     }
@@ -388,9 +405,22 @@ fn activity_html(sessions: &[SessionRec], range: TimeRange) -> String {
     )
 }
 
-/// Sessions whose span overlaps the trailing window of the selected range,
-/// measured back from the most recent session (matches the projection's window).
-fn sessions_in_range(sessions: &[SessionRec], range: TimeRange) -> Vec<SessionRec> {
+/// Sessions overlapping the selected window. When `win` is set (an anchored
+/// `[lo, hi)` in epoch ms, §F6) it returns the sessions that overlap it; otherwise
+/// it's the live trailing window measured back from the most recent session
+/// (matching the projection's window).
+fn sessions_in_range(
+    sessions: &[SessionRec],
+    range: TimeRange,
+    win: Option<(f64, f64)>,
+) -> Vec<SessionRec> {
+    if let Some((lo, hi)) = win {
+        return sessions
+            .iter()
+            .filter(|s| s.end_ts >= lo && s.start_ts < hi)
+            .cloned()
+            .collect();
+    }
     let days = match range {
         TimeRange::Session | TimeRange::Day => 1,
         TimeRange::Week => 7,
@@ -446,10 +476,11 @@ const JOURNEY_SESSION_CAP: usize = 150;
 fn spawn_journeys(shared: &Shared) {
     let (db, gran, mut sess) = {
         let a = shared.borrow();
+        let win = anchor_session_window(&a);
         (
             a.db.clone(),
             a.gran,
-            sessions_in_range(&a.sessions, a.time_range),
+            sessions_in_range(&a.sessions, a.time_range, win),
         )
     };
     // Most recent first, then cap.
@@ -520,14 +551,17 @@ pub(crate) fn tables_csv(a: &App) -> String {
     let hubs = graph::hubs(&g, 10_000);
     let (pads, dests) = graph::directional_hubs(&g, 10_000);
     let edges = graph::top_edges(&a.proj, 10_000);
+    // `origination` stays all-history in the CSV (it was never range-windowed);
+    // the window-scoped stats below track the §F6 anchor via `ae`.
     let prov = project::origination(&a.buckets);
-    let stats = project::range_stats(&a.buckets, a.time_range);
+    let ae = super::anchor_end_day(a);
+    let stats = project::range_stats(&a.buckets, a.time_range, ae);
     let search_dest = graph::search_destinations(&a.proj, 10_000);
     let next_hops = graph::next_hops(&a.proj, 4, 10_000);
     let authorities = graph::pagerank(&a.proj, 0.85, 40);
     let bridges = graph::bridges(&a.proj, 10_000);
     let reciprocal = graph::reciprocal_pairs(&a.proj, 10_000);
-    let surging = project::surging_hosts(&a.buckets, a.time_range, 3, 10_000);
+    let surging = project::surging_hosts(&a.buckets, a.time_range, ae, 3, 10_000);
     let dwell: HashMap<&str, u64> = a
         .proj
         .nodes

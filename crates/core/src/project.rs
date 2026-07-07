@@ -3,7 +3,7 @@
 
 use crate::interpret::registrable;
 use crate::model::{EdgeAgg, Granularity, GraphProjection, NodeAgg, ProvBreakdown, Provenance};
-use crate::rollup::{split_edge_key, DayBucket, EdgeStat, NodeStat};
+use crate::rollup::{split_edge_key, DayBucket, EdgeStat, NodeStat, SessionRec};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -66,20 +66,181 @@ fn day_number(date: &str) -> Option<i64> {
     Some(era * 146097 + doe - 719468)
 }
 
-/// Keep only the buckets whose date falls within `range`'s trailing window of the
-/// latest dated bucket. Buckets with unparseable dates (or when no date parses)
-/// are passed through unchanged so a bad date can never blank the view.
-pub fn select_window(buckets: &[DayBucket], range: TimeRange) -> Vec<DayBucket> {
-    let latest = buckets.iter().filter_map(|b| day_number(&b.date)).max();
-    let Some(latest) = latest else {
+/// Inverse of [`day_number`]: the `(year, month, day)` UTC civil date for a
+/// day-number (days from the Unix epoch). Howard Hinnant's `civil_from_days`.
+/// Month is 1–12, day 1–31. Pure, so the window labels are unit-testable.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = z - era * 146097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32; // [1, 12]
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+/// Weekday index (Sun = 0 … Sat = 6) of a day-number. Day 0 (1970-01-01) is a
+/// Thursday (index 4).
+fn weekday(z: i64) -> usize {
+    (z % 7 + 4).rem_euclid(7) as usize
+}
+
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const WDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/// UTC day-number (days from the Unix epoch) for an epoch-millisecond timestamp —
+/// the same bucketing key [`day_number`] yields for a `YYYY-MM-DD` string. Used to
+/// map a session's `start_ts` onto the day-bucket window when anchoring to it.
+pub fn day_of_ms(ms: f64) -> i64 {
+    (ms / 86_400_000.0).floor() as i64
+}
+
+/// The latest dated bucket's day-number, or `None` when no date parses.
+pub fn latest_day(buckets: &[DayBucket]) -> Option<i64> {
+    buckets.iter().filter_map(|b| day_number(&b.date)).max()
+}
+
+/// The earliest dated bucket's day-number, or `None` when no date parses. The
+/// floor the backward step ([`can_step_back`]) clamps against.
+pub fn earliest_day(buckets: &[DayBucket]) -> Option<i64> {
+    buckets.iter().filter_map(|b| day_number(&b.date)).min()
+}
+
+/// Resolve a window's end day-number: the explicit anchor end when set, else the
+/// latest dated bucket (the live "trailing window ending at the latest data").
+fn resolve_end(buckets: &[DayBucket], anchor_end: Option<i64>) -> Option<i64> {
+    anchor_end.or_else(|| latest_day(buckets))
+}
+
+/// Keep only the buckets whose date falls within `range`'s window ending at
+/// `anchor_end` (a day-number, or the latest dated bucket when `None`). The
+/// window is `[end − (range − 1), end]` inclusive. Buckets with unparseable dates
+/// (or when the end can't be resolved) are passed through unchanged so a bad date
+/// can never blank the view. When `anchor_end` is `None` this is exactly the
+/// original trailing-window behavior (nothing is ever after the latest bucket).
+pub fn select_window(
+    buckets: &[DayBucket],
+    range: TimeRange,
+    anchor_end: Option<i64>,
+) -> Vec<DayBucket> {
+    let Some(end) = resolve_end(buckets, anchor_end) else {
         return buckets.to_vec();
     };
-    let cutoff = latest - (range.days() - 1);
+    let cutoff = end - (range.days() - 1);
     buckets
         .iter()
-        .filter(|b| day_number(&b.date).map(|d| d >= cutoff).unwrap_or(true))
+        .filter(|b| {
+            day_number(&b.date)
+                .map(|d| d >= cutoff && d <= end)
+                .unwrap_or(true)
+        })
         .cloned()
         .collect()
+}
+
+/// Inclusive `[start_day, end_day]` UTC day-numbers of the window for `range`,
+/// ending at `anchor_end` (or the latest dated bucket when `None`). `None` when
+/// there are no dated buckets and no explicit anchor. Drives the window label and
+/// the ‹/› step bookkeeping.
+pub fn window_day_bounds(
+    buckets: &[DayBucket],
+    range: TimeRange,
+    anchor_end: Option<i64>,
+) -> Option<(i64, i64)> {
+    let end = resolve_end(buckets, anchor_end)?;
+    Some((end - (range.days() - 1), end))
+}
+
+/// Human label for the window `[start_day, end_day]` (UTC day-numbers) under
+/// `range`: `Day`/`Session` → the single end day (`"Wed, Jul 1"`); the multi-day
+/// ranges → a start–end span (`"Jun 23 – 29"`, `"Jun 30 – Jul 6"`, and — when the
+/// span crosses a calendar year — `"Jul 7, 2024 – Jul 6, 2025"`). Rendered in UTC
+/// to match the day-bucket boundaries the projection uses. Pure/testable.
+pub fn window_label(range: TimeRange, start_day: i64, end_day: i64) -> String {
+    let (_ey, em, ed) = civil_from_days(end_day);
+    if matches!(range, TimeRange::Day | TimeRange::Session) {
+        return format!(
+            "{}, {} {}",
+            WDAYS[weekday(end_day)],
+            MONTHS[(em - 1) as usize],
+            ed
+        );
+    }
+    let (sy, sm, sd) = civil_from_days(start_day);
+    let (ey, ..) = civil_from_days(end_day);
+    if sy != ey {
+        format!(
+            "{} {}, {} – {} {}, {}",
+            MONTHS[(sm - 1) as usize],
+            sd,
+            sy,
+            MONTHS[(em - 1) as usize],
+            ed,
+            ey
+        )
+    } else if sm == em {
+        format!("{} {} – {}", MONTHS[(sm - 1) as usize], sd, ed)
+    } else {
+        format!(
+            "{} {} – {} {}",
+            MONTHS[(sm - 1) as usize],
+            sd,
+            MONTHS[(em - 1) as usize],
+            ed
+        )
+    }
+}
+
+/// Whether ‹ (step one range duration earlier) is allowed: the window it would
+/// land on must still start on or after the earliest recorded day, so navigation
+/// clamps before the first data instead of scrolling into an unbounded void.
+/// Always false when there are no dated buckets.
+pub fn can_step_back(buckets: &[DayBucket], range: TimeRange, anchor_end: Option<i64>) -> bool {
+    let (Some(end), Some(earliest)) = (resolve_end(buckets, anchor_end), earliest_day(buckets))
+    else {
+        return false;
+    };
+    let days = range.days();
+    let next_start = (end - days) - (days - 1);
+    next_start >= earliest
+}
+
+/// Whether › (step one range duration later) is allowed: only when anchored in
+/// the past (`anchor_end` set and strictly before the latest data). At the live
+/// view there is nothing later to move toward, so it is disabled.
+pub fn can_step_forward(buckets: &[DayBucket], _range: TimeRange, anchor_end: Option<i64>) -> bool {
+    match (anchor_end, latest_day(buckets)) {
+        (Some(end), Some(latest)) => end < latest,
+        _ => false,
+    }
+}
+
+/// The calendar anchor end after ‹: exactly one range duration earlier. Gate the
+/// button with [`can_step_back`]; this does not itself clamp. `None` only when
+/// there is no data (no end to resolve).
+pub fn back_end(buckets: &[DayBucket], range: TimeRange, anchor_end: Option<i64>) -> Option<i64> {
+    resolve_end(buckets, anchor_end).map(|end| end - range.days())
+}
+
+/// The calendar anchor after ›: `Some(end)` one range duration later, or `None`
+/// to re-enter the live/latest view when that step reaches or passes the latest
+/// recorded day (so one › from a near-latest window snaps cleanly back to live).
+pub fn forward_end(
+    buckets: &[DayBucket],
+    range: TimeRange,
+    anchor_end: Option<i64>,
+) -> Option<i64> {
+    let end = resolve_end(buckets, anchor_end)?;
+    let next = end + range.days();
+    match latest_day(buckets) {
+        Some(latest) if next >= latest => None,
+        _ => Some(next),
+    }
 }
 
 /// Merge the buckets spanning a range, regroup to the requested granularity, and
@@ -234,11 +395,11 @@ pub struct RangeStats {
     pub revisit_rate: f32,
 }
 
-pub fn range_stats(buckets: &[DayBucket], range: TimeRange) -> RangeStats {
-    let Some(latest) = buckets.iter().filter_map(|b| day_number(&b.date)).max() else {
+pub fn range_stats(buckets: &[DayBucket], range: TimeRange, anchor_end: Option<i64>) -> RangeStats {
+    let Some(end) = resolve_end(buckets, anchor_end) else {
         return RangeStats::default();
     };
-    let cutoff = latest - (range.days() - 1);
+    let cutoff = end - (range.days() - 1);
 
     // First-seen day per host across *all* history (so "new" means new ever, not
     // just new in this set of buckets).
@@ -255,7 +416,9 @@ pub fn range_stats(buckets: &[DayBucket], range: TimeRange) -> RangeStats {
     // Aggregate visits within the window.
     let mut visits_in: HashMap<&str, u64> = HashMap::new();
     for b in buckets {
-        let in_win = day_number(&b.date).map(|d| d >= cutoff).unwrap_or(true);
+        let in_win = day_number(&b.date)
+            .map(|d| d >= cutoff && d <= end)
+            .unwrap_or(true);
         if !in_win {
             continue;
         }
@@ -287,16 +450,20 @@ pub fn range_stats(buckets: &[DayBucket], range: TimeRange) -> RangeStats {
 /// series behind a trend sparkline. One point per dated bucket that falls in the
 /// window (rollup_days holds at most one bucket per UTC day). Session/Day collapse
 /// to a single point, so the caller gates the sparkline to Week/Month/Year.
-pub fn daily_series(buckets: &[DayBucket], range: TimeRange) -> Vec<(String, u32)> {
-    let Some(latest) = buckets.iter().filter_map(|b| day_number(&b.date)).max() else {
+pub fn daily_series(
+    buckets: &[DayBucket],
+    range: TimeRange,
+    anchor_end: Option<i64>,
+) -> Vec<(String, u32)> {
+    let Some(end) = resolve_end(buckets, anchor_end) else {
         return Vec::new();
     };
-    let cutoff = latest - (range.days() - 1);
+    let cutoff = end - (range.days() - 1);
     let mut pts: Vec<(i64, String, u32)> = buckets
         .iter()
         .filter_map(|b| {
             let d = day_number(&b.date)?;
-            if d < cutoff {
+            if d < cutoff || d > end {
                 return None;
             }
             let visits: u32 = b.nodes.values().map(|n| n.visits).sum();
@@ -343,10 +510,14 @@ fn pct_change(prev: u64, now: u64) -> Option<i32> {
     Some((((now as f64 - prev as f64) / prev as f64) * 100.0).round() as i32)
 }
 
-pub fn period_delta(buckets: &[DayBucket], range: TimeRange) -> Option<PeriodDelta> {
-    let latest = buckets.iter().filter_map(|b| day_number(&b.date)).max()?;
+pub fn period_delta(
+    buckets: &[DayBucket],
+    range: TimeRange,
+    anchor_end: Option<i64>,
+) -> Option<PeriodDelta> {
+    let end = resolve_end(buckets, anchor_end)?;
     let days = range.days();
-    let lo = latest - (days - 1);
+    let lo = end - (days - 1);
     let (plo, phi) = (lo - days, lo - 1); // the equal-length window just before
 
     // First-seen day per host across all history (for "new in window" counts).
@@ -385,7 +556,7 @@ pub fn period_delta(buckets: &[DayBucket], range: TimeRange) -> Option<PeriodDel
         }
         (hosts.len() as u32, visits, new_hosts)
     };
-    let (hosts_now, visits_now, new_hosts_now) = agg(lo, latest);
+    let (hosts_now, visits_now, new_hosts_now) = agg(lo, end);
     let (hosts_prev, visits_prev, new_hosts_prev) = agg(plo, phi);
     Some(PeriodDelta {
         visits_now,
@@ -424,14 +595,15 @@ impl Surge {
 pub fn surging_hosts(
     buckets: &[DayBucket],
     range: TimeRange,
+    anchor_end: Option<i64>,
     min_now: u32,
     top: usize,
 ) -> Vec<Surge> {
-    let Some(latest) = buckets.iter().filter_map(|b| day_number(&b.date)).max() else {
+    let Some(end) = resolve_end(buckets, anchor_end) else {
         return Vec::new();
     };
     let days = range.days();
-    let lo = latest - (days - 1);
+    let lo = end - (days - 1);
     let (plo, phi) = (lo - days, lo - 1);
 
     let mut now_v: HashMap<&str, u32> = HashMap::new();
@@ -440,7 +612,7 @@ pub fn surging_hosts(
         let Some(d) = day_number(&b.date) else {
             continue;
         };
-        if d >= lo && d <= latest {
+        if d >= lo && d <= end {
             for (k, n) in &b.nodes {
                 *now_v.entry(k.as_str()).or_insert(0) += n.visits;
             }
@@ -475,6 +647,79 @@ pub fn surging_hosts(
     });
     out.truncate(top);
     out
+}
+
+/// Session record ids in chronological order (oldest → newest) — the order the
+/// Session range's ‹/› buttons walk. Ordered by `(start_ts, id)` so ties are
+/// stable; this is the newest-first session-picker list reversed. The newest id
+/// is the live "Latest" session.
+pub fn session_order(sessions: &[SessionRec]) -> Vec<f64> {
+    let mut ordered: Vec<&SessionRec> = sessions.iter().collect();
+    ordered.sort_by(|a, b| {
+        a.start_ts
+            .partial_cmp(&b.start_ts)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.id.partial_cmp(&b.id).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    ordered.into_iter().map(|r| r.id).collect()
+}
+
+/// The outcome of a ‹/› step over the Session range's chronological list.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SessionStep {
+    /// Anchor to this specific session id.
+    To(f64),
+    /// Re-enter the live "latest session" view (clear the anchor).
+    Live,
+    /// The step is not possible (button disabled).
+    Blocked,
+}
+
+/// Index into `order` of the currently displayed session: the anchored id, or the
+/// newest (last) when `current` is `None` (the live view). A stale/deleted anchor
+/// id resolves to the newest so navigation never dead-ends.
+fn session_index(order: &[f64], current: Option<f64>) -> Option<usize> {
+    if order.is_empty() {
+        return None;
+    }
+    Some(match current {
+        None => order.len() - 1,
+        Some(id) => order
+            .iter()
+            .position(|&x| x == id)
+            .unwrap_or(order.len() - 1),
+    })
+}
+
+/// ‹ over the Session range: the previous (older) session, or `Blocked` at the
+/// oldest.
+pub fn session_back(order: &[f64], current: Option<f64>) -> SessionStep {
+    match session_index(order, current) {
+        Some(i) if i > 0 => SessionStep::To(order[i - 1]),
+        _ => SessionStep::Blocked,
+    }
+}
+
+/// › over the Session range: the next (newer) session, `Live` when that newer
+/// session is the newest (so › snaps back to the live view), or `Blocked` when
+/// already at the newest/live session.
+pub fn session_forward(order: &[f64], current: Option<f64>) -> SessionStep {
+    if current.is_none() {
+        return SessionStep::Blocked; // already live (newest)
+    }
+    match session_index(order, current) {
+        Some(i) => {
+            let last = order.len() - 1;
+            if i >= last {
+                SessionStep::Blocked
+            } else if i + 1 == last {
+                SessionStep::Live
+            } else {
+                SessionStep::To(order[i + 1])
+            }
+        }
+        None => SessionStep::Blocked,
+    }
 }
 
 /// Total provenance breakdown across a range — the "origination" view (§M2).
@@ -881,7 +1126,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        let s = range_stats(&[older, today], TimeRange::Day);
+        let s = range_stats(&[older, today], TimeRange::Day, None);
         assert_eq!(s.window_hosts, 2);
         assert_eq!(s.window_visits, 4);
         assert_eq!(s.new_hosts, 1, "only new.com is first-seen in-window");
@@ -909,7 +1154,7 @@ mod tests {
             bucket_with("2021-01-10", "b.com", 5),
             bucket_with("2021-01-11", "a.com", 3), // latest
         ];
-        let series = daily_series(&bs, TimeRange::Week); // cutoff = 01-05
+        let series = daily_series(&bs, TimeRange::Week, None); // cutoff = 01-05
         assert_eq!(
             series,
             vec![
@@ -933,7 +1178,7 @@ mod tests {
             bucket_with("2021-01-12", "new.com", 2), // this week: new host
             bucket_with("2021-01-15", "old.com", 2), // latest
         ];
-        let d = period_delta(&bs, TimeRange::Week).unwrap();
+        let d = period_delta(&bs, TimeRange::Week, None).unwrap();
         assert_eq!(d.visits_now, 10); // 6 + 2 + 2
         assert_eq!(d.visits_prev, 4);
         assert_eq!(d.hosts_now, 2); // old.com, new.com
@@ -944,7 +1189,7 @@ mod tests {
 
         // With no prior data, percentages are None (no "↑∞%").
         let only_now = vec![bucket_with("2021-01-15", "x.com", 3)];
-        let d2 = period_delta(&only_now, TimeRange::Week).unwrap();
+        let d2 = period_delta(&only_now, TimeRange::Week, None).unwrap();
         assert!(d2.no_baseline());
         assert_eq!(d2.visits_pct(), None);
     }
@@ -961,7 +1206,7 @@ mod tests {
             bucket_with("2021-01-13", "tiny.com", 1),  // now 1 < floor → excluded
             bucket_with("2021-01-15", "boom.com", 0),  // latest anchor (0 visits ok)
         ];
-        let s = surging_hosts(&bs, TimeRange::Week, 3, 10);
+        let s = surging_hosts(&bs, TimeRange::Week, None, 3, 10);
         let hosts: Vec<&str> = s.iter().map(|x| x.host.as_str()).collect();
         assert_eq!(
             hosts,
@@ -998,21 +1243,21 @@ mod tests {
             bucket("2021-01-11"), // latest
         ];
         // Week = 7-day trailing window from 01-11 → cutoff 01-05.
-        let w = select_window(&bs, TimeRange::Week);
+        let w = select_window(&bs, TimeRange::Week, None);
         let dates: std::collections::HashSet<&str> = w.iter().map(|b| b.date.as_str()).collect();
         assert_eq!(dates, ["2021-01-05", "2021-01-10", "2021-01-11"].into());
         // Day = just the latest day.
-        let d = select_window(&bs, TimeRange::Day);
+        let d = select_window(&bs, TimeRange::Day, None);
         assert_eq!(d.len(), 1);
         assert_eq!(d[0].date, "2021-01-11");
         // Year keeps everything here.
-        assert_eq!(select_window(&bs, TimeRange::Year).len(), 4);
+        assert_eq!(select_window(&bs, TimeRange::Year, None).len(), 4);
     }
 
     #[test]
     fn select_window_passes_through_when_no_dates_parse() {
         let bs = vec![bucket("garbage"), bucket("also-bad")];
-        assert_eq!(select_window(&bs, TimeRange::Day).len(), 2);
+        assert_eq!(select_window(&bs, TimeRange::Day, None).len(), 2);
     }
 
     #[test]
@@ -1074,5 +1319,225 @@ mod tests {
         // A node in the other component returns only its own pair.
         let gx = component(&p, "x");
         assert_eq!(gx.nodes.len(), 2);
+    }
+
+    // ── time navigation (§F6) ────────────────────────────────────────────────
+
+    fn dn(date: &str) -> i64 {
+        day_number(date).unwrap()
+    }
+
+    #[test]
+    fn civil_from_days_inverts_day_number() {
+        for date in [
+            "1970-01-01",
+            "2021-01-31",
+            "2021-02-01", // month-length boundary (Feb)
+            "2020-02-29", // leap day
+            "2021-03-01",
+            "2024-12-31",
+            "2025-01-01", // year boundary
+        ] {
+            let z = dn(date);
+            let (y, m, d) = civil_from_days(z);
+            let got = format!("{y:04}-{m:02}-{d:02}");
+            assert_eq!(got, date, "round-trip {date}");
+        }
+        // 1970-01-01 is a Thursday (index 4).
+        assert_eq!(weekday(0), 4);
+        assert_eq!(WDAYS[weekday(0)], "Thu");
+    }
+
+    #[test]
+    fn window_day_bounds_span_each_granularity() {
+        // One anchor end; each range is `[end-(days-1), end]`.
+        let bs = vec![bucket_with("2021-03-05", "a.com", 1)];
+        let end = dn("2021-03-05");
+        assert_eq!(
+            window_day_bounds(&bs, TimeRange::Day, None),
+            Some((end, end))
+        );
+        assert_eq!(
+            window_day_bounds(&bs, TimeRange::Week, None),
+            Some((end - 6, end))
+        );
+        // Month is a fixed 30-day trailing window, so its start crosses the
+        // short February correctly (Mar 5 − 29 days = Feb 4).
+        assert_eq!(
+            window_day_bounds(&bs, TimeRange::Month, None),
+            Some((dn("2021-02-04"), end))
+        );
+        assert_eq!(
+            window_day_bounds(&bs, TimeRange::Year, None),
+            Some((end - 364, end))
+        );
+        // An explicit anchor overrides the latest bucket.
+        let a = dn("2020-06-15");
+        assert_eq!(
+            window_day_bounds(&bs, TimeRange::Week, Some(a)),
+            Some((a - 6, a))
+        );
+        // No dated buckets, no anchor → no bounds.
+        assert_eq!(window_day_bounds(&[], TimeRange::Week, None), None);
+    }
+
+    #[test]
+    fn window_label_reads_bounds_in_utc() {
+        // Day → single end day with weekday. 2021-01-01 was a Friday.
+        assert_eq!(
+            window_label(TimeRange::Day, dn("2021-01-01"), dn("2021-01-01")),
+            "Fri, Jan 1"
+        );
+        // Week within one month collapses the trailing month name.
+        assert_eq!(
+            window_label(TimeRange::Week, dn("2021-06-23"), dn("2021-06-29")),
+            "Jun 23 – 29"
+        );
+        // Week crossing a month boundary shows both months.
+        assert_eq!(
+            window_label(TimeRange::Week, dn("2021-06-30"), dn("2021-07-06")),
+            "Jun 30 – Jul 6"
+        );
+        // A span crossing a calendar year gains the years for disambiguation.
+        assert_eq!(
+            window_label(TimeRange::Year, dn("2024-07-07"), dn("2025-07-06")),
+            "Jul 7, 2024 – Jul 6, 2025"
+        );
+    }
+
+    #[test]
+    fn select_window_anchor_excludes_future_and_earlier_buckets() {
+        let bs = vec![
+            bucket_with("2021-01-03", "old.com", 1), // before the anchored week
+            bucket_with("2021-01-10", "a.com", 1),
+            bucket_with("2021-01-12", "b.com", 1),
+            bucket_with("2021-01-15", "c.com", 1), // anchor end
+            bucket_with("2021-02-01", "future.com", 9), // after the anchor
+        ];
+        let w = select_window(&bs, TimeRange::Week, Some(dn("2021-01-15")));
+        let dates: std::collections::HashSet<&str> = w.iter().map(|b| b.date.as_str()).collect();
+        assert_eq!(dates, ["2021-01-10", "2021-01-12", "2021-01-15"].into());
+    }
+
+    #[test]
+    fn step_back_and_forward_move_one_range_duration() {
+        let bs = vec![
+            bucket_with("2021-01-01", "e.com", 1), // earliest
+            bucket_with("2021-01-31", "l.com", 1), // latest
+        ];
+        let latest = dn("2021-01-31");
+        // ‹ from live steps back exactly one duration.
+        assert_eq!(back_end(&bs, TimeRange::Week, None), Some(latest - 7));
+        assert_eq!(
+            back_end(&bs, TimeRange::Week, Some(latest - 7)),
+            Some(latest - 14)
+        );
+        // › lands one duration later, and snaps to live (None) once it reaches
+        // the latest data.
+        assert_eq!(
+            forward_end(&bs, TimeRange::Week, Some(latest - 14)),
+            Some(latest - 7)
+        );
+        assert_eq!(forward_end(&bs, TimeRange::Week, Some(latest - 7)), None);
+        // Overshooting the latest also snaps to live.
+        assert_eq!(forward_end(&bs, TimeRange::Week, Some(latest - 3)), None);
+    }
+
+    #[test]
+    fn can_step_back_clamps_before_earliest_data() {
+        let bs = vec![
+            bucket_with("2021-01-01", "e.com", 1),
+            bucket_with("2021-01-31", "l.com", 1),
+        ];
+        let earliest = dn("2021-01-01");
+        // Day range: steppable back until the window sits on the earliest day.
+        assert!(can_step_back(&bs, TimeRange::Day, None));
+        assert!(can_step_back(&bs, TimeRange::Day, Some(earliest + 1)));
+        assert!(!can_step_back(&bs, TimeRange::Day, Some(earliest)));
+        // No data → never steppable.
+        assert!(!can_step_back(&[], TimeRange::Day, None));
+    }
+
+    #[test]
+    fn can_step_forward_only_while_anchored_in_the_past() {
+        let bs = vec![
+            bucket_with("2021-01-01", "e.com", 1),
+            bucket_with("2021-01-31", "l.com", 1),
+        ];
+        let latest = dn("2021-01-31");
+        // Live view: nothing later to move toward.
+        assert!(!can_step_forward(&bs, TimeRange::Week, None));
+        // Anchored in the past: steppable forward.
+        assert!(can_step_forward(&bs, TimeRange::Week, Some(latest - 30)));
+        // Anchored at (or past) the latest: not forward-steppable.
+        assert!(!can_step_forward(&bs, TimeRange::Week, Some(latest)));
+    }
+
+    #[test]
+    fn period_delta_and_stats_track_the_anchor() {
+        let bs = vec![
+            bucket_with("2021-01-03", "old.com", 4), // prior week
+            bucket_with("2021-01-10", "old.com", 6), // this (anchored) week
+            bucket_with("2021-01-12", "new.com", 2),
+            bucket_with("2021-01-15", "old.com", 2), // anchor end
+            bucket_with("2021-02-01", "future.com", 99), // latest, but excluded
+        ];
+        let anchor = Some(dn("2021-01-15"));
+        let d = period_delta(&bs, TimeRange::Week, anchor).unwrap();
+        assert_eq!(d.visits_now, 10, "6 + 2 + 2 inside the anchored week");
+        assert_eq!(d.visits_prev, 4, "prior week is anchor-relative");
+        assert_eq!(d.hosts_now, 2);
+        assert_eq!(d.new_hosts_now, 1); // new.com first-seen in the window
+        assert_eq!(d.visits_pct(), Some(150));
+
+        let s = range_stats(&bs, TimeRange::Week, anchor);
+        assert_eq!(s.window_visits, 10);
+        assert_eq!(s.window_hosts, 2);
+        assert!(
+            !bs.is_empty() && s.window_visits != 99,
+            "the future bucket is not in the anchored window"
+        );
+
+        // Surging is likewise anchor-relative: old.com jumps 4 → 8 in the week.
+        let surge = surging_hosts(&bs, TimeRange::Week, anchor, 3, 10);
+        assert!(surge
+            .iter()
+            .any(|x| x.host == "old.com" && x.now == 8 && x.prev == 4));
+        assert!(!surge.iter().any(|x| x.host == "future.com"));
+    }
+
+    fn sess(id: f64, start_ts: f64) -> SessionRec {
+        SessionRec {
+            id,
+            window_id: 1,
+            start_ts,
+            end_ts: start_ts + 1000.0,
+            start_id: id,
+            end_id: id,
+            nav_count: 1,
+            top_hosts: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn session_stepping_walks_oldest_to_newest_and_snaps_to_live() {
+        // Deliberately out of order; ordered by (start_ts, id).
+        let sessions = vec![sess(2.0, 200.0), sess(0.0, 0.0), sess(1.0, 100.0)];
+        let order = session_order(&sessions);
+        assert_eq!(order, vec![0.0, 1.0, 2.0]);
+
+        // From live (newest): ‹ goes to the second-newest, › is blocked.
+        assert_eq!(session_back(&order, None), SessionStep::To(1.0));
+        assert_eq!(session_forward(&order, None), SessionStep::Blocked);
+        // From the middle: ‹ to the oldest, › snaps to Live (newest is next).
+        assert_eq!(session_back(&order, Some(1.0)), SessionStep::To(0.0));
+        assert_eq!(session_forward(&order, Some(1.0)), SessionStep::Live);
+        // At the oldest: ‹ is blocked, › steps to the middle.
+        assert_eq!(session_back(&order, Some(0.0)), SessionStep::Blocked);
+        assert_eq!(session_forward(&order, Some(0.0)), SessionStep::To(1.0));
+        // Empty / single-session stores are fully clamped.
+        assert_eq!(session_back(&[], None), SessionStep::Blocked);
+        assert_eq!(session_back(&[9.0], None), SessionStep::Blocked);
+        assert_eq!(session_forward(&[9.0], None), SessionStep::Blocked);
     }
 }

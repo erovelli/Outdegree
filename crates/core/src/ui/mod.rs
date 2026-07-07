@@ -42,6 +42,21 @@ pub(crate) enum View {
     Raw,
 }
 
+/// The END of the displayed time window when the user has stepped back through
+/// history (§F6 time navigation). `App.anchor == None` is the live "latest" view
+/// — today's behavior, which keeps re-projecting as new events arrive. An anchor
+/// freezes the view on a past window. It is deliberately **never persisted** (not
+/// part of `uiPrefs` or saved views), so every reload returns to the live view.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Anchor {
+    /// A calendar window (Day/Week/Month/Year) ending on this UTC day-number —
+    /// the same key `project.rs` buckets days by.
+    Day(i64),
+    /// A specific session in the sessions store, by its record `id` (Session
+    /// range). ‹/› walk the store; the window label is that session's time range.
+    Session(f64),
+}
+
 impl View {
     /// The persistable projection of this view. `Raw` collapses to `Graph`: the
     /// raw-events view is never persisted, so reopening after leaving it on Raw
@@ -81,6 +96,9 @@ pub(crate) struct App {
     pub gran: Granularity,
     pub filters: Filters,
     pub time_range: TimeRange,
+    /// Time-navigation anchor (§F6): `None` is the live "latest" view; `Some`
+    /// freezes a past window. Never persisted (see [`Anchor`]).
+    pub anchor: Option<Anchor>,
     pub view: View,
     pub camera: Camera,
     pub paused: bool,
@@ -236,6 +254,9 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
             provenance_in: None,
         },
         time_range: prefs.time_range,
+        // The anchor is transient and never restored from prefs (§F6): the
+        // dashboard always reopens on the live "latest" view.
+        anchor: None,
         view: prefs.view.into(),
         camera: Camera::default(),
         paused,
@@ -281,7 +302,7 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
     rerender(&shared)?;
     install_live_refresh(&shared);
     // Warm the Session-range buckets so switching to "Session" is instant.
-    refresh_session_buckets(&shared);
+    refresh_session_buckets(&shared, false);
     // If the user previously opted in, warm the search-term aggregation too.
     if shared.borrow().show_searches {
         reload_searches(&shared);
@@ -343,12 +364,20 @@ pub(crate) fn live_refresh(shared: &Shared, refit: bool) {
         for os in state.open_sessions.values() {
             sessions.push(os.provisional_record());
         }
-        let view = {
+        let (view, anchored) = {
             let mut a = s.borrow_mut();
             a.buckets = buckets;
             a.sessions = sessions;
-            a.view
+            (a.view, a.anchor.is_some())
         };
+        // Anchored to a historical window (§F6): the new events are folded into the
+        // model above (so they're current the moment the user returns to live), but
+        // the frozen view is left untouched — no auto re-projection or re-render.
+        // The live poll must never yank an anchored view out from under the user.
+        if anchored {
+            s.borrow_mut().refreshing = false;
+            return;
+        }
         recompute_projection(&s);
         // Soft refresh on the graph (preserve the camera) unless `refit` was
         // requested; full re-render for the data views or the empty graph state.
@@ -360,9 +389,9 @@ pub(crate) fn live_refresh(shared: &Shared, refit: bool) {
             let _ = rerender(&s);
         }
         s.borrow_mut().refreshing = false;
-        // If a newer session arrived while viewing the Session range, rescope.
+        // If a newer session arrived while viewing the (live) Session range, rescope.
         if s.borrow().time_range == TimeRange::Session {
-            refresh_session_buckets(&s);
+            refresh_session_buckets(&s, false);
         }
     });
 }
@@ -409,6 +438,44 @@ fn install_live_refresh(shared: &Shared) {
     }
 }
 
+/// The calendar day-number the current anchor ends on, for the windowed
+/// projection/KPI helpers in [`crate::project`] (§F6). `None` (the live view)
+/// resolves to the latest bucket inside those helpers; a session anchor maps to
+/// that session's UTC start day, so the calendar-window Tables cards scope to it.
+pub(crate) fn anchor_end_day(a: &App) -> Option<i64> {
+    match a.anchor {
+        Some(Anchor::Day(d)) => Some(d),
+        Some(Anchor::Session(id)) => a
+            .sessions
+            .iter()
+            .find(|s| s.id == id)
+            .map(|s| project::day_of_ms(s.start_ts)),
+        None => None,
+    }
+}
+
+/// The newest session (by `start_ts`) — the live "Latest" session for the
+/// Session range, and the default when no anchor is set.
+pub(crate) fn latest_session(sessions: &[SessionRec]) -> Option<SessionRec> {
+    sessions
+        .iter()
+        .cloned()
+        .fold(None, |acc: Option<SessionRec>, s| match acc {
+            Some(b) if b.start_ts >= s.start_ts => Some(b),
+            _ => Some(s),
+        })
+}
+
+/// The session the Session range currently displays: the anchored one, or the
+/// newest when live (or when the anchored id has gone away).
+pub(crate) fn displayed_session(a: &App) -> Option<SessionRec> {
+    match a.anchor {
+        Some(Anchor::Session(id)) => a.sessions.iter().find(|s| s.id == id).cloned(),
+        _ => None,
+    }
+    .or_else(|| latest_session(&a.sessions))
+}
+
 /// Re-project the in-memory buckets at the current granularity/filters and warm-
 /// start a fresh layout, preserving spatial memory for surviving nodes (§7.6).
 pub(crate) fn recompute_projection(shared: &Shared) {
@@ -429,7 +496,7 @@ fn recompute_projection_inner(shared: &Shared, relayout: bool) {
     let window = if a.time_range == TimeRange::Session && !a.session_buckets.is_empty() {
         a.session_buckets.clone()
     } else {
-        project::select_window(&a.buckets, a.time_range)
+        project::select_window(&a.buckets, a.time_range, anchor_end_day(&a))
     };
     let mut proj = project::project(&window, a.gran, &a.filters);
     // Drill-down: reduce to the focused node's full connected component, then the
@@ -538,37 +605,36 @@ pub(crate) fn focus_and_animate(shared: &Shared, new_focus: Option<String>) {
     }
 }
 
-/// Load buckets scoped to the most-recent session (folding that session's
-/// id-range of raw events), store them, then recompute + re-render. Lets the
-/// "Session" range show a genuine session rather than the latest UTC day. No-op
-/// when there are no sessions, or when the latest session is already loaded.
-pub(crate) fn refresh_session_buckets(shared: &Shared) {
-    let (db, latest, already) = {
+/// Load buckets scoped to the session the Session range currently displays — the
+/// anchored session, or the newest when live (§F6) — by folding that session's
+/// id-range of raw events, then recompute + re-render. Lets the "Session" range
+/// show a genuine session rather than the latest UTC day. No-op when there are no
+/// sessions. When the target session's buckets are already loaded, it only
+/// re-projects/re-renders if `force` is set (a ‹/› step or "Latest" jump changed
+/// the label/graph); a passive live poll passes `false` to avoid a redundant redraw.
+pub(crate) fn refresh_session_buckets(shared: &Shared, force: bool) {
+    let (db, target, cached) = {
         let a = shared.borrow();
-        let latest =
-            a.sessions
-                .iter()
-                .cloned()
-                .fold(None, |acc: Option<SessionRec>, s| match acc {
-                    Some(b) if b.start_ts >= s.start_ts => Some(b),
-                    _ => Some(s),
-                });
-        let already = match (&latest, a.session_for) {
-            (Some(l), Some(id)) => l.id == id,
-            _ => false,
-        };
-        (a.db.clone(), latest, already)
+        let target = displayed_session(&a);
+        let cached = matches!((&target, a.session_for), (Some(t), Some(f)) if t.id == f);
+        (a.db.clone(), target, cached)
     };
-    let Some(latest) = latest else {
+    let Some(target) = target else {
         return; // no sessions: Session range falls back to the latest day
     };
-    if already {
-        return; // already loaded for this session
+    if cached {
+        // Buckets for this session are already loaded; re-project + render only on
+        // demand (an anchor/label change), and only while on the Session range.
+        if force && shared.borrow().time_range == TimeRange::Session {
+            recompute_projection(shared);
+            let _ = rerender(shared);
+        }
+        return;
     }
     let s = shared.clone();
     wasm_bindgen_futures::spawn_local(async move {
         let events = db
-            .read_events_id_range(latest.start_id, latest.end_id)
+            .read_events_id_range(target.start_id, target.end_id)
             .await
             .unwrap_or_default();
         // Fold this session's events from scratch into day buckets, plus the
@@ -579,7 +645,7 @@ pub(crate) fn refresh_session_buckets(shared: &Shared) {
         {
             let mut a = s.borrow_mut();
             a.session_buckets = buckets;
-            a.session_for = Some(latest.id);
+            a.session_for = Some(target.id);
         }
         if s.borrow().time_range == TimeRange::Session {
             recompute_projection(&s);
@@ -604,8 +670,9 @@ pub(crate) fn persist_positions(shared: &Shared) {
 /// hide-isolated / in-app-navigations / lock). A plain write per change is fine at
 /// this (human-paced) frequency; the value is small and the write is fire-and-
 /// forget through the JS bridge. Transient state (focus, camera, hover, legend
-/// filter, the selected session/day, the session-picker query, the Raw view) is
-/// deliberately excluded.
+/// filter, the selected session/day, the session-picker query, the Raw view, and
+/// the §F6 time-navigation anchor) is deliberately excluded. The anchor is *not*
+/// a field of [`crate::ui_prefs::UiPrefs`], so this write path cannot capture it.
 pub(crate) fn persist_ui_prefs(shared: &Shared) {
     let a = shared.borrow();
     let prefs = crate::ui_prefs::UiPrefs {
@@ -647,7 +714,14 @@ pub(crate) fn reload_buckets(shared: &Shared) {
             }
             b
         };
-        s.borrow_mut().buckets = buckets;
+        {
+            let mut a = s.borrow_mut();
+            a.buckets = buckets;
+            // Switching the SPA/in-app-navigations lens rebuilds the whole bucket
+            // set and re-scopes sessions; a stale anchor could point off the new
+            // timeline, so return to the live view.
+            a.anchor = None;
+        }
         recompute_projection(&s);
         let _ = rerender(&s);
     });
@@ -726,11 +800,14 @@ pub(crate) fn reload_and_rerender(shared: &Shared) {
             // session scope so it reloads against the new id-ranges.
             a.session_for = None;
             a.session_buckets.clear();
+            // A wiped/reimported timeline invalidates any historical anchor (its
+            // day-number or session id may no longer exist), so drop back to live.
+            a.anchor = None;
         }
         recompute_projection(&s);
         let _ = rerender(&s);
         if s.borrow().time_range == TimeRange::Session {
-            refresh_session_buckets(&s);
+            refresh_session_buckets(&s, false);
         }
     });
 }

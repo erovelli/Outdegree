@@ -43,6 +43,28 @@ pub(super) fn install_palette_shortcut(shared: &Shared) {
             }
             return;
         }
+        // ArrowLeft / ArrowRight step time navigation (§F6): back / forward one
+        // range duration (or session). Ignored while typing in a field, while a
+        // modal or the welcome overlay is up, and on the Sessions (Sankey) view —
+        // where the range control is hidden and the picker owns selection.
+        if ke.key() == "ArrowLeft" || ke.key() == "ArrowRight" {
+            if ke.meta_key() || ke.ctrl_key() || ke.alt_key() || is_text_target(&ke) {
+                return;
+            }
+            let (doc, on_sankey) = {
+                let a = s.borrow();
+                (a.doc.clone(), a.view == super::View::Sankey)
+            };
+            if on_sankey
+                || doc.get_element_by_id("bg-modal").is_some()
+                || doc.get_element_by_id("bg-welcome").is_some()
+            {
+                return;
+            }
+            ke.prevent_default();
+            super::chrome::step_range(&s, ke.key() == "ArrowRight");
+            return;
+        }
         if (ke.meta_key() || ke.ctrl_key()) && ke.key().eq_ignore_ascii_case("k") {
             ke.prevent_default();
             if let Some(inp) = s.borrow().doc.get_element_by_id("bg-search") {
@@ -52,6 +74,21 @@ pub(super) fn install_palette_shortcut(shared: &Shared) {
             }
         }
     });
+}
+
+/// Whether a key event targets an editable field (input / textarea / select /
+/// content-editable), so global shortcuts don't fire while the user is typing
+/// or operating a control that owns its own arrow keys.
+fn is_text_target(ke: &KeyboardEvent) -> bool {
+    ke.target()
+        .and_then(|t| t.dyn_into::<HtmlElement>().ok())
+        .map(|el| {
+            let tag = el.tag_name().to_ascii_lowercase();
+            // <select> included: a focused dropdown cycles options (or opens its
+            // popup) with arrows — those must not step the time window instead.
+            tag == "input" || tag == "textarea" || tag == "select" || el.is_content_editable()
+        })
+        .unwrap_or(false)
 }
 
 /// Dismiss the settings popover on a mousedown outside it (and outside the gear
