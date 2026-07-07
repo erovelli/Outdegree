@@ -190,8 +190,10 @@ pub(crate) struct App {
     /// Whether the page scan hit its 20k-event cap (drives the "scanned the most
     /// recent N" note).
     pub inspector_pages_capped: bool,
-    /// Cached per-host search terms for the current scan key, populated only while
-    /// "Show search terms" is on and the host is a recognized engine (§F8 item g).
+    /// Cached per-host search terms for the current scan key (§F8 item g). Always
+    /// collected by the scan (a local re-parse of the same already-read URLs) but
+    /// *rendered* only while "Show search terms" is on — so toggling the setting
+    /// surfaces or hides them from cache, without a rescan.
     pub inspector_searches: Vec<crate::search::SearchCount>,
 }
 

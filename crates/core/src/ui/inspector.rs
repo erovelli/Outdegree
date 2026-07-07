@@ -147,14 +147,15 @@ struct Plan {
     sig: String,
     /// `(node, window, granularity, spa)` identity of the page scan. **Includes the
     /// window** so stepping windows invalidates the cache instead of showing stale
-    /// URLs.
+    /// URLs. Deliberately excludes the "Show search terms" toggle: the scan always
+    /// collects terms (see [`spawn_scan`]) and only the *rendering* is gated, so
+    /// flipping the toggle mid-focus surfaces them from cache without a rescan.
     scan_key: String,
     /// Whether the cached pages belong to a different key (→ (re)scan).
     need_scan: bool,
     html: String,
     scan: ScanSpec,
     gran: Granularity,
-    show_searches: bool,
 }
 
 /// How to read the window's events for the async page scan.
@@ -285,7 +286,6 @@ fn build_plan(a: &App, host: &str) -> Option<Plan> {
         html,
         scan,
         gran,
-        show_searches: a.show_searches,
     })
 }
 
@@ -328,7 +328,6 @@ fn spawn_scan(shared: &Shared, host: String, plan: Plan) {
         scan,
         scan_key,
         gran,
-        show_searches,
         ..
     } = plan;
     wasm_bindgen_futures::spawn_local(async move {
@@ -346,22 +345,25 @@ fn spawn_scan(shared: &Shared, host: String, plan: Plan) {
             ScanSpec::Empty => (Vec::new(), false),
         };
         let pages = inspect::top_pages(&navs, &host, gran, TOP);
-        let searches = if show_searches {
-            let urls: Vec<String> = navs
-                .iter()
-                .filter_map(|e| match e {
-                    Event::Nav { to_url, .. }
-                        if interpret::node_key(to_url, gran).as_deref() == Some(host.as_str()) =>
-                    {
-                        Some(to_url.clone())
-                    }
-                    _ => None,
-                })
-                .collect();
-            search::top_searches(&urls, TOP)
-        } else {
-            Vec::new()
-        };
+        // Search terms are collected regardless of the "Show search terms" toggle —
+        // a purely local re-parse of URLs already read by this same scan — and gated
+        // at *render* time only ([`async_region_html`]). This keeps the scan result
+        // independent of the toggle, so enabling it mid-focus surfaces the cached
+        // terms on the rebuild instead of showing a stale empty list (and no rescan
+        // is needed). The opt-in gates what's shown, never what leaves the machine
+        // (nothing ever does).
+        let urls: Vec<String> = navs
+            .iter()
+            .filter_map(|e| match e {
+                Event::Nav { to_url, .. }
+                    if interpret::node_key(to_url, gran).as_deref() == Some(host.as_str()) =>
+                {
+                    Some(to_url.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        let searches = search::top_searches(&urls, TOP);
 
         let doc = {
             let mut a = s.borrow_mut();
@@ -487,7 +489,20 @@ fn async_region_html(
 ) -> String {
     let mut h = String::from("<h4 class=\"insp-h\">Top pages</h4>");
     if pages.is_empty() {
-        h.push_str("<p class=\"insp-muted\">No page-level detail for this site in the window.</p>");
+        // Distinguish "no data" from "scan limit reached": a capped scan that found
+        // nothing means the window lies beyond the newest-events budget, not that
+        // the site has no pages there.
+        if capped {
+            h.push_str(&format!(
+                "<p class=\"insp-muted\">None found — this window is beyond the {} \
+                 most recent events the scan covers.</p>",
+                fmt_k(SCAN_BUDGET)
+            ));
+        } else {
+            h.push_str(
+                "<p class=\"insp-muted\">No page-level detail for this site in the window.</p>",
+            );
+        }
     } else {
         for p in pages {
             let path = esc(&p.path_query);
