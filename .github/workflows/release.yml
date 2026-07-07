@@ -128,7 +128,7 @@ jobs:
           echo "Built $FF_ZIP ($(wc -c < "$FF_ZIP") bytes)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             outdegree-${{ github.ref_name }}.zip
