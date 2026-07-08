@@ -15,9 +15,11 @@ import { ensureCreated, idbAdd } from "./idb";
 import {
   badgeStateFor,
   closeRecord,
+  devIconPaths,
   findDashboardTab,
   flagOn,
   focusRecord,
+  isDevInstall,
   linkRecord,
   navRecord,
   startRecord,
@@ -53,6 +55,16 @@ chrome.storage.local.get("paused").then((o) => {
   paused = flagOn(o.paused);
   applyBadge(paused);
 });
+
+// Unpacked (dev) installs swap the toolbar icon for the amber variant so a dev
+// build and the store install are tellable apart when both are pinned. Store
+// installs carry a synthesized manifest `update_url`; unpacked loads don't.
+// Like the badge, setIcon state resets on browser restart, and this top-level
+// call re-runs on every worker start — so it is re-applied there too. Only the
+// action (toolbar) icon changes; the manifest `icons` stay canonical.
+if (isDevInstall(chrome.runtime.getManifest())) {
+  void chrome.action.setIcon({ path: devIconPaths() });
+}
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.paused) {
     paused = flagOn(changes.paused.newValue);

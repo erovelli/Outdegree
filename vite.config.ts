@@ -57,6 +57,31 @@ function wasmInlineBytes(): Plugin {
   };
 }
 
+// The amber dev-variant toolbar icons are loaded only at runtime via
+// chrome.action.setIcon on unpacked installs (service-worker.ts), so the crx
+// plugin — which copies manifest-referenced assets only — never emits them.
+// Emit them explicitly; they are static local files, adding zero network
+// surface, and deliberately NOT manifest `icons` (the store identity stays the
+// canonical set).
+function devIconAssets(): Plugin {
+  return {
+    name: "dev-icon-assets",
+    generateBundle() {
+      for (const size of [16, 32, 48, 128]) {
+        this.emitFile({
+          type: "asset",
+          fileName: `icons/dev-${size}.png`,
+          source: readFileSync(
+            fileURLToPath(
+              new URL(`./extension/icons/dev-${size}.png`, import.meta.url)
+            )
+          ),
+        });
+      }
+    },
+  };
+}
+
 // Build pipeline (§9). `--target web` WASM avoids top-level-await; if the wasm
 // asset misresolves under a future Vite, add `vite-plugin-wasm`. Vite 8 renames
 // `build.rollupOptions` → `build.rolldownOptions`.
@@ -81,5 +106,5 @@ export default defineConfig({
       },
     },
   },
-  plugins: [wasmInlineBytes(), crx({ manifest })],
+  plugins: [wasmInlineBytes(), devIconAssets(), crx({ manifest })],
 });
