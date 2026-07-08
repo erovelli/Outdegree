@@ -21,7 +21,7 @@ laying out the graph — runs as a **Rust → WebAssembly** core on the dashboar
 page.
 
 <p align="center">
-  <img src="docs/assets/graph.png" width="900" alt="The Outdegree dashboard: a year of browsing rendered as a directed graph — hosts sized by visits, colored by how you arrived, edges by navigation kind.">
+  <img src="docs/assets/graph-1280x800.png" width="900" alt="The Outdegree dashboard: a month of browsing rendered as a directed graph — hosts labelled with their site icons and sized by visits, colored by how you arrived, edges by navigation kind.">
 </p>
 
 ---
@@ -76,9 +76,9 @@ depends only on `url`, `psl`, and `petgraph`, and runs under `cargo test`. Only
 Two more views over the same local data — follow a single session as a
 left-to-right flow, or read the analytics directly.
 
-| Per-session flow (Sankey) | Analytics (Tables) |
+| Per-session flow (Sessions) | Analytics (Tables) |
 |---|---|
-| <img src="docs/assets/sankey.png" width="430" alt="Sankey view: one browsing session as a left-to-right flow, starting hosts on the left fanning out to where they led."> | <img src="docs/assets/tables.png" width="430" alt="Tables view: a curated dashboard of top hubs, bridge sites, and which sites are surging this period."> |
+| <img src="docs/assets/sessions-1280x800.png" width="430" alt="Sessions view: one browsing session as a left-to-right flow, starting hosts on the left fanning out to where they led, with the activity heatmap session picker alongside."> | <img src="docs/assets/tables-1280x800.png" width="430" alt="Tables view: a curated dashboard of top hubs, browsing rhythm, and which sites are surging this period."> |
 
 More on capturing these (and the store hero shot): [`docs/SCREENSHOTS.md`](docs/SCREENSHOTS.md).
 
