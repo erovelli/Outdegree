@@ -3,9 +3,9 @@
 The Web Store listing needs **≥1 screenshot** (1280×800 or 640×400). The
 full-screen graph is the hero shot.
 
-> Current assets live in [`docs/assets/`](assets/): `graph.png` (README hero +
-> store hero), `sankey.png`, and `tables.png` — all 1280×800. Re-capture with the
-> steps below when the UI changes.
+> Current assets live in [`docs/assets/`](assets/): `graph-1280x800.png` (README
+> hero + store hero), `sessions-1280x800.png`, and `tables-1280x800.png` — all
+> 1280×800. Re-capture with the steps below when the UI changes.
 
 ## The look
 
@@ -25,12 +25,19 @@ search links dashed, arrowheads show direction).
    callout + neighborhood spotlight, or click it to drill into its ego network.
    You can also **drag nodes** to arrange them before capturing.
 4. Capture at the store's size:
-   - DevTools → device toolbar → set 1280×800, or
-   - capture the dashboard tab and crop to 1280×800.
+   - DevTools → device toolbar → preset **Responsive**, dimensions **1280×800**.
+     Two gotchas: the ⋮ menu at the end of that toolbar → **Add device type** →
+     set it to **Desktop** (the default "Mobile" emulates touch — circle cursor,
+     no drag-to-pan), and **Add device pixel ratio** → set **1** (otherwise a
+     HiDPI display captures at 2560×1600). Then ⌘⇧P → **Capture screenshot**
+     grabs exactly the emulated viewport.
+   - or capture the dashboard tab and crop to 1280×800.
 5. Suggested extra shots:
-   - **Sankey** tab — a session's left→right flow (start hosts on the left), a
-     strong "how I move between sites" story.
-   - **Tables** tab — top hubs by weighted degree.
+   - **Sessions** tab — the activity-heatmap session picker plus one session's
+     left→right flow (start hosts on the left), a strong "how I move between
+     sites" story.
+   - **Tables** tab — top hubs by weighted degree and the Rhythm
+     (weekday × hour) heatmap.
    - The **provenance legend** (right) + **range** control (top) visible to show
      the time-window and color encoding at a glance.
 
