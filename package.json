@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.0",
-    "@types/chrome": "^0.2.0",
+    "@types/chrome": "^0.2.2",
     "@types/node": "^26.0.0",
     "fake-indexeddb": "^6",
     "typescript": "^6.0.3",
