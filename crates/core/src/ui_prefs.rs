@@ -58,6 +58,9 @@ pub struct UiPrefs {
     /// Show 16px site favicons across the dashboard (§F12). Default **on**; when
     /// off, no `_favicon` URLs are constructed at all (canvas or HTML paths).
     pub site_icons: bool,
+    /// Graph perspective: `true` renders the graph in 3-D (orbit camera). Default
+    /// **off** — the flat 2-D layout stays the canonical view.
+    pub three_d: bool,
 }
 
 impl Default for UiPrefs {
@@ -73,6 +76,7 @@ impl Default for UiPrefs {
             locked: false,
             // Site icons are on out of the box; a user can turn them off in Settings.
             site_icons: true,
+            three_d: false,
         }
     }
 }
@@ -108,6 +112,7 @@ mod tests {
             locked: true,
             // Non-default (off) so the round-trip proves the field persists both ways.
             site_icons: false,
+            three_d: true,
         };
         let json = serialize(&prefs);
         assert_eq!(parse(&json), prefs);
@@ -125,6 +130,8 @@ mod tests {
         // Site icons default ON (§F12) — a hand-written Default, since derive'd
         // Default would give false.
         assert!(d.site_icons);
+        // The graph perspective defaults to 2-D.
+        assert!(!d.three_d);
     }
 
     #[test]

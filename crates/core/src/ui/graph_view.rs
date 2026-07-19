@@ -61,11 +61,17 @@ pub(crate) fn render(shared: &Shared) -> Result<(), JsValue> {
     let _ = body.append_child(&canvas);
 
     // Frame the laid-out nodes so the graph is visible even when sparse/edgeless.
-    // Manual pan/zoom then adjusts from here until the next render.
+    // Manual pan/zoom (2-D) or orbit/zoom (3-D) then adjusts from here until the
+    // next render.
     {
         let mut a = shared.borrow_mut();
-        let cam = canvas2d::fit(&a.proj, &a.layout_pos, w, h);
-        a.camera = cam;
+        if a.three_d {
+            let cam = crate::camera3::fit(&a.proj, &a.layout_pos3, w, h);
+            a.camera3 = cam;
+        } else {
+            let cam = canvas2d::fit(&a.proj, &a.layout_pos, w, h);
+            a.camera = cam;
+        }
     }
 
     draw_now(shared, &canvas);
@@ -135,11 +141,27 @@ pub(crate) fn redraw(shared: &Shared) {
     }
 }
 
-/// Multiply the zoom about the canvas center and redraw.
+/// Multiply the zoom about the canvas center and redraw (both perspectives).
 pub(crate) fn zoom(shared: &Shared, factor: f64) {
     {
         let mut a = shared.borrow_mut();
-        a.camera.scale = (a.camera.scale * factor).clamp(0.1, 8.0);
+        if a.three_d {
+            a.camera3.zoom(factor);
+        } else {
+            a.camera.scale = (a.camera.scale * factor).clamp(0.1, 8.0);
+        }
+    }
+    redraw(shared);
+}
+
+/// Orbit the 3-D camera by yaw/pitch deltas (radians) and redraw. Cancels any
+/// in-flight tween like a manual pan. Instant, so there is nothing for
+/// prefers-reduced-motion to suppress.
+fn orbit(shared: &Shared, dyaw: f64, dpitch: f64) {
+    {
+        let mut a = shared.borrow_mut();
+        a.anim_gen = a.anim_gen.wrapping_add(1); // cancel any camera tween
+        a.camera3.orbit(dyaw, dpitch);
     }
     redraw(shared);
 }
@@ -158,21 +180,34 @@ fn pan(shared: &Shared, dx: f64, dy: f64) {
 }
 
 /// Re-frame all nodes to fit the canvas and redraw (the "fit-to-screen" button).
+/// In 3-D this also resets the orbit to the canonical three-quarter view.
 pub(crate) fn fit_view(shared: &Shared) {
     if let Some(c) = canvas_el(shared) {
         let (w, h) = logical_dims(&c);
-        let cam = {
-            let a = shared.borrow();
-            canvas2d::fit(&a.proj, &a.layout_pos, w, h)
-        };
-        shared.borrow_mut().camera = cam;
+        {
+            let mut a = shared.borrow_mut();
+            if a.three_d {
+                let cam = crate::camera3::fit(&a.proj, &a.layout_pos3, w, h);
+                a.camera3 = cam;
+            } else {
+                let cam = canvas2d::fit(&a.proj, &a.layout_pos, w, h);
+                a.camera = cam;
+            }
+        }
         draw_now(shared, &c);
     }
 }
 
 /// Animate the camera to frame the current projection, tweening from the current
-/// view — the smooth pan/zoom into a selected node's component.
+/// view — the smooth pan/zoom into a selected node's component. The 3-D
+/// perspective snaps instead of tweening (one orbit camera state to another has
+/// no meaningful straight-line interpolation), which also matches what
+/// prefers-reduced-motion would demand.
 pub(crate) fn animate_to_fit(shared: &Shared) {
+    if shared.borrow().three_d {
+        fit_view(shared);
+        return;
+    }
     let Some(c) = canvas_el(shared) else { return };
     let (w, h) = logical_dims(&c);
     let target = {
@@ -275,7 +310,9 @@ fn animate_to(shared: &Shared, target: Camera) {
 /// Export the graph to a PNG: render the whole projection (fit-to-page, no
 /// hover/focus/filter chrome) to an offscreen canvas at 2× for crispness, then
 /// hand `toDataURL` bytes to the local download bridge — independent of the live
-/// camera's pan/zoom.
+/// camera's pan/zoom. Exports always use the 2-D layout — even while the 3-D
+/// perspective is active — so the artifact is orientation-independent and
+/// reproducible (like the SVG export below).
 pub(crate) fn export_png(shared: &Shared) {
     const PAGE_W: f64 = 1600.0;
     const PAGE_H: f64 = 1000.0;
@@ -336,19 +373,34 @@ fn draw_now(shared: &Shared, canvas: &HtmlCanvasElement) {
         // the favicon permission (`site_icon_base` gates both) — otherwise `None`,
         // so `draw` constructs no icon work and reports no misses.
         let icons = super::site_icon_base(&a).is_some().then_some(&a.favicons);
-        canvas2d::draw(
-            &ctx,
-            w,
-            h,
-            &a.proj,
-            &a.layout_pos,
-            &a.camera,
-            a.hover.as_deref(),
-            a.focus.as_deref(),
-            a.legend_filter,
-            &a.communities,
-            icons,
-        )
+        if a.three_d {
+            canvas2d::draw_3d(
+                &ctx,
+                w,
+                h,
+                &a.proj,
+                &a.layout_pos3,
+                &a.camera3,
+                a.hover.as_deref(),
+                a.focus.as_deref(),
+                a.legend_filter,
+                icons,
+            )
+        } else {
+            canvas2d::draw(
+                &ctx,
+                w,
+                h,
+                &a.proj,
+                &a.layout_pos,
+                &a.camera,
+                a.hover.as_deref(),
+                a.focus.as_deref(),
+                a.legend_filter,
+                &a.communities,
+                icons,
+            )
+        }
     };
     // Start a load per newly-seen host (load-once, enforced by the cache's `begin`).
     // `misses` is already capped at the cache's remaining capacity (the §F12 churn
@@ -455,21 +507,41 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                 return; // don't shadow browser/OS chords
             }
             const PAN: f64 = 48.0;
+            // In 3-D the arrows orbit instead of panning — the keyboard analogue
+            // of the drag, in the same direction the drag would move the scene.
+            const ORBIT: f64 = 0.12;
+            let td = s.borrow().three_d;
             let handled = match ke.key().as_str() {
                 "ArrowLeft" => {
-                    pan(&s, PAN, 0.0);
+                    if td {
+                        orbit(&s, -ORBIT, 0.0);
+                    } else {
+                        pan(&s, PAN, 0.0);
+                    }
                     true
                 }
                 "ArrowRight" => {
-                    pan(&s, -PAN, 0.0);
+                    if td {
+                        orbit(&s, ORBIT, 0.0);
+                    } else {
+                        pan(&s, -PAN, 0.0);
+                    }
                     true
                 }
                 "ArrowUp" => {
-                    pan(&s, 0.0, PAN);
+                    if td {
+                        orbit(&s, 0.0, -ORBIT);
+                    } else {
+                        pan(&s, 0.0, PAN);
+                    }
                     true
                 }
                 "ArrowDown" => {
-                    pan(&s, 0.0, -PAN);
+                    if td {
+                        orbit(&s, 0.0, ORBIT);
+                    } else {
+                        pan(&s, 0.0, -PAN);
+                    }
                     true
                 }
                 "+" | "=" => {
@@ -505,7 +577,11 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                 {
                     let mut a = s.borrow_mut();
                     a.anim_gen = a.anim_gen.wrapping_add(1); // cancel any camera tween
-                    a.camera.scale = (a.camera.scale * factor).clamp(0.1, 8.0);
+                    if a.three_d {
+                        a.camera3.zoom(factor);
+                    } else {
+                        a.camera.scale = (a.camera.scale * factor).clamp(0.1, 8.0);
+                    }
                 }
                 draw_now(&s, &c);
             }
@@ -520,10 +596,18 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                 let (mx, my) = (me.offset_x() as f64, me.offset_y() as f64);
                 let mut a = s.borrow_mut();
                 a.anim_gen = a.anim_gen.wrapping_add(1); // cancel any camera tween
-                let (w, h) = logical_dims(&c);
-                let hit = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
                 a.did_drag = false;
                 a.last_mouse = (mx, my);
+                // 3-D: every drag orbits the camera — node repositioning is a 2-D
+                // affordance (a screen-plane drag has no well-defined depth), and
+                // the persisted spatial memory stays 2-D-only.
+                if a.three_d {
+                    a.dragging = true;
+                    c.set_class_name("grabbing");
+                    return;
+                }
+                let (w, h) = logical_dims(&c);
+                let hit = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
                 match hit {
                     Some(key) => {
                         a.drag_node = Some(key);
@@ -571,13 +655,23 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                     if (mx - lx).abs() + (my - ly).abs() > 2.0 {
                         a.did_drag = true;
                     }
-                    a.camera.x += mx - lx;
-                    a.camera.y += my - ly;
+                    if a.three_d {
+                        // Orbit: screen deltas → yaw/pitch (radians/px tuned so a
+                        // half-canvas drag is roughly a quarter turn).
+                        a.camera3.orbit((mx - lx) * 0.008, (my - ly) * 0.008);
+                    } else {
+                        a.camera.x += mx - lx;
+                        a.camera.y += my - ly;
+                    }
                     a.last_mouse = (mx, my);
                     redraw = true;
                 } else {
                     let (w, h) = logical_dims(&c);
-                    let hov = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
+                    let hov = if a.three_d {
+                        canvas2d::hit_test_3d(mx, my, w, h, &a.proj, &a.layout_pos3, &a.camera3)
+                    } else {
+                        canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera)
+                    };
                     c.set_class_name(if hov.is_some() { "grabbable" } else { "" });
                     if hov != a.hover {
                         a.hover = hov;
@@ -625,7 +719,11 @@ fn attach_interactions(shared: &Shared, canvas: &HtmlCanvasElement) {
                 }
                 let (mx, my) = (me.offset_x() as f64, me.offset_y() as f64);
                 let (w, h) = logical_dims(&c);
-                let hit = canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera);
+                let hit = if a.three_d {
+                    canvas2d::hit_test_3d(mx, my, w, h, &a.proj, &a.layout_pos3, &a.camera3)
+                } else {
+                    canvas2d::hit_test(mx, my, w, h, &a.proj, &a.layout_pos, &a.camera)
+                };
                 // toggle: clicking the focused node again clears focus
                 match (hit, a.focus.clone()) {
                     (Some(k), Some(f)) if k == f => None,

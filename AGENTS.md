@@ -86,7 +86,7 @@ Two layers, two languages:
 
 | Path | Language | Compiles under | Notes |
 |---|---|---|---|
-| `crates/core/src/{model,interpret,derive,rollup,project,graph,layout,flow,search,svg,export,views}.rs` | Rust | **native + wasm32** | **Pure.** Runs under `cargo test`. Depends only on `url`, `psl`, `petgraph`, `serde`. This is the load-bearing logic. |
+| `crates/core/src/{model,interpret,derive,rollup,project,graph,layout,camera3,flow,search,svg,export,views}.rs` | Rust | **native + wasm32** | **Pure.** Runs under `cargo test`. Depends only on `url`, `psl`, `petgraph`, `serde`. This is the load-bearing logic. |
 | `crates/core/src/{store,render/*,ui/*,bridge}.rs` | Rust | **wasm32 only** | Gated behind `cfg(target_arch = "wasm32")`. IndexedDB (rexie), canvas2d renderer, the dashboard UI, and the JS bridge. |
 | `extension/src/{service-worker,idb,chrome-bridge,dashboard,capture}.ts` | TypeScript | n/a | The capture layer + glue. `capture.ts` holds the pure event-shaping helpers (unit-tested); `idb.ts` is the sole IndexedDB schema owner. |
 

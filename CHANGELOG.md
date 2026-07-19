@@ -18,6 +18,18 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
   behaves correctly everywhere, with no build-time fork. Only the toolbar
   (action) icon changes; the manifest `icons`, the store listing, and
   `chrome://extensions` keep the canonical set. No new permissions, no network.
+- **3-D graph perspective.** A **2D / 3D** control in the graph's bottom-right
+  zoom toolbar (default **2D**) re-lays the same projection volumetrically — a
+  3-D Fruchterman–Reingold pass (Barnes–Hut octree, community cohesion,
+  deterministic Fibonacci-sphere placement) behind a perspective orbit camera.
+  Drag or arrow keys orbit, the wheel / toolbar buttons zoom, `F`/`0` re-frames,
+  and nodes paint back-to-front with a distance fade so depth reads at a glance.
+  Hover callouts, click-to-drill, the legend spotlight, per-node LOD, and
+  favicons all work identically in 3-D; node repositioning stays a 2-D affordance
+  and PNG/SVG exports keep using the canonical 2-D layout. The choice persists in
+  `uiPrefs` (3-D placement itself is recomputed deterministically, never stored),
+  and everything runs in the existing canvas2d renderer — no new dependencies, no
+  WebGL, zero change to the network surface.
 
 ## [1.2.0] — 2026-07-07
 
