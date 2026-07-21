@@ -9,6 +9,8 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-07-21
+
 ### Added
 - **Dev installs get a distinct amber toolbar icon.** An unpacked ("Load
   unpacked") install now swaps its toolbar icon for an amber variant of the
