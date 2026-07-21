@@ -137,7 +137,7 @@ jobs:
           echo "Built $FF_ZIP ($(wc -c < "$FF_ZIP") bytes)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             outdegree-${{ github.ref_name }}.zip
@@ -156,7 +156,7 @@ jobs:
 
       # Hand the packaged zip to the store-publish job.
       - name: Upload zip artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: extension-zip
           path: outdegree-${{ github.ref_name }}.zip
@@ -181,7 +181,7 @@ jobs:
     permissions: {}
     steps:
       - name: Download release zip
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: extension-zip
 
