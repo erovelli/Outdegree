@@ -14,6 +14,14 @@ const EDGE = [0x8a, 0xa0, 0xb6];
 const NODE = [0x4f, 0x8e, 0xf7];
 const NODE2 = [0x2e, 0xcc, 0x71];
 
+// Dev-install variant (`dev-*.png`): the same graph motif on an amber field, so
+// an unpacked dev build and the store install are distinguishable at a glance
+// in the toolbar. Applied at runtime via chrome.action.setIcon (see
+// service-worker.ts); the manifest keeps the canonical set, so the store
+// listing and chrome://extensions never show this variant.
+const DEV_BG = [0xd9, 0x82, 0x16];
+const DEV_EDGE = [0x38, 0x28, 0x0c];
+
 // normalized node positions and the edges connecting them
 const NODES = [
   { x: 0.3, y: 0.34, c: NODE },
@@ -26,7 +34,7 @@ const EDGES = [
   [0, 2],
 ];
 
-function render(size) {
+function render(size, bg = BG, edge = EDGE) {
   const buf = Buffer.alloc(size * size * 4);
   const set = (x, y, [r, g, b]) => {
     if (x < 0 || y < 0 || x >= size || y >= size) return;
@@ -37,7 +45,7 @@ function render(size) {
     buf[i + 3] = 255;
   };
   // background
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) set(x, y, BG);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) set(x, y, bg);
 
   const px = (n) => [n.x * size, n.y * size];
   const lw = Math.max(1, size * 0.045);
@@ -53,7 +61,7 @@ function render(size) {
       for (let oy = -lw; oy <= lw; oy++)
         for (let ox = -lw; ox <= lw; ox++)
           if (ox * ox + oy * oy <= lw * lw)
-            set(Math.round(cx + ox), Math.round(cy + oy), EDGE);
+            set(Math.round(cx + ox), Math.round(cy + oy), edge);
     }
   }
   // nodes
@@ -111,4 +119,8 @@ for (const size of [16, 32, 48, 128]) {
   const png = encodePng(size, render(size));
   writeFileSync(join(DIR, `${size}.png`), png);
   console.log(`wrote ${size}.png (${png.length} bytes)`);
+
+  const dev = encodePng(size, render(size, DEV_BG, DEV_EDGE));
+  writeFileSync(join(DIR, `dev-${size}.png`), dev);
+  console.log(`wrote dev-${size}.png (${dev.length} bytes)`);
 }

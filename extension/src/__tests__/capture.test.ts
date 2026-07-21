@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   badgeStateFor,
   closeRecord,
+  devIconPaths,
   findDashboardTab,
   flagOn,
   focusRecord,
+  isDevInstall,
   linkRecord,
   navRecord,
   startRecord,
@@ -124,6 +126,30 @@ describe("badgeStateFor (paused toolbar indicator)", () => {
 
   it("clears the badge and restores the default title while capture runs", () => {
     expect(badgeStateFor(false)).toEqual({ text: "", title: "Open Outdegree" });
+  });
+});
+
+describe("isDevInstall / devIconPaths (dev toolbar-icon swap)", () => {
+  it("treats a manifest without update_url as an unpacked dev install", () => {
+    expect(isDevInstall({})).toBe(true);
+  });
+
+  it("treats a store-synthesized update_url as a store install", () => {
+    expect(
+      isDevInstall({ update_url: "https://clients2.google.com/service/update2/crx" })
+    ).toBe(false);
+    // Presence is the signal, whatever the value — even an empty string means
+    // the browser synthesized the key.
+    expect(isDevInstall({ update_url: "" })).toBe(false);
+  });
+
+  it("maps every manifest icon size onto a dev-variant path", () => {
+    expect(devIconPaths()).toEqual({
+      "16": "icons/dev-16.png",
+      "32": "icons/dev-32.png",
+      "48": "icons/dev-48.png",
+      "128": "icons/dev-128.png",
+    });
   });
 });
 

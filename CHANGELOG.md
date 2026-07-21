@@ -9,6 +9,16 @@ here before tagging a release; the `version v*` tag drives `release.yml`.
 
 ## [Unreleased]
 
+### Added
+- **Dev installs get a distinct amber toolbar icon.** An unpacked ("Load
+  unpacked") install now swaps its toolbar icon for an amber variant of the
+  graph motif at runtime, so a dev build and the store install are tellable
+  apart at a glance when both are pinned. Store installs are detected by the
+  `update_url` Chrome synthesizes into their manifest — the same artifact
+  behaves correctly everywhere, with no build-time fork. Only the toolbar
+  (action) icon changes; the manifest `icons`, the store listing, and
+  `chrome://extensions` keep the canonical set. No new permissions, no network.
+
 ## [1.2.0] — 2026-07-07
 
 ### Added
