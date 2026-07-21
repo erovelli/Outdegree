@@ -316,6 +316,8 @@ select:focus-visible {
 .panel.toolbar { flex-direction: column; padding: 0; gap: 0; overflow: hidden; }
 .panel.toolbar .iconbtn { width: 40px; height: 40px; border-radius: 0; }
 .panel.toolbar .iconbtn + .iconbtn { border-top: 1px solid var(--toolbar-divider); }
+/* the 2D/3D perspective toggle is a text-label button in the icon toolbar */
+.iconbtn-text { font: 600 12px var(--mono); letter-spacing: 0.02em; }
 
 /* 6. search + filter chips */
 .panel.search { flex-direction: column; align-items: stretch; gap: 8px; }

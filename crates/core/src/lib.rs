@@ -12,6 +12,7 @@
 #![cfg_attr(not(target_arch = "wasm32"), forbid(unsafe_code))]
 
 // ── Pure core (runs under `cargo test`) ────────────────────────────────────────
+pub mod camera3;
 pub mod derive;
 pub mod export;
 pub mod favicon;

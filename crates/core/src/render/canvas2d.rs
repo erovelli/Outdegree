@@ -8,8 +8,9 @@
 //! fill = dominant provenance, edges colored by dominant kind (search links
 //! dashed), each node ringed by a 2px black "moat". Pan/zoom via the [`Camera`].
 
+use crate::camera3::Camera3;
 use crate::favicon::IconCache;
-use crate::layout::Pos;
+use crate::layout::{Pos, Pos3};
 use crate::model::{GraphProjection, Provenance};
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
@@ -766,6 +767,324 @@ fn clip(s: &str, max: usize) -> String {
         t.push('…');
         t
     }
+}
+
+// ─────────────────────────── 3-D perspective draw path ───────────────────────────
+
+/// A node projected through the 3-D orbit camera: screen point, perspective
+/// scale (the per-node stand-in for the 2-D camera's uniform `scale`), and depth
+/// for the painter's ordering + distance fade.
+struct Projected {
+    x: f64,
+    y: f64,
+    s: f64,
+    depth: f64,
+}
+
+/// Distance fade for the 3-D view: nearest → 1.0, farthest → 0.45, linear in
+/// depth across the frame. Multiplied into edge/node alphas so depth reads even
+/// where perspective size differences are subtle.
+fn depth_fade(depth: f64, dmin: f64, dmax: f64) -> f64 {
+    if dmax <= dmin {
+        return 1.0;
+    }
+    1.0 - 0.55 * ((depth - dmin) / (dmax - dmin)).clamp(0.0, 1.0)
+}
+
+/// Draw the graph in 3-D perspective ([`Camera3`] orbit): same visual language as
+/// [`draw`] — provenance shapes/hues, weighted directional edges, spotlight,
+/// decluttered labels, reticle/callout, favicons — but each node carries its own
+/// perspective scale, nodes paint back-to-front, and a distance fade encodes
+/// depth. Community hulls are deliberately absent: they are a 2-D planar
+/// construct (a convex hull of screen points is meaningless mid-orbit), and the
+/// cohesion force already groups communities spatially. Returns favicon misses
+/// exactly like [`draw`].
+#[allow(clippy::too_many_arguments)]
+pub fn draw_3d(
+    ctx: &CanvasRenderingContext2d,
+    w: f64,
+    h: f64,
+    proj: &GraphProjection,
+    pos: &HashMap<String, Pos3>,
+    cam: &Camera3,
+    hover: Option<&str>,
+    selected: Option<&str>,
+    filter: Option<Provenance>,
+    icons: Option<&IconCache<HtmlImageElement>>,
+) -> Vec<String> {
+    let mut icon_misses: Vec<String> = Vec::new();
+    let mut icon_budget: usize = icons.map(|c| c.remaining()).unwrap_or(0);
+
+    // Backdrop through a synthetic 2-D camera: the dot grid is a world-plane
+    // artifact with no meaning mid-orbit, so it only tracks the zoom level (it
+    // naturally drops out below the density cutoff when zoomed far out).
+    let grid_cam = Camera {
+        x: 0.0,
+        y: 0.0,
+        scale: cam.scale,
+    };
+    draw_backdrop(ctx, w, h, &grid_cam);
+
+    // Project every positioned node once; depth bounds drive the distance fade.
+    let mut screen: HashMap<&str, Projected> = HashMap::new();
+    let (mut dmin, mut dmax) = (f64::INFINITY, f64::NEG_INFINITY);
+    for n in &proj.nodes {
+        if let Some(p) = pos.get(&n.key) {
+            let (x, y, s, depth) = cam.project(p, w, h);
+            if !(x.is_finite() && y.is_finite() && s.is_finite()) {
+                continue;
+            }
+            dmin = dmin.min(depth);
+            dmax = dmax.max(depth);
+            screen.insert(n.key.as_str(), Projected { x, y, s, depth });
+        }
+    }
+
+    let highlight: Option<HashSet<&str>> = hover.map(|f| {
+        let mut s = HashSet::new();
+        s.insert(f);
+        for e in &proj.edges {
+            if e.from == f {
+                s.insert(e.to.as_str());
+            }
+            if e.to == f {
+                s.insert(e.from.as_str());
+            }
+        }
+        s
+    });
+    let lit = |key: &str| highlight.as_ref().map(|s| s.contains(key)).unwrap_or(true);
+
+    // ── edges (far-to-near so near strokes overpaint far ones) ───────────────
+    let vis: HashMap<&str, u32> = proj
+        .nodes
+        .iter()
+        .map(|n| (n.key.as_str(), n.visits))
+        .collect();
+    let mut edge_order: Vec<usize> = (0..proj.edges.len()).collect();
+    let edge_depth = |i: usize| -> f64 {
+        let e = &proj.edges[i];
+        match (screen.get(e.from.as_str()), screen.get(e.to.as_str())) {
+            (Some(a), Some(b)) => (a.depth + b.depth) * 0.5,
+            _ => f64::INFINITY,
+        }
+    };
+    edge_order.sort_by(|&a, &b| {
+        edge_depth(b)
+            .partial_cmp(&edge_depth(a))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    for i in edge_order {
+        let e = &proj.edges[i];
+        let (Some(a), Some(b)) = (screen.get(e.from.as_str()), screen.get(e.to.as_str())) else {
+            continue;
+        };
+        let (ax, ay, bx, by) = (a.x, a.y, b.x, b.y);
+        if ax.max(bx) < -CULL_MARGIN
+            || ax.min(bx) > w + CULL_MARGIN
+            || ay.max(by) < -CULL_MARGIN
+            || ay.min(by) > h + CULL_MARGIN
+        {
+            continue;
+        }
+        // Per-edge base width from the mean endpoint perspective scale (the 3-D
+        // stand-in for the uniform `cam.scale`), then √weight thickening as in 2-D.
+        let es = (a.s + b.s) * 0.5;
+        let fade = depth_fade((a.depth + b.depth) * 0.5, dmin, dmax);
+        let ew = (1.2 * es).clamp(0.6, 4.0);
+        let kind = e.kinds.dominant();
+        let lw = (ew * (e.weight as f64).sqrt()).clamp(ew, ew * 5.0);
+        ctx.set_line_width(lw);
+        let touches = filter.is_none() && hover.map(|f| e.from == f || e.to == f).unwrap_or(true);
+        let dashed = matches!(kind, crate::model::EdgeKind::SearchLink);
+        let base = if dashed { 0.5 } else { 0.34 };
+        set_stroke(ctx, kind.color());
+        set_fill(ctx, kind.color());
+
+        let dx = bx - ax;
+        let dy = by - ay;
+        let len = (dx * dx + dy * dy).sqrt();
+        let tr = vis
+            .get(e.to.as_str())
+            .map(|v| radius(*v, b.s))
+            .unwrap_or(4.0);
+        let (tipx, tipy) = if len > 1.0 {
+            (bx - dx / len * (tr + 1.5), by - dy / len * (tr + 1.5))
+        } else {
+            (bx, by)
+        };
+
+        ctx.set_global_alpha(if touches { base * fade } else { 0.06 });
+        set_dash(ctx, if dashed { &[5.0, 5.0] } else { &[] });
+        ctx.begin_path();
+        ctx.move_to(ax, ay);
+        ctx.line_to(tipx, tipy);
+        ctx.stroke();
+
+        if len > tr + 4.0 {
+            let (ux, uy) = (dx / len, dy / len);
+            let (px, py) = (-uy, ux);
+            let ah = (5.0 * es).clamp(4.0, 9.0);
+            let (bxh, byh) = (tipx - ux * ah, tipy - uy * ah);
+            set_dash(ctx, &[]);
+            ctx.set_global_alpha(if touches {
+                ((base + 0.3) * fade).min(0.9)
+            } else {
+                0.08
+            });
+            ctx.begin_path();
+            ctx.move_to(tipx, tipy);
+            ctx.line_to(bxh + px * ah * 0.55, byh + py * ah * 0.55);
+            ctx.line_to(bxh - px * ah * 0.55, byh - py * ah * 0.55);
+            ctx.close_path();
+            ctx.fill();
+        }
+    }
+    set_dash(ctx, &[]);
+    ctx.set_global_alpha(1.0);
+
+    // ── nodes, painter's algorithm (back-to-front) ───────────────────────────
+    ctx.set_text_align("center");
+    ctx.set_text_baseline("alphabetic");
+    set_stroke(ctx, BG);
+
+    let hotness =
+        |key: &str, prov: Provenance| lit(key) && filter.map(|f| prov == f).unwrap_or(true);
+    let mut node_order: Vec<usize> = (0..proj.nodes.len())
+        .filter(|&i| screen.contains_key(proj.nodes[i].key.as_str()))
+        .collect();
+    node_order.sort_by(|&a, &b| {
+        let da = screen[proj.nodes[a].key.as_str()].depth;
+        let db = screen[proj.nodes[b].key.as_str()].depth;
+        db.partial_cmp(&da).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    for &i in &node_order {
+        let n = &proj.nodes[i];
+        let p = &screen[n.key.as_str()];
+        let r = radius(n.visits, p.s);
+        if !in_viewport(p.x, p.y, r, w, h, CULL_MARGIN) {
+            continue;
+        }
+        let prov = n.prov.dominant().display();
+        let fade = depth_fade(p.depth, dmin, dmax);
+        let alpha = if hotness(&n.key, prov) { fade } else { 0.22 };
+        ctx.set_global_alpha(alpha);
+        set_fill(ctx, prov.color());
+        // LOD by *per-node* perspective scale: distant nodes fall back to plain
+        // discs exactly like far-zoom nodes do in 2-D.
+        let lod = p.s < LOD_SCALE;
+        let shape = if lod {
+            crate::model::Shape::Circle
+        } else {
+            prov.shape()
+        };
+        ctx.set_line_width((2.0 * p.s).clamp(1.0, 4.0));
+        trace_marker(ctx, shape, p.x, p.y, r);
+        ctx.fill();
+        ctx.stroke();
+
+        if let Some(cache) = icons {
+            if !lod && r >= MIN_ICON_RADIUS {
+                match cache.ready(&n.key) {
+                    Some(img) => draw_favicon(ctx, img, p.x, p.y, r, alpha),
+                    None => {
+                        if icon_budget > 0 && !cache.contains(&n.key) {
+                            icon_misses.push(n.key.clone());
+                            icon_budget -= 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    ctx.set_global_alpha(1.0);
+
+    // ── labels (decluttered; nearest/most-visited win collisions) ────────────
+    // Order by visits like 2-D so the busiest hosts keep their labels; the font
+    // tracks each node's perspective scale, which itself declutters the far field.
+    let mut placed: Vec<(f64, f64, f64, f64)> = Vec::new();
+    let mut order: Vec<usize> = (0..proj.nodes.len()).collect();
+    order.sort_by(|&a, &b| proj.nodes[b].visits.cmp(&proj.nodes[a].visits));
+    for i in order {
+        let n = &proj.nodes[i];
+        let Some(p) = screen.get(n.key.as_str()) else {
+            continue;
+        };
+        let r = radius(n.visits, p.s);
+        let prov = n.prov.dominant().display();
+        let hot = hotness(&n.key, prov);
+        let fs = label_px(p.s);
+        let label = clip(&n.key, 28);
+        let tw = label.chars().count() as f64 * fs * 0.6;
+        let cy = p.y + r + fs + 2.0;
+        let (bx0, bx1, by0, by1) = (p.x - tw / 2.0, p.x + tw / 2.0, cy - fs, cy + 2.0);
+        let overlaps = placed
+            .iter()
+            .any(|&(ox0, oy0, ox1, oy1)| bx0 < ox1 && bx1 > ox0 && by0 < oy1 && by1 > oy0);
+        let force = hot && (hover.is_some() || filter.is_some());
+        if (p.s < LOD_SCALE || !in_viewport(p.x, p.y, r, w, h, CULL_MARGIN)) && !force {
+            continue;
+        }
+        if overlaps && !force {
+            continue;
+        }
+        placed.push((bx0, by0, bx1, by1));
+        ctx.set_font(&format!("{fs:.0}px {MONO}"));
+        ctx.set_global_alpha(if hot {
+            depth_fade(p.depth, dmin, dmax)
+        } else {
+            0.35
+        });
+        set_fill(ctx, LABEL);
+        let _ = ctx.fill_text(&label, p.x, cy);
+    }
+    ctx.set_global_alpha(1.0);
+
+    // ── selection reticle + hover callout ────────────────────────────────────
+    if let Some(sel) = selected {
+        if let (Some(node), Some(p)) = (proj.nodes.iter().find(|n| n.key == sel), screen.get(sel)) {
+            draw_reticle(ctx, p.x, p.y, radius(node.visits, p.s));
+        }
+    }
+    if let Some(hk) = hover {
+        if let (Some(node), Some(p)) = (proj.nodes.iter().find(|n| n.key == hk), screen.get(hk)) {
+            draw_callout(ctx, w, h, p.x, p.y, radius(node.visits, p.s), node);
+        }
+    }
+
+    icon_misses
+}
+
+/// [`hit_test`] for the 3-D view: among nodes whose projected disc contains the
+/// screen point, prefer the **nearest** (smallest depth) — the one painted on
+/// top by the back-to-front pass.
+pub fn hit_test_3d(
+    sx: f64,
+    sy: f64,
+    w: f64,
+    h: f64,
+    proj: &GraphProjection,
+    pos: &HashMap<String, Pos3>,
+    cam: &Camera3,
+) -> Option<String> {
+    let mut best: Option<(String, f64)> = None;
+    for n in &proj.nodes {
+        if let Some(p) = pos.get(&n.key) {
+            let (x, y, s, depth) = cam.project(p, w, h);
+            if !(x.is_finite() && y.is_finite() && s.is_finite()) {
+                continue;
+            }
+            let r = radius(n.visits, s).max(6.0);
+            let d2 = (x - sx).powi(2) + (y - sy).powi(2);
+            if d2 <= r * r {
+                let better = best.as_ref().map(|(_, bd)| depth < *bd).unwrap_or(true);
+                if better {
+                    best = Some((n.key.clone(), depth));
+                }
+            }
+        }
+    }
+    best.map(|(k, _)| k)
 }
 
 /// Hit-test: the topmost node whose disc contains screen point `(sx, sy)`.

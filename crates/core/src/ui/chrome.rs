@@ -514,10 +514,38 @@ pub(super) fn set_legend(shared: &Shared) {
 // ── 5. zoom toolbar (bottom-right) ───────────────────────────────────────────
 pub(super) fn zoom_panel(doc: &Document, shared: &Shared) -> Element {
     let p = panel(doc, "toolbar at-br");
+    // Graph perspective toggle: a text-label button ("2D"/"3D") that switches the
+    // graph between the flat layout and the 3-D orbit view. `sync_chrome` sets its
+    // label / active / aria state; the label always shows the *current* mode, and
+    // it reads "pressed" while 3-D is active (mirroring the lock toggle below).
+    let persp = el(doc, "button");
+    let _ = persp.set_attribute("id", "bg-persp");
+    let _ = persp.set_attribute("class", "iconbtn iconbtn-text");
+    let _ = persp.set_attribute("aria-label", "Switch to 3D perspective");
+    let _ = persp.set_attribute("title", "Switch to 3D perspective");
+    persp.set_text_content(Some("2D"));
     let zin = icon_btn(doc, "bg-zoom-in", "Zoom in", &icon("plus"));
     let zout = icon_btn(doc, "bg-zoom-out", "Zoom out", &icon("minus"));
     let fit = icon_btn(doc, "bg-fit", "Fit to screen", &icon("fit"));
     let lock = icon_btn(doc, "bg-lock", "Lock layout", &icon("unlock"));
+    {
+        let s = shared.clone();
+        on(&persp, "click", move |_| {
+            let three_d = {
+                let mut a = s.borrow_mut();
+                a.three_d = !a.three_d;
+                a.three_d
+            };
+            if three_d {
+                // Lay the current projection out in 3-D (cached per shape, so
+                // toggling back and forth doesn't re-run the force pass).
+                super::ensure_layout3(&s);
+            }
+            persist_ui_prefs(&s);
+            // Full re-render so the entering perspective gets a fresh camera fit.
+            let _ = rerender(&s);
+        });
+    }
     {
         let s = shared.clone();
         on(&zin, "click", move |_| graph_view::zoom(&s, 1.2));
@@ -538,7 +566,7 @@ pub(super) fn zoom_panel(doc: &Document, shared: &Shared) -> Element {
             sync_chrome(&s);
         });
     }
-    for b in [&zin, &zout, &fit, &lock] {
+    for b in [&persp, &zin, &zout, &fit, &lock] {
         let _ = p.append_child(b);
     }
     p
@@ -809,6 +837,27 @@ pub(crate) fn sync_chrome(shared: &Shared) {
         } else {
             "legend-section"
         });
+    }
+
+    // 2D/3D perspective toggle (bottom-right zoom toolbar): the label shows the
+    // current perspective and the button reads "pressed" while 3-D is active, so
+    // it mirrors the lock toggle a few buttons down. The label/title state the
+    // action to take, not the current mode, so the control is unambiguous.
+    if let Some(persp) = doc.get_element_by_id("bg-persp") {
+        persp.set_class_name(if a.three_d {
+            "iconbtn iconbtn-text active"
+        } else {
+            "iconbtn iconbtn-text"
+        });
+        persp.set_text_content(Some(if a.three_d { "3D" } else { "2D" }));
+        let _ = persp.set_attribute("aria-pressed", if a.three_d { "true" } else { "false" });
+        let label = if a.three_d {
+            "Switch to 2D perspective"
+        } else {
+            "Switch to 3D perspective"
+        };
+        let _ = persp.set_attribute("aria-label", label);
+        let _ = persp.set_attribute("title", label);
     }
 
     // chips: reflect the active granularity on the segmented slide-select

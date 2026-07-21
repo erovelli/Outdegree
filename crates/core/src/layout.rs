@@ -14,6 +14,15 @@ pub struct Pos {
     pub y: f32,
 }
 
+/// A 3-D layout position, for the graph view's optional 3-D perspective. Kept a
+/// separate type (not `[f32; 3]`) so call sites read like [`Pos`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pos3 {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
 /// Layout `keys.len()` nodes connected by `edges` (index pairs). Existing nodes
 /// warm-start from `seed[key]`; new nodes get deterministic fresh placement.
 ///
@@ -364,6 +373,419 @@ fn barnes_hut_repulsion(pos: &[Pos], k: f32, theta: f32) -> Vec<(f32, f32)> {
     disp
 }
 
+// ───────────────────────────── 3-D layout (perspective view) ─────────────────────
+
+/// 3-D Fruchterman–Reingold for the graph view's perspective toggle: the same
+/// force model as [`fruchterman_reingold`] (Barnes–Hut repulsion, edge
+/// attraction, community cohesion, centering gravity, temperature cooling,
+/// finite/bounded sanitization) extended with a z axis, so the octree replaces
+/// the quadtree. Deterministic: warm-start from finite, in-bounds `seed[key]`;
+/// fresh nodes get golden-angle Fibonacci-sphere placement (volume-uniform radii),
+/// so the same shape always yields the same picture.
+pub fn fruchterman_reingold_3d(
+    keys: &[String],
+    edges: &[(usize, usize)],
+    iters: u32,
+    seed: &HashMap<String, (f32, f32, f32)>,
+    communities: &[usize],
+) -> Vec<Pos3> {
+    let n = keys.len();
+    if n == 0 {
+        return Vec::new();
+    }
+
+    let w = 1000.0f32;
+    // In 3-D the ideal spring length spreads n nodes through a w³ volume.
+    let k = (w * w * w / n as f32).cbrt();
+    let bound = 4.0 * w;
+
+    let mut pos: Vec<Pos3> = keys
+        .iter()
+        .enumerate()
+        .map(|(i, key)| {
+            if let Some(&(x, y, z)) = seed.get(key) {
+                if x.is_finite()
+                    && y.is_finite()
+                    && z.is_finite()
+                    && x.abs() <= bound
+                    && y.abs() <= bound
+                    && z.abs() <= bound
+                {
+                    return Pos3 { x, y, z };
+                }
+            }
+            // Fibonacci sphere direction × cube-root radius: deterministic,
+            // well-separated, volume-uniform initial placement.
+            let fy = 1.0 - 2.0 * (i as f32 + 0.5) / n as f32; // in (-1, 1)
+            let ring = (1.0 - fy * fy).max(0.0).sqrt();
+            let angle = i as f32 * 2.399_963_2; // golden angle (radians)
+            let radius = 0.5 * w * ((i as f32 + 1.0) / n as f32).cbrt();
+            Pos3 {
+                x: radius * ring * angle.cos(),
+                y: radius * fy,
+                z: radius * ring * angle.sin(),
+            }
+        })
+        .collect();
+
+    if n == 1 {
+        return vec![Pos3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        }];
+    }
+
+    // Same rationale as the 2-D constants (see `fruchterman_reingold`).
+    let gravity = 0.5f32;
+    let community_strength = 0.20f32;
+    let n_comm = if communities.len() == n {
+        communities
+            .iter()
+            .copied()
+            .max()
+            .map(|m| m + 1)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let use_communities = n_comm >= 2;
+
+    let mut temp = w / 10.0;
+    let cool = temp / (iters.max(1) as f32 + 1.0);
+
+    for _ in 0..iters {
+        let mut disp = barnes_hut_repulsion_3d(&pos, k, 0.9);
+
+        // Attraction along edges.
+        for &(a, b) in edges {
+            if a >= n || b >= n || a == b {
+                continue;
+            }
+            let dx = pos[a].x - pos[b].x;
+            let dy = pos[a].y - pos[b].y;
+            let dz = pos[a].z - pos[b].z;
+            let dist = (dx * dx + dy * dy + dz * dz).sqrt().max(1e-4);
+            let force = dist * dist / k;
+            let (ux, uy, uz) = (dx / dist, dy / dist, dz / dist);
+            disp[a].0 -= ux * force;
+            disp[a].1 -= uy * force;
+            disp[a].2 -= uz * force;
+            disp[b].0 += ux * force;
+            disp[b].1 += uy * force;
+            disp[b].2 += uz * force;
+        }
+
+        // Community cohesion toward each community's running centroid.
+        if use_communities {
+            let mut cx = vec![0.0f32; n_comm];
+            let mut cy = vec![0.0f32; n_comm];
+            let mut cz = vec![0.0f32; n_comm];
+            let mut cnt = vec![0u32; n_comm];
+            for i in 0..n {
+                let c = communities[i];
+                cx[c] += pos[i].x;
+                cy[c] += pos[i].y;
+                cz[c] += pos[i].z;
+                cnt[c] += 1;
+            }
+            for c in 0..n_comm {
+                if cnt[c] > 0 {
+                    cx[c] /= cnt[c] as f32;
+                    cy[c] /= cnt[c] as f32;
+                    cz[c] /= cnt[c] as f32;
+                }
+            }
+            for i in 0..n {
+                let c = communities[i];
+                disp[i].0 += (cx[c] - pos[i].x) * community_strength;
+                disp[i].1 += (cy[c] - pos[i].y) * community_strength;
+                disp[i].2 += (cz[c] - pos[i].z) * community_strength;
+            }
+        }
+
+        // Centering gravity.
+        for (i, d) in disp.iter_mut().enumerate() {
+            d.0 -= pos[i].x * gravity;
+            d.1 -= pos[i].y * gravity;
+            d.2 -= pos[i].z * gravity;
+        }
+
+        // Apply displacement (capped by temperature), then sanitize + clamp.
+        for i in 0..n {
+            let mut dx = disp[i].0;
+            let mut dy = disp[i].1;
+            let mut dz = disp[i].2;
+            if !dx.is_finite() {
+                dx = 0.0;
+            }
+            if !dy.is_finite() {
+                dy = 0.0;
+            }
+            if !dz.is_finite() {
+                dz = 0.0;
+            }
+            let d = (dx * dx + dy * dy + dz * dz).sqrt();
+            if d > 1e-6 {
+                let lim = d.min(temp);
+                pos[i].x += dx / d * lim;
+                pos[i].y += dy / d * lim;
+                pos[i].z += dz / d * lim;
+            }
+            if !pos[i].x.is_finite() {
+                pos[i].x = 0.0;
+            }
+            if !pos[i].y.is_finite() {
+                pos[i].y = 0.0;
+            }
+            if !pos[i].z.is_finite() {
+                pos[i].z = 0.0;
+            }
+            pos[i].x = pos[i].x.clamp(-bound, bound);
+            pos[i].y = pos[i].y.clamp(-bound, bound);
+            pos[i].z = pos[i].z.clamp(-bound, bound);
+        }
+        temp = (temp - cool).max(0.0);
+    }
+
+    pos
+}
+
+// ───────────────────────────── Barnes–Hut repulsion (3-D octree) ─────────────────
+
+/// A node of the arena-backed octree — the 3-D analogue of [`QNode`], with eight
+/// children keyed by the (x, y, z) sign octant.
+struct ONode {
+    cx: f32,
+    cy: f32,
+    cz: f32,
+    half: f32,
+    mass: f32,
+    com_x: f32,
+    com_y: f32,
+    com_z: f32,
+    children: [i32; 8],
+    body: i32,
+    body_x: f32,
+    body_y: f32,
+    body_z: f32,
+}
+
+struct OcTree {
+    nodes: Vec<ONode>,
+}
+
+impl OcTree {
+    fn new(cx: f32, cy: f32, cz: f32, half: f32) -> Self {
+        OcTree {
+            nodes: vec![ONode {
+                cx,
+                cy,
+                cz,
+                half,
+                mass: 0.0,
+                com_x: 0.0,
+                com_y: 0.0,
+                com_z: 0.0,
+                children: [-1; 8],
+                body: -1,
+                body_x: 0.0,
+                body_y: 0.0,
+                body_z: 0.0,
+            }],
+        }
+    }
+
+    fn octant(&self, ni: usize, x: f32, y: f32, z: f32) -> usize {
+        let n = &self.nodes[ni];
+        (x >= n.cx) as usize + ((y >= n.cy) as usize) * 2 + ((z >= n.cz) as usize) * 4
+    }
+
+    fn child(&mut self, ni: usize, o: usize) -> usize {
+        if self.nodes[ni].children[o] >= 0 {
+            return self.nodes[ni].children[o] as usize;
+        }
+        let (cx, cy, cz, half) = {
+            let n = &self.nodes[ni];
+            let h = n.half * 0.5;
+            let dx = if o & 1 == 1 { h } else { -h };
+            let dy = if o & 2 == 2 { h } else { -h };
+            let dz = if o & 4 == 4 { h } else { -h };
+            (n.cx + dx, n.cy + dy, n.cz + dz, h)
+        };
+        let idx = self.nodes.len();
+        self.nodes.push(ONode {
+            cx,
+            cy,
+            cz,
+            half,
+            mass: 0.0,
+            com_x: 0.0,
+            com_y: 0.0,
+            com_z: 0.0,
+            children: [-1; 8],
+            body: -1,
+            body_x: 0.0,
+            body_y: 0.0,
+            body_z: 0.0,
+        });
+        self.nodes[ni].children[o] = idx as i32;
+        idx
+    }
+
+    fn insert(&mut self, body: usize, x: f32, y: f32, z: f32) {
+        self.insert_at(0, body, x, y, z, 0);
+    }
+
+    fn insert_at(&mut self, ni: usize, body: usize, x: f32, y: f32, z: f32, depth: u32) {
+        // accumulate this body into the subtree rooted at ni
+        let was_empty = self.nodes[ni].mass == 0.0;
+        {
+            let n = &mut self.nodes[ni];
+            n.mass += 1.0;
+            n.com_x += x;
+            n.com_y += y;
+            n.com_z += z;
+        }
+        if was_empty && self.nodes[ni].body < 0 {
+            let n = &mut self.nodes[ni];
+            n.body = body as i32;
+            n.body_x = x;
+            n.body_y = y;
+            n.body_z = z;
+            return;
+        }
+        if depth >= BH_MAX_DEPTH {
+            return; // near-coincident points share this bucket
+        }
+        // split: relocate an existing single body into a child first
+        let existing = self.nodes[ni].body;
+        if existing >= 0 {
+            let (ox, oy, oz) = (
+                self.nodes[ni].body_x,
+                self.nodes[ni].body_y,
+                self.nodes[ni].body_z,
+            );
+            self.nodes[ni].body = -1;
+            let o = self.octant(ni, ox, oy, oz);
+            let c = self.child(ni, o);
+            self.insert_at(c, existing as usize, ox, oy, oz, depth + 1);
+        }
+        let o = self.octant(ni, x, y, z);
+        let c = self.child(ni, o);
+        self.insert_at(c, body, x, y, z, depth + 1);
+    }
+
+    fn finalize(&mut self) {
+        for n in &mut self.nodes {
+            if n.mass > 0.0 {
+                n.com_x /= n.mass;
+                n.com_y /= n.mass;
+                n.com_z /= n.mass;
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn force(
+        &self,
+        ni: usize,
+        x: f32,
+        y: f32,
+        z: f32,
+        i: usize,
+        theta: f32,
+        k2: f32,
+    ) -> (f32, f32, f32) {
+        let n = &self.nodes[ni];
+        if n.mass == 0.0 {
+            return (0.0, 0.0, 0.0);
+        }
+        if n.body >= 0 {
+            if n.body as usize == i {
+                return (0.0, 0.0, 0.0); // self
+            }
+            return repulse_3d(x, y, z, n.com_x, n.com_y, n.com_z, k2, n.mass);
+        }
+        let dx = x - n.com_x;
+        let dy = y - n.com_y;
+        let dz = z - n.com_z;
+        let dist = (dx * dx + dy * dy + dz * dz).sqrt().max(1e-4);
+        let has_children = n.children.iter().any(|&c| c >= 0);
+        if !has_children || n.half * 2.0 / dist < theta {
+            return repulse_3d(x, y, z, n.com_x, n.com_y, n.com_z, k2, n.mass);
+        }
+        let mut f = (0.0, 0.0, 0.0);
+        for &c in &n.children {
+            if c >= 0 {
+                let cf = self.force(c as usize, x, y, z, i, theta, k2);
+                f.0 += cf.0;
+                f.1 += cf.1;
+                f.2 += cf.2;
+            }
+        }
+        f
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn repulse_3d(
+    x: f32,
+    y: f32,
+    z: f32,
+    ox: f32,
+    oy: f32,
+    oz: f32,
+    k2: f32,
+    mass: f32,
+) -> (f32, f32, f32) {
+    let dx = x - ox;
+    let dy = y - oy;
+    let dz = z - oz;
+    let dist = (dx * dx + dy * dy + dz * dz).sqrt().max(1e-4);
+    let force = k2 / dist * mass;
+    (dx / dist * force, dy / dist * force, dz / dist * force)
+}
+
+/// [`barnes_hut_repulsion`] in 3-D: approximate all-pairs repulsion with an
+/// octree. Deterministic given the input positions.
+fn barnes_hut_repulsion_3d(pos: &[Pos3], k: f32, theta: f32) -> Vec<(f32, f32, f32)> {
+    let n = pos.len();
+    let mut disp = vec![(0.0f32, 0.0f32, 0.0f32); n];
+    if n < 2 {
+        return disp;
+    }
+    let (mut minx, mut miny, mut minz) = (f32::INFINITY, f32::INFINITY, f32::INFINITY);
+    let (mut maxx, mut maxy, mut maxz) = (f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for p in pos {
+        minx = minx.min(p.x);
+        miny = miny.min(p.y);
+        minz = minz.min(p.z);
+        maxx = maxx.max(p.x);
+        maxy = maxy.max(p.y);
+        maxz = maxz.max(p.z);
+    }
+    let cx = (minx + maxx) * 0.5;
+    let cy = (miny + maxy) * 0.5;
+    let cz = (minz + maxz) * 0.5;
+    let half = ((maxx - minx).max(maxy - miny).max(maxz - minz) * 0.5).max(1.0) + 1.0;
+
+    let mut tree = OcTree::new(cx, cy, cz, half);
+    for (i, p) in pos.iter().enumerate() {
+        tree.insert(i, p.x, p.y, p.z);
+    }
+    tree.finalize();
+
+    let k2 = k * k;
+    for (i, p) in pos.iter().enumerate() {
+        let (fx, fy, fz) = tree.force(0, p.x, p.y, p.z, i, theta, k2);
+        disp[i].0 = fx;
+        disp[i].1 = fy;
+        disp[i].2 = fz;
+    }
+    disp
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,6 +892,122 @@ mod tests {
         let (ax, ay) = cen(&[0, 1, 2, 3]);
         let (bx, by) = cen(&[4, 5, 6, 7]);
         let sep = ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt();
+        assert!(sep > 50.0, "communities should separate, got sep={sep}");
+    }
+
+    #[test]
+    fn three_d_warm_start_preserves_seeded_positions_with_zero_iters() {
+        let keys: Vec<String> = vec!["a".into(), "b".into(), "new".into()];
+        let mut seed = HashMap::new();
+        seed.insert("a".to_string(), (12.0, 34.0, -8.0));
+        seed.insert("b".to_string(), (-5.0, 7.0, 3.0));
+        let pos = fruchterman_reingold_3d(&keys, &[(0, 1)], 0, &seed, &[]);
+        assert_eq!(pos.len(), 3);
+        assert_eq!(
+            pos[0],
+            Pos3 {
+                x: 12.0,
+                y: 34.0,
+                z: -8.0
+            }
+        );
+        assert_eq!(
+            pos[1],
+            Pos3 {
+                x: -5.0,
+                y: 7.0,
+                z: 3.0
+            }
+        );
+        // fresh node placed somewhere finite
+        assert!(pos[2].x.is_finite() && pos[2].y.is_finite() && pos[2].z.is_finite());
+    }
+
+    #[test]
+    fn three_d_deterministic_finite_and_genuinely_volumetric() {
+        let keys: Vec<String> = (0..40).map(|i| format!("n{i}")).collect();
+        let edges: Vec<(usize, usize)> = (0..40).map(|i| (i, (i + 7) % 40)).collect();
+        let seed = HashMap::new();
+        let a = fruchterman_reingold_3d(&keys, &edges, 60, &seed, &[]);
+        let b = fruchterman_reingold_3d(&keys, &edges, 60, &seed, &[]);
+        assert_eq!(a.len(), 40);
+        assert_eq!(a, b, "3-D layout must be deterministic");
+        assert!(a
+            .iter()
+            .all(|p| p.x.is_finite() && p.y.is_finite() && p.z.is_finite()));
+        // The layout must actually use the z axis (not collapse to a plane).
+        let z_spread = a.iter().map(|p| p.z).fold(0.0f32, |m, z| m.max(z.abs()));
+        assert!(z_spread > 10.0, "layout collapsed to a plane: {z_spread}");
+    }
+
+    #[test]
+    fn three_d_octree_scales_and_stays_finite() {
+        // a 400-node ring exercises the octree path; must be finite + deterministic
+        let n = 400;
+        let keys: Vec<String> = (0..n).map(|i| format!("n{i}")).collect();
+        let edges: Vec<(usize, usize)> = (0..n).map(|i| (i, (i + 1) % n)).collect();
+        let seed = HashMap::new();
+        let a = fruchterman_reingold_3d(&keys, &edges, 30, &seed, &[]);
+        let b = fruchterman_reingold_3d(&keys, &edges, 30, &seed, &[]);
+        assert_eq!(a.len(), n);
+        assert_eq!(a, b, "octree layout must be deterministic");
+        assert!(a
+            .iter()
+            .all(|p| p.x.is_finite() && p.y.is_finite() && p.z.is_finite()));
+    }
+
+    #[test]
+    fn three_d_coincident_and_polluted_seeds_stay_finite_and_bounded() {
+        // Coincident points stress the octree depth guard; NaN/inf/huge seeds must
+        // fall back to fresh placement and never yield an off-the-map position.
+        let keys: Vec<String> = (0..16).map(|i| format!("n{i}")).collect();
+        let mut seed = HashMap::new();
+        for k in keys.iter().take(8) {
+            seed.insert(k.clone(), (5.0, 5.0, 5.0));
+        }
+        seed.insert("n8".into(), (f32::NAN, 0.0, 0.0));
+        seed.insert("n9".into(), (f32::INFINITY, f32::NEG_INFINITY, 1e30));
+        let p = fruchterman_reingold_3d(&keys, &[(0, 1), (1, 2)], 20, &seed, &[]);
+        let bound = 4.0 * 1000.0 + 1.0;
+        assert!(p
+            .iter()
+            .all(|q| q.x.is_finite() && q.y.is_finite() && q.z.is_finite()));
+        assert!(p
+            .iter()
+            .all(|q| q.x.abs() <= bound && q.y.abs() <= bound && q.z.abs() <= bound));
+    }
+
+    #[test]
+    fn three_d_community_cohesion_separates_clusters() {
+        // Two 4-cliques with a single weak bridge; community ids group them.
+        let keys: Vec<String> = (0..8).map(|i| format!("n{i}")).collect();
+        let mut edges = Vec::new();
+        for grp in [[0, 1, 2, 3], [4, 5, 6, 7]] {
+            for a in 0..4 {
+                for b in (a + 1)..4 {
+                    edges.push((grp[a], grp[b]));
+                }
+            }
+        }
+        edges.push((3, 4)); // weak bridge
+        let comm = vec![0, 0, 0, 0, 1, 1, 1, 1];
+        let seed = HashMap::new();
+        let a = fruchterman_reingold_3d(&keys, &edges, 120, &seed, &comm);
+        let b = fruchterman_reingold_3d(&keys, &edges, 120, &seed, &comm);
+        assert_eq!(a, b, "community layout must be deterministic");
+        let cen = |idx: &[usize]| {
+            let (mut x, mut y, mut z) = (0.0f32, 0.0f32, 0.0f32);
+            for &i in idx {
+                x += a[i].x;
+                y += a[i].y;
+                z += a[i].z;
+            }
+            let n = idx.len() as f32;
+            (x / n, y / n, z / n)
+        };
+        let (ax, ay, az) = cen(&[0, 1, 2, 3]);
+        let (bx, by, bz) = cen(&[4, 5, 6, 7]);
+        let sep = ((ax - bx).powi(2) + (ay - by).powi(2) + (az - bz).powi(2)).sqrt();
         assert!(sep > 50.0, "communities should separate, got sep={sep}");
     }
 

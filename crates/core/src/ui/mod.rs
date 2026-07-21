@@ -25,7 +25,8 @@ mod settings;
 mod shortcuts;
 mod tables;
 
-use crate::layout::{self, Pos};
+use crate::camera3::Camera3;
+use crate::layout::{self, Pos, Pos3};
 use crate::model::{Granularity, GraphProjection, Provenance};
 use crate::project::{self, Filters, TimeRange};
 use crate::render::canvas2d::Camera;
@@ -105,6 +106,11 @@ pub(crate) struct App {
     pub anchor: Option<Anchor>,
     pub view: View,
     pub camera: Camera,
+    /// Graph perspective (the 2-D / 3-D chip): when set, the graph renders through
+    /// the 3-D orbit camera below. Persisted in `uiPrefs`; default off (2-D).
+    pub three_d: bool,
+    /// Orbit camera for the 3-D perspective. Transient like `camera`.
+    pub camera3: Camera3,
     pub paused: bool,
     /// "Lock" the layout: re-project on filter changes but keep node positions
     /// (no fresh force iterations), so the graph stops re-settling.
@@ -122,6 +128,16 @@ pub(crate) struct App {
     /// instead of re-running the force layout. New shapes warm-start from
     /// `positions` (cross-session spatial memory); only this session is cached.
     pub layouts: HashMap<u64, HashMap<String, (f32, f32)>>,
+    /// 3-D positions for the current projection (the 3-D analogue of
+    /// `layout_pos`), valid iff `layout3_sig` matches the projection's signature.
+    /// Session-only: unlike `positions`, 3-D placement is never persisted — the
+    /// deterministic layout reproduces the same picture for the same shape, so
+    /// the 2-D store stays the sole spatial memory.
+    pub layout_pos3: HashMap<String, Pos3>,
+    /// Which shape signature `layout_pos3` was computed for (`None` = stale).
+    pub layout3_sig: Option<u64>,
+    /// Per-shape 3-D layout cache, mirroring `layouts` (this session only).
+    pub layouts3: HashMap<u64, HashMap<String, (f32, f32, f32)>>,
     pub hover: Option<String>,
     pub dragging: bool,
     pub did_drag: bool,
@@ -313,6 +329,8 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         anchor: None,
         view: prefs.view.into(),
         camera: Camera::default(),
+        three_d: prefs.three_d,
+        camera3: Camera3::default(),
         paused,
         locked: prefs.locked,
         doc,
@@ -321,6 +339,9 @@ pub async fn run(root_id: &str) -> Result<(), JsValue> {
         communities: HashMap::new(),
         layout_pos: HashMap::new(),
         layouts: HashMap::new(),
+        layout_pos3: HashMap::new(),
+        layout3_sig: None,
+        layouts3: HashMap::new(),
         hover: None,
         dragging: false,
         did_drag: false,
@@ -647,6 +668,89 @@ fn recompute_projection_inner(shared: &Shared, relayout: bool) {
     a.proj = proj;
     a.communities = key_comm;
     a.layout_pos = layout_pos;
+
+    // Keep the 3-D layout in step while the 3-D perspective is active, so every
+    // recompute path (range/filter changes, focus, live refresh) leaves
+    // `layout_pos3` valid for the projection just installed. `keep` mirrors the
+    // 2-D `iters == 0` decision above: a focus transition or locked layout keeps
+    // existing 3-D positions, so only the camera moves.
+    if a.three_d {
+        let keep = a.locked || !relayout;
+        ensure_layout3_locked(&mut a, keep);
+    }
+}
+
+/// Make `layout_pos3` match the current projection's shape signature (no-op when
+/// it already does): restore this session's cached 3-D layout for the shape, or
+/// run the deterministic 3-D force layout. With `keep`, surviving nodes seed from
+/// their current 3-D positions with zero iterations (the focus-drill / locked
+/// path), so the picture doesn't re-settle under the user.
+///
+/// 3-D placement is session-only by design — the persisted `positions` store
+/// stays 2-D (the canonical spatial memory), and the same shape reproduces the
+/// same 3-D picture deterministically.
+fn ensure_layout3_locked(a: &mut App, keep: bool) {
+    let sig = project::layout_signature(&a.proj);
+    if a.layout3_sig == Some(sig) && !a.layout_pos3.is_empty() {
+        return;
+    }
+    let keys: Vec<String> = a.proj.nodes.iter().map(|n| n.key.clone()).collect();
+    if let Some(cached) = a.layouts3.get(&sig) {
+        a.layout_pos3 = keys
+            .iter()
+            .filter_map(|k| {
+                cached
+                    .get(k)
+                    .map(|&(x, y, z)| (k.clone(), Pos3 { x, y, z }))
+            })
+            .collect();
+        a.layout3_sig = Some(sig);
+        return;
+    }
+    let index: HashMap<&str, usize> = keys
+        .iter()
+        .enumerate()
+        .map(|(i, k)| (k.as_str(), i))
+        .collect();
+    let edges: Vec<(usize, usize)> = a
+        .proj
+        .edges
+        .iter()
+        .filter_map(|e| Some((*index.get(e.from.as_str())?, *index.get(e.to.as_str())?)))
+        .collect();
+    let communities: Vec<usize> = keys
+        .iter()
+        .map(|k| a.communities.get(k).copied().unwrap_or(0))
+        .collect();
+    let (iters, seed) = if keep {
+        // Seed survivors from their current 3-D spots; only genuinely new nodes
+        // get fresh deterministic placement (from the seed-miss fallback).
+        let seed: HashMap<String, (f32, f32, f32)> = a
+            .layout_pos3
+            .iter()
+            .map(|(k, p)| (k.clone(), (p.x, p.y, p.z)))
+            .collect();
+        (0, seed)
+    } else {
+        (320, HashMap::new())
+    };
+    let placed = layout::fruchterman_reingold_3d(&keys, &edges, iters, &seed, &communities);
+    let mut layout_pos3 = HashMap::new();
+    let mut snapshot = HashMap::new();
+    for (k, p) in keys.iter().zip(placed.iter()) {
+        layout_pos3.insert(k.clone(), *p);
+        snapshot.insert(k.clone(), (p.x, p.y, p.z));
+    }
+    a.layouts3.insert(sig, snapshot);
+    a.layout_pos3 = layout_pos3;
+    a.layout3_sig = Some(sig);
+}
+
+/// [`ensure_layout3_locked`] behind the shared borrow — the entry point for the
+/// perspective-chip toggle (recomputes nothing else).
+pub(crate) fn ensure_layout3(shared: &Shared) {
+    let mut a = shared.borrow_mut();
+    ensure_layout3_locked(&mut a, false);
 }
 
 /// Re-snapshot the current on-screen layout under its shape signature, so a manual
@@ -761,6 +865,7 @@ pub(crate) fn persist_ui_prefs(shared: &Shared) {
         spa_mode: a.spa_mode,
         locked: a.locked,
         site_icons: a.site_icons,
+        three_d: a.three_d,
     };
     crate::bridge::storage_local_set(
         crate::ui_prefs::STORAGE_KEY,
